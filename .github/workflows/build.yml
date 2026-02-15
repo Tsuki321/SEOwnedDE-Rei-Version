@@ -18,6 +18,18 @@ jobs:
         run: nuget restore "SEOwnedDE/SEOwnedDE.sln"
         shell: powershell
 
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
+
+      - name: Show MSBuild info (debug)
+        run: |
+          Write-Output "--- msbuild available? ---"
+          Get-Command msbuild -ErrorAction SilentlyContinue | Format-List
+          Write-Output "--- vswhere (installation path) ---"
+          & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+          Get-ChildItem 'C:\Program Files (x86)\Microsoft Visual Studio\**\MSBuild\**\Bin\MSBuild.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5
+        shell: powershell
+
       - name: Build solution (ReleaseAVX2 | x64)
         run: msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
         shell: powershell
