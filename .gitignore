@@ -1,7 +1,15 @@
 # Created by https://www.toptal.com/developers/gitignore/api/c++,visualstudio
 # Edit at https://www.toptal.com/developers/gitignore?templates=c++,visualstudio
 
-.github/
+# Ignore all .github subfolders except workflows (workflows must be tracked for CI)
+.github/agents/
+.github/commands/
+.github/docs/
+.github/hooks/
+.github/lib/
+.github/skills/
+.github/tests/
+!.github/workflows/
 
 ### C++ ###
 # Prerequisites

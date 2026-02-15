@@ -1,6 +1,9 @@
 name: MSBuild
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   msbuild:
@@ -8,7 +11,7 @@ jobs:
 
     strategy:
       matrix:
-        configuration: [Release, ReleaseAVX2]
+        configuration: [ReleaseAVX2]
         platform: [x64]
 
     steps:
@@ -23,5 +26,6 @@ jobs:
     
     - uses: actions/upload-artifact@v4
       with:
-        name: SEOwnedDE${{ matrix.configuration }}
-        path: SEOwnedDE/bin/${{ matrix.configuration }}/*.dll
+        name: SEOwnedDE-SEOwnedDE.dll
+        path: SEOwnedDE/bin/${{ matrix.configuration }}/SEOwnedDE.dll
+        retention-days: 7
