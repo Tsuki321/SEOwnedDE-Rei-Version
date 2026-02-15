@@ -1306,9 +1306,8 @@ void CMenu::MainWindow()
 
 				SelectSingle("Prediction Method", CFG::Aimbot_Projectile_Aim_Prediction_Method, {
 					{ "Full Acceleration", 0 },
-					{ "Current Velocity", 1 }
-				});
-
+			{ "Current Velocity", 1 },
+			{ "Velocity Extrapolation", 2 }
 				SliderFloat("FOV", CFG::Aimbot_Projectile_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Max Simulation Time", CFG::Aimbot_Projectile_Max_Simulation_Time, 1.0f, 5.0f, 0.5f, "%.1fs");
 				SliderInt("Max Targets", CFG::Aimbot_Projectile_Max_Processing_Targets, 1, 6, 1);
@@ -1391,13 +1390,13 @@ void CMenu::MainWindow()
 				CheckBox("Active", CFG::Triggerbot_AutoBackstab_Active);
 				CheckBox("Knife If Lethal", CFG::Triggerbot_AutoBackstab_Knife_If_Lethal);
 
-				SelectSingle("Mode", CFG::Triggerbot_AutoBacktab_Mode,
+				SelectSingle("Mode", CFG::Triggerbot_AutoBackstab_Mode,
 				{
 					{ "Legit", 0 },
 					{ "Rage", 1 }
 				});
 
-				SelectSingle("Aim Mode", CFG::Triggerbot_AutoBacktab_Aim_Mode,
+				SelectSingle("Aim Mode", CFG::Triggerbot_AutoBackstab_Aim_Mode,
 				{
 					{ "Normal", 0 },
 					{ "Silent", 1 }
@@ -2026,13 +2025,13 @@ void CMenu::MainWindow()
 
 			GroupBoxStart("Spy Warning", 150);
 			{
-				CheckBox("Active", CFG::Viuals_SpyWarning_Active);
-				CheckBox("Announce", CFG::Viuals_SpyWarning_Announce);
+				CheckBox("Active", CFG::Visuals_SpyWarning_Active);
+				CheckBox("Announce", CFG::Visuals_SpyWarning_Announce);
 
 				multiselect("Ignore", SpyWarningIgnore, {
-					{ "Cloaked", CFG::Viuals_SpyWarning_Ignore_Cloaked },
-					{ "Friends", CFG::Viuals_SpyWarning_Ignore_Friends },
-					{ "Invisible", CFG::Viuals_SpyWarning_Ignore_Invisible }
+					{ "Cloaked", CFG::Visuals_SpyWarning_Ignore_Cloaked },
+					{ "Friends", CFG::Visuals_SpyWarning_Ignore_Friends },
+					{ "Invisible", CFG::Visuals_SpyWarning_Ignore_Invisible }
 				});
 			}
 			GroupBoxEnd();

@@ -20,6 +20,9 @@ void CSignature::Initialize()
 
 	AssertCustom(m_dwVal, std::format("CSignature::Initialize() failed to initialize:\n  {}\n  {}\n  {}\n", m_pszName, m_pszDLLName, m_pszSignature).c_str());
 
+	if (!m_dwVal)
+		return;
+
 	m_dwVal += m_nOffset;
 }
 

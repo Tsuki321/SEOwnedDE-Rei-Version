@@ -1,10 +1,11 @@
 #pragma once
 
+#include <atomic>
 #include "../SDK/SDK.h"
 
 class CApp
 {
-	bool bUnload = false;
+	std::atomic<bool> bUnload = false;
 
 public:
 	void Start();

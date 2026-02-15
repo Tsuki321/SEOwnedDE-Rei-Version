@@ -109,7 +109,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 		auto angleTo{ I::EngineClient->GetViewAngles() };
 
-		if (CFG::Triggerbot_AutoBacktab_Mode == 1)
+		if (CFG::Triggerbot_AutoBackstab_Mode == 1)
 		{
 			angleTo = Math::CalcAngle(pLocal->GetShootPos(), pPlayer->GetCenter());
 		}
@@ -123,11 +123,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 			if (H::AimUtils->TraceEntityMelee(pPlayer, pLocal->GetShootPos(), to))
 			{
-				if (CFG::Triggerbot_AutoBacktab_Mode == 1)
+				if (CFG::Triggerbot_AutoBackstab_Mode == 1)
 				{
 					pCmd->viewangles = angleTo;
 
-					if (CFG::Triggerbot_AutoBacktab_Aim_Mode == 1)
+					if (CFG::Triggerbot_AutoBackstab_Aim_Mode == 1)
 					{
 						G::bPSilentAngles = true;
 					}
@@ -161,12 +161,12 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			}
 
 			// Rage mode
-			if (CFG::Triggerbot_AutoBacktab_Mode == 1)
+			if (CFG::Triggerbot_AutoBackstab_Mode == 1)
 			{
 				angleTo = Math::CalcAngle(pLocal->GetShootPos(), record->Center);
 			}
 
-			if (canKnife || IsBehindAndFacingTarget(pLocal->GetCenter(), angleTo, record->Center, pPlayer->GetEyeAngles()))
+			if (canKnife || IsBehindAndFacingTarget(pLocal->GetCenter(), angleTo, record->Center, record->EyeAngles))
 			{
 				F::LagRecordMatrixHelper->Set(record);
 
@@ -184,11 +184,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				F::LagRecordMatrixHelper->Restore();
 
-				if (CFG::Triggerbot_AutoBacktab_Mode == 1)
+				if (CFG::Triggerbot_AutoBackstab_Mode == 1)
 				{
 					pCmd->viewangles = angleTo;
 
-					if (CFG::Triggerbot_AutoBacktab_Aim_Mode == 1)
+					if (CFG::Triggerbot_AutoBackstab_Aim_Mode == 1)
 					{
 						G::bPSilentAngles = true;
 					}

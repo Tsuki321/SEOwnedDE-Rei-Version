@@ -160,6 +160,8 @@ void CAutoAirblast::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 	// Rage airblast
 	if (CFG::Triggerbot_AutoAirblast_Mode == 1)
 	{
+		const Vec3 vOriginalAngles = pCmd->viewangles;
+
 		if (CFG::Triggerbot_AutoAirblast_Aim_Assist)
 		{
 			auto getOwner = [](C_BaseProjectile* proj) -> C_BaseEntity* {
@@ -210,5 +212,7 @@ void CAutoAirblast::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		{
 			G::bSilentAngles = true;
 		}
+
+		H::AimUtils->FixMovement(pCmd, vOriginalAngles);
 	}
 }

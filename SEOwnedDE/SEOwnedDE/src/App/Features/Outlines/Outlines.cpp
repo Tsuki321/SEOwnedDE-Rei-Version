@@ -486,8 +486,8 @@ void COutlines::Run()
 	case 2:
 		{
 			pRC->DrawScreenSpaceRectangle(m_pMatHaloAddToScreen, -2, -1, w, h, 0.0f, 0.0f, w - 1, h - 1, w, h);
-			pRC->DrawScreenSpaceRectangle(m_pMatHaloAddToScreen, 2, 1, w, h, 0.0f, 0.0f, w - 1, h - 1, w, h);
-			pRC->DrawScreenSpaceRectangle(m_pMatHaloAddToScreen, -2, -1, w, h, 0.0f, 0.0f, w - 1, h - 1, w, h);
+			pRC->DrawScreenSpaceRectangle(m_pMatHaloAddToScreen, -2, 1, w, h, 0.0f, 0.0f, w - 1, h - 1, w, h);
+			pRC->DrawScreenSpaceRectangle(m_pMatHaloAddToScreen, 2, -1, w, h, 0.0f, 0.0f, w - 1, h - 1, w, h);
 			pRC->DrawScreenSpaceRectangle(m_pMatHaloAddToScreen, 2, 1, w, h, 0.0f, 0.0f, w - 1, h - 1, w, h);
 			break;
 		}

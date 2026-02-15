@@ -40,7 +40,7 @@ void CInterfaceManager::InitializeAllInterfaces()
 
 			for (int n = 0; n < Interface->m_nDereferenceCount; n++)
 			{
-				if (Interface->m_pPtr)
+				if (*Interface->m_pPtr)
 					*Interface->m_pPtr = *reinterpret_cast<void **>(*Interface->m_pPtr);
 			}
 		}

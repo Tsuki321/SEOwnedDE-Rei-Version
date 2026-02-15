@@ -32,7 +32,7 @@ namespace ColorUtils
 
 	inline unsigned long ToDWORD(Color_t x)
 	{
-		return (x.r & 0xFF) << 24 | (x.g & 0xFF) << 16 | (x.b & 0xFF) << 8 | x.a & 0xFF;
+		return static_cast<unsigned long>(x.r & 0xFF) << 24 | static_cast<unsigned long>(x.g & 0xFF) << 16 | static_cast<unsigned long>(x.b & 0xFF) << 8 | static_cast<unsigned long>(x.a & 0xFF);
 	}
 
 	inline Color_t Rainbow(float offset, float rate = 1.f)

@@ -46,7 +46,7 @@ namespace CFG
 	CFGVAR(Aimbot_Projectile_Aim_Type, 1); //0 Normal 1 Silent
 	CFGVAR(Aimbot_Projectile_Sort, 0); //0 FOV 1 Distance
 	CFGVAR(Aimbot_Projectile_Aim_Position, 3); //0 Feet 1 Body 2 Head 3 Auto
-	CFGVAR(Aimbot_Projectile_Aim_Prediction_Method, 0); //0 Full Acceleration 1 Current Velocity
+	CFGVAR(Aimbot_Projectile_Aim_Prediction_Method, 0); //0 Full Acceleration 1 Current Velocity 2 Velocity Extrapolation
 	CFGVAR(Aimbot_Projectile_FOV, 45.0f);
 	CFGVAR(Aimbot_Projectile_Max_Simulation_Time, 1.5f);
 	CFGVAR(Aimbot_Projectile_Max_Processing_Targets, 1);
@@ -72,8 +72,8 @@ namespace CFG
 
 	CFGVAR(Triggerbot_AutoBackstab_Active, true);
 	CFGVAR(Triggerbot_AutoBackstab_Knife_If_Lethal, true);
-	CFGVAR(Triggerbot_AutoBacktab_Mode, 1); //0 Legit 1 Rage
-	CFGVAR(Triggerbot_AutoBacktab_Aim_Mode, 1); //0 Normal 1 Silent
+	CFGVAR(Triggerbot_AutoBackstab_Mode, 1); //0 Legit 1 Rage
+	CFGVAR(Triggerbot_AutoBackstab_Aim_Mode, 1); //0 Normal 1 Silent
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Friends, true);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Invisible, false);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Invulnerable, true);
@@ -376,11 +376,11 @@ namespace CFG
 	CFGVAR(Visuals_SpyCamera_Pos_H, 250);
 	CFGVAR(Visuals_SpyCamera_FOV, 90.0f);
 
-	CFGVAR(Viuals_SpyWarning_Active, true);
-	CFGVAR(Viuals_SpyWarning_Announce, false);
-	CFGVAR(Viuals_SpyWarning_Ignore_Cloaked, false);
-	CFGVAR(Viuals_SpyWarning_Ignore_Friends, false);
-	CFGVAR(Viuals_SpyWarning_Ignore_Invisible, false);
+	CFGVAR(Visuals_SpyWarning_Active, true);
+	CFGVAR(Visuals_SpyWarning_Announce, false);
+	CFGVAR(Visuals_SpyWarning_Ignore_Cloaked, false);
+	CFGVAR(Visuals_SpyWarning_Ignore_Friends, false);
+	CFGVAR(Visuals_SpyWarning_Ignore_Invisible, false);
 
 	CFGVAR(Visuals_TeamWellBeing_Active, true);
 	CFGVAR(Visuals_TeamWellBeing_Medic_Only, false);

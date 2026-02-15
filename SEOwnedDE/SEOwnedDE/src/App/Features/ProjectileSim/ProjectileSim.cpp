@@ -112,8 +112,6 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			out = { TF_PROJECTILE_SYRINGE, pos, ang, 1000.0f, 0.3f, true };
 
 			return true;
-
-			return true;
 		}
 
 		default:

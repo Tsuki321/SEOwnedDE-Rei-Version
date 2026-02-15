@@ -99,7 +99,11 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 			continue;
 
 		// Sniper rifle?
-		const auto weapon{ enemy->m_hActiveWeapon().Get()->As<C_TFWeaponBase>() };
+		const auto weaponEnt{ enemy->m_hActiveWeapon().Get() };
+		if (!weaponEnt)
+			continue;
+
+		const auto weapon{ weaponEnt->As<C_TFWeaponBase>() };
 		if (!weapon || weapon->GetSlot() != WEAPON_SLOT_PRIMARY || weapon->GetWeaponID() == TF_WEAPON_COMPOUND_BOW)
 			continue;
 
@@ -427,7 +431,14 @@ void CAutoVaccinator::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd*
 	// Update danger status
 	if (!m_IsChangingRes && !m_ShouldPop)
 	{
-		const auto healTarget{ medigun->m_hHealingTarget().Get()->As<C_TFPlayer>() };
+		const auto healTargetEnt{ medigun->m_hHealingTarget().Get() };
+		if (!healTargetEnt)
+			return;
+
+		const auto healTarget{ healTargetEnt->As<C_TFPlayer>() };
+		if (!healTarget)
+			return;
+
 		medigun_resist_types_t dangerType{ MEDIGUN_NUM_RESISTS };
 
 		if (IsPlayerInDanger(healTarget, dangerType) && !PlayerHasResUber(dangerType, healTarget))

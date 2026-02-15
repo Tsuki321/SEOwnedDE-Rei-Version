@@ -51,9 +51,9 @@ Color_t ColorUtils::HSLToRGB(float h, float s, float l)
 
 Color_t ColorUtils::Mult(Color_t clr, float mult)
 {
-	float r = static_cast<float>(clr.r) * mult;
-	float g = static_cast<float>(clr.g) * mult;
-	float b = static_cast<float>(clr.b) * mult;
+	float r = std::min(static_cast<float>(clr.r) * mult, 255.0f);
+	float g = std::min(static_cast<float>(clr.g) * mult, 255.0f);
+	float b = std::min(static_cast<float>(clr.b) * mult, 255.0f);
 
 	return { static_cast<unsigned char>(r),  static_cast<unsigned char>(g),  static_cast<unsigned char>(b), clr.a };
 }

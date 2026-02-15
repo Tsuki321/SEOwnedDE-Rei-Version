@@ -110,5 +110,6 @@ void CApp::Shutdown()
 		}
 	}
 	
-	I::CVar->ConsoleColorPrintf({ 255, 70, 70, 255 }, "SEOwnedDE Unloaded!\n");
+	if (I::CVar)
+		I::CVar->ConsoleColorPrintf({ 255, 70, 70, 255 }, "SEOwnedDE Unloaded!\n");
 }

@@ -98,7 +98,7 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 	va_start(va_alist, str);
 	vsprintf_s(cbuffer, str, va_alist);
 	va_end(va_alist);
-	wsprintfW(wstr, L"%hs", cbuffer);
+	swprintf_s(wstr, 1024, L"%hs", cbuffer);
 
 	if (pos)
 	{

@@ -31,7 +31,7 @@ void CEntityHelper::UpdateCache()
 		if (!pLocal->IsInValidTeam(&nLocalTeam))
 			return;
 
-		for (int n = 1; n < I::ClientEntityList->GetHighestEntityIndex(); n++)
+		for (int n = 1; n <= I::ClientEntityList->GetHighestEntityIndex(); n++)
 		{
 			IClientEntity* pClientEntity = I::ClientEntityList->GetClientEntity(n);
 

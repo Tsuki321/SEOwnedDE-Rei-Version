@@ -4,7 +4,8 @@
 
 bool C_TFPlayer::IsPlayerOnSteamFriendsList()
 {
-	auto result{ reinterpret_cast<bool(__fastcall *)(void *, void *)>(Signatures::CTFPlayer_IsPlayerOnSteamFriendsList.Get())(this, this) };
+	const auto pLocal = reinterpret_cast<void*>(I::ClientEntityList->GetClientEntity(I::EngineClient->GetLocalPlayer()));
+	auto result{ reinterpret_cast<bool(__fastcall *)(void *, void *)>(Signatures::CTFPlayer_IsPlayerOnSteamFriendsList.Get())(this, pLocal) };
 
 	if (!result)
 	{

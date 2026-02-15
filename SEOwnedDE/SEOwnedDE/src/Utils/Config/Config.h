@@ -81,7 +81,15 @@ namespace Config
 
 		nlohmann::json j{};
 
-		input_file >> j;
+		try
+		{
+			input_file >> j;
+		}
+		catch (const nlohmann::json::exception&)
+		{
+			input_file.close();
+			return;
+		}
 
 		for (const auto &var : vars)
 		{
@@ -95,31 +103,38 @@ namespace Config
 				continue;
 			}
 
-			if (var.m_type_hash == typeid(bool).hash_code())
+			try
 			{
-				*static_cast<bool *>(var.m_ptr) = j[var.m_name];
+				if (var.m_type_hash == typeid(bool).hash_code())
+				{
+					*static_cast<bool *>(var.m_ptr) = j[var.m_name];
+				}
+
+				if (var.m_type_hash == typeid(int).hash_code())
+				{
+					*static_cast<int *>(var.m_ptr) = j[var.m_name];
+				}
+
+				if (var.m_type_hash == typeid(float).hash_code())
+				{
+					*static_cast<float *>(var.m_ptr) = j[var.m_name];
+				}
+
+				if (var.m_type_hash == typeid(Color_t).hash_code())
+				{
+					Color_t clr{ j[var.m_name][0], j[var.m_name][1], j[var.m_name][2], j[var.m_name][3] };
+
+					*static_cast<Color_t *>(var.m_ptr) = clr;
+				}
+
+				if (var.m_type_hash == typeid(std::string).hash_code())
+				{
+					*static_cast<std::string *>(var.m_ptr) = j[var.m_name];
+				}
 			}
-
-			if (var.m_type_hash == typeid(int).hash_code())
+			catch (const nlohmann::json::exception&)
 			{
-				*static_cast<int *>(var.m_ptr) = j[var.m_name];
-			}
-
-			if (var.m_type_hash == typeid(float).hash_code())
-			{
-				*static_cast<float *>(var.m_ptr) = j[var.m_name];
-			}
-
-			if (var.m_type_hash == typeid(Color_t).hash_code())
-			{
-				Color_t clr{ j[var.m_name][0], j[var.m_name][1], j[var.m_name][2], j[var.m_name][3] };
-
-				*static_cast<Color_t *>(var.m_ptr) = clr;
-			}
-
-			if (var.m_type_hash == typeid(std::string).hash_code())
-			{
-				*static_cast<std::string *>(var.m_ptr) = j[var.m_name];
+				continue;
 			}
 		}
 

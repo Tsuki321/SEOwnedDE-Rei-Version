@@ -348,6 +348,7 @@ void CMisc::AutoMedigun(CUserCmd* cmd)
 			if (!isPlayerGood(pl))
 			{
 				potential.erase(potential.begin() + n);
+				n--;
 
 				continue;
 			}

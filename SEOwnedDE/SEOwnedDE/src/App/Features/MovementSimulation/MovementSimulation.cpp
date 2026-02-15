@@ -47,6 +47,7 @@ void CMovementSimulation::CPlayerDataBackup::Store(C_TFPlayer* pPlayer)
 	m_nWaterLevel = pPlayer->m_nWaterLevel_C_BaseEntity();
 	m_nWaterType = pPlayer->m_nWaterType();
 	m_flFallVelocity = pPlayer->m_flFallVelocity();
+	m_flJumpTime = pPlayer->m_flJumpTime();
 	m_nPlayerCond = pPlayer->m_nPlayerCond();
 	m_nPlayerCondEx = pPlayer->m_nPlayerCondEx();
 	m_nPlayerCondEx2 = pPlayer->m_nPlayerCondEx2();
@@ -132,13 +133,114 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 		pMoveData->m_flSideMove = 0.0f;
 	}
 
-	else
+	else if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 1)
 	{
 		Vec3 vForward = {}, vRight = {};
 		Math::AngleVectors(pMoveData->m_vecViewAngles, &vForward, &vRight, nullptr);
 
-		pMoveData->m_flForwardMove = (pMoveData->m_vecVelocity.y - vRight.y / vRight.x * pMoveData->m_vecVelocity.x) / (vForward.y - vRight.y / vRight.x * vForward.x);
-		pMoveData->m_flSideMove = (pMoveData->m_vecVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
+		if (fabsf(vRight.x) > 0.001f)
+		{
+			const float flRatio = vRight.y / vRight.x;
+			const float flDenom = vForward.y - flRatio * vForward.x;
+
+			if (fabsf(flDenom) > 0.001f)
+				pMoveData->m_flForwardMove = (pMoveData->m_vecVelocity.y - flRatio * pMoveData->m_vecVelocity.x) / flDenom;
+			else
+				pMoveData->m_flForwardMove = 0.0f;
+
+			pMoveData->m_flSideMove = (pMoveData->m_vecVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
+		}
+		else
+		{
+			pMoveData->m_flForwardMove = 450.0f;
+			pMoveData->m_flSideMove = 0.0f;
+		}
+	}
+
+	else if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 2)
+	{
+		// Velocity Extrapolation: use lag records to compute acceleration trend
+		// and project a predicted velocity, then decompose into move inputs
+		Vec3 vPredictedVelocity = pMoveData->m_vecVelocity;
+
+		if (F::LagRecords->HasRecords(pPlayer))
+		{
+			const LagRecord_t* rec0 = F::LagRecords->GetRecord(pPlayer, 0);
+			const LagRecord_t* rec1 = F::LagRecords->GetRecord(pPlayer, 1);
+			const LagRecord_t* rec2 = F::LagRecords->GetRecord(pPlayer, 2);
+			const LagRecord_t* rec3 = F::LagRecords->GetRecord(pPlayer, 3);
+
+			if (rec0 && rec1 && rec2 && rec3)
+			{
+				// compute acceleration between each pair of records
+				const Vec3 accel01 = (rec0->Velocity - rec1->Velocity);
+				const Vec3 accel12 = (rec1->Velocity - rec2->Velocity);
+				const Vec3 accel23 = (rec2->Velocity - rec3->Velocity);
+
+				// weighted average: more recent acceleration is more important
+				// weights: 0.5 for most recent, 0.3 for middle, 0.2 for oldest
+				Vec3 vAvgAccel = {};
+				vAvgAccel.x = accel01.x * 0.5f + accel12.x * 0.3f + accel23.x * 0.2f;
+				vAvgAccel.y = accel01.y * 0.5f + accel12.y * 0.3f + accel23.y * 0.2f;
+				vAvgAccel.z = 0.0f; // don't extrapolate vertical, gravity handles it
+
+				// apply one tick of extrapolated acceleration to current velocity
+				vPredictedVelocity.x += vAvgAccel.x;
+				vPredictedVelocity.y += vAvgAccel.y;
+
+				// clamp to max speed to avoid unrealistic predictions
+				const float flPredSpeed = vPredictedVelocity.Length2D();
+				const float flMaxSpeedLimit = pMoveData->m_flMaxSpeed * 1.2f; // allow slight overshoot for acceleration
+				if (flPredSpeed > flMaxSpeedLimit && flPredSpeed > 0.001f)
+				{
+					const float flScale = flMaxSpeedLimit / flPredSpeed;
+					vPredictedVelocity.x *= flScale;
+					vPredictedVelocity.y *= flScale;
+				}
+			}
+			else if (rec0 && rec1)
+			{
+				// fallback: only 2 records available, use single acceleration sample
+				const Vec3 vAccel = (rec0->Velocity - rec1->Velocity);
+				vPredictedVelocity.x += vAccel.x;
+				vPredictedVelocity.y += vAccel.y;
+
+				const float flPredSpeed = vPredictedVelocity.Length2D();
+				const float flMaxSpeedLimit = pMoveData->m_flMaxSpeed * 1.2f;
+				if (flPredSpeed > flMaxSpeedLimit && flPredSpeed > 0.001f)
+				{
+					const float flScale = flMaxSpeedLimit / flPredSpeed;
+					vPredictedVelocity.x *= flScale;
+					vPredictedVelocity.y *= flScale;
+				}
+			}
+		}
+
+		// update view angles to match predicted velocity direction
+		if (vPredictedVelocity.Length2D() > 1.0f)
+			pMoveData->m_vecViewAngles = { 0.0f, Math::VelocityToAngles(vPredictedVelocity).y, 0.0f };
+
+		// decompose predicted velocity into forward/side move
+		Vec3 vForward = {}, vRight = {};
+		Math::AngleVectors(pMoveData->m_vecViewAngles, &vForward, &vRight, nullptr);
+
+		if (fabsf(vRight.x) > 0.001f)
+		{
+			const float flRatio = vRight.y / vRight.x;
+			const float flDenom = vForward.y - flRatio * vForward.x;
+
+			if (fabsf(flDenom) > 0.001f)
+				pMoveData->m_flForwardMove = (vPredictedVelocity.y - flRatio * vPredictedVelocity.x) / flDenom;
+			else
+				pMoveData->m_flForwardMove = 0.0f;
+
+			pMoveData->m_flSideMove = (vPredictedVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
+		}
+		else
+		{
+			pMoveData->m_flForwardMove = 450.0f;
+			pMoveData->m_flSideMove = 0.0f;
+		}
 	}
 
 	const float flSpeed = pPlayer->m_vecVelocity().Length2D();

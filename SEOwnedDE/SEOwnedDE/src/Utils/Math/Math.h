@@ -150,8 +150,8 @@ namespace Math
 		Vec3 delta = source - destination;
 		float fHyp = std::sqrtf((delta.x * delta.x) + (delta.y * delta.y));
 
-		angles.x = (atanf(delta.z / fHyp) * M_RADPI);
-		angles.y = (atanf(delta.y / delta.x) * M_RADPI);
+		angles.x = (atan2f(delta.z, fHyp) * M_RADPI);
+		angles.y = (atan2f(delta.y, delta.x) * M_RADPI);
 		angles.z = 0.0f;
 
 		if (delta.x >= 0.0f)

@@ -172,19 +172,19 @@ void CPaint::Run()
 
 		I::ModelRender->ForcedMaterialOverride(m_pMatGlowColor);
 
-		for (auto it = m_mapPositions.begin(); it != m_mapPositions.end(); ++it)
+		for (auto it = m_mapPositions.begin(); it != m_mapPositions.end(); )
 		{
 			auto& v = it->second;
 
 			if (v.empty())
 			{
-				m_mapPositions.erase(it);
+				it = m_mapPositions.erase(it);
 				continue;
 			}
 
 			if (v.size() > 1)
 			{
-				for (size_t n = 1; n < v.size(); n++)
+				for (size_t n = 1; n < v.size(); )
 				{
 					auto flLifeTime = CFG::Visuals_Paint_LifeTime;
 					if (flLifeTime != 0.f)
@@ -203,10 +203,13 @@ void CPaint::Run()
 					}
 
 					RenderUtils::RenderLine(v[n].Position, v[n - 1].Position, Rainbow(int(n)), false);
+					n++;
 				}
 
 				bDrewSomething = true;
 			}
+
+			++it;
 		}
 
 		I::ModelRender->ForcedMaterialOverride(nullptr);

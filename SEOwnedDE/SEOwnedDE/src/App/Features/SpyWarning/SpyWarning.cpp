@@ -11,7 +11,7 @@ constexpr auto MAX_DIST = 500.0f;
 
 void CSpyWarning::Run()
 {
-	if (!CFG::Viuals_SpyWarning_Active)
+	if (!CFG::Visuals_SpyWarning_Active)
 		return;
 
 	// Anti screenshot?
@@ -46,14 +46,14 @@ void CSpyWarning::Run()
 			continue;
 
 		// Ignore cloaked
-		if (CFG::Viuals_SpyWarning_Ignore_Cloaked)
+		if (CFG::Visuals_SpyWarning_Ignore_Cloaked)
 		{
 			if (pPlayer->InCond(TF_COND_STEALTHED) || pPlayer->m_flInvisibility() >= 0.8f)
 				continue;
 		}
 
 		// Ignore friends
-		if (CFG::Viuals_SpyWarning_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+		if (CFG::Visuals_SpyWarning_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
 			continue;
 
 		// Is the spy in FOV?
@@ -61,7 +61,7 @@ void CSpyWarning::Run()
 			continue;
 
 		// Ignore invisible
-		if (CFG::Viuals_SpyWarning_Ignore_Invisible)
+		if (CFG::Visuals_SpyWarning_Ignore_Invisible)
 		{
 			if (!H::AimUtils->TracePositionWorld(pLocal->GetShootPos(), renderCenter))
 				continue;
@@ -76,7 +76,7 @@ void CSpyWarning::Run()
 	{
 		lastEmpty = spies.empty();
 
-		if (!spies.empty() && CFG::Viuals_SpyWarning_Announce)
+		if (!spies.empty() && CFG::Visuals_SpyWarning_Announce)
 		{
 			I::EngineClient->ClientCmd_Unrestricted("voicemenu 1 1");
 		}

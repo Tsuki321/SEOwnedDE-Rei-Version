@@ -50,7 +50,7 @@ MAKE_HOOK(CL_Move, Signatures::CL_Move.Get(), void, __fastcall,
 		Shifting::bRapidFireWantShift = false;
 		Shifting::bShifting = true;
 
-		const int nTicks = CFG::Exploits_RapidFire_Ticks;
+		const int nTicks = std::min(CFG::Exploits_RapidFire_Ticks, Shifting::nAvailableTicks);
 		for (int n = 0; n < nTicks; n++)
 		{
 			callOriginal(n == nTicks - 1);

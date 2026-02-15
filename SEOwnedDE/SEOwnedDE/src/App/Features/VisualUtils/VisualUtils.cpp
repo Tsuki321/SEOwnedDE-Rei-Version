@@ -98,6 +98,9 @@ Color_t CVisualUtils::GetEntityColor(C_TFPlayer* pLocal, C_BaseEntity* pEntity)
 
 Color_t CVisualUtils::GetHealthColor(int nHealth, int nMaxHealth)
 {
+	if (nMaxHealth <= 0)
+		return { 255, 0, 0, 255 };
+
 	if (nHealth > nMaxHealth)
 		return CFG::Color_OverHeal;
 

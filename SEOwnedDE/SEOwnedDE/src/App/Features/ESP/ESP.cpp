@@ -1037,7 +1037,7 @@ void CESP::Run()
 			}
 		}
 
-		if (!CFG::ESP_World_Ignore_Halloween_Gift)
+		if (!CFG::ESP_World_Ignore_MVM_Money)
 		{
 			auto color = CFG::Color_MVM_Money;
 			auto textColor = CFG::ESP_Text_Color == 0 ? color : CFG::Color_ESP_Text;

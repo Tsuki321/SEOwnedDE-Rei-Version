@@ -7,7 +7,7 @@
 #define POS_TOP (1 << 2)
 #define POS_CENTERX (1 << 3)
 #define POS_CENTERY (1 << 4)
-#define POS_CENTERXY POS_CENTERX | POS_CENTERY
+#define POS_CENTERXY (POS_CENTERX | POS_CENTERY)
 
 class CDraw
 {

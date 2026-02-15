@@ -127,7 +127,14 @@ namespace SDKUtils
 		static ConVar *cl_interp_ratio = I::CVar->FindVar("cl_interp_ratio");
 		static ConVar *cl_updaterate = I::CVar->FindVar("cl_updaterate");
 
-		return std::max(cl_interp->GetFloat(), cl_interp_ratio->GetFloat() / cl_updaterate->GetFloat());
+		if (!cl_interp || !cl_interp_ratio || !cl_updaterate)
+			return 0.0f;
+
+		const float flUpdateRate = cl_updaterate->GetFloat();
+		if (flUpdateRate <= 0.0f)
+			return cl_interp->GetFloat();
+
+		return std::max(cl_interp->GetFloat(), cl_interp_ratio->GetFloat() / flUpdateRate);
 	}
 
 	static Vec3 GetHitboxPosFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, matrix3x4_t *pMatrix)
@@ -206,18 +213,21 @@ namespace SDKUtils
 	static float RandomFloat(float min_val, float max_val)
 	{
 		static auto fn = reinterpret_cast<float(__cdecl *)(float, float)>(GetProcAddress(GetModuleHandleA("vstdlib.dll"), "RandomFloat"));
+		if (!fn) return 0.0f;
 		return fn(min_val, max_val);
 	}
 
 	static int RandomInt(int min_val, int max_val)
 	{
 		static auto fn = reinterpret_cast<int(__cdecl *)(int, int)>(GetProcAddress(GetModuleHandleA("vstdlib.dll"), "RandomInt"));
+		if (!fn) return min_val;
 		return fn(min_val, max_val);
 	}
 
 	static void RandomSeed(unsigned int seed)
 	{
 		static auto fn = reinterpret_cast<void(__cdecl *)(unsigned int)>(GetProcAddress(GetModuleHandleA("vstdlib.dll"), "RandomSeed"));
+		if (!fn) return;
 		fn(seed);
 	}
 
@@ -300,6 +310,27 @@ namespace G
 	inline int nTicksSinceCanFire = 0;
 
 	inline bool bUpdatingAnims = false;
+
+	// Visual interpolation for smooth player rendering
+	struct VisualInterpData_t
+	{
+		Vec3 vPreviousOrigin = {};
+		Vec3 vCurrentOrigin = {};
+		float flInterpDuration = 0.0f;
+		float flLastUpdateRealTime = 0.0f;
+		float flCurrentSimTime = 0.0f;
+		bool bInitialized = false;
+	};
+
+	struct VisualOffsetEntry_t
+	{
+		C_TFPlayer* pPlayer = nullptr;
+		Vec3 vOriginalAbsOrigin = {};
+		Vec3 vDelta = {};
+	};
+
+	inline std::unordered_map<C_TFPlayer*, VisualInterpData_t> mapVisualInterpData = {};
+	inline std::vector<VisualOffsetEntry_t> vecActiveVisualOffsets = {};
 
 	inline bool bStartedFakeTaunt = false;
 	inline float flFakeTauntStartYaw = 0.0f;

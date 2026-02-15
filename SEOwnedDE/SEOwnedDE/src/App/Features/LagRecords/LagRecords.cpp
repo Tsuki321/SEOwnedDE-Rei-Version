@@ -70,6 +70,15 @@ const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord, bool
 		if (nRecord < 0 || nRecord > static_cast<int>(m_LagRecords[pPlayer].size() - 1))
 			return nullptr;
 	}
+	else
+	{
+		if (!m_LagRecords.contains(pPlayer))
+			return nullptr;
+
+		const auto& records = m_LagRecords[pPlayer];
+		if (nRecord < 0 || nRecord >= static_cast<int>(records.size()))
+			return nullptr;
+	}
 
 	return &m_LagRecords[pPlayer][nRecord];
 }
@@ -84,7 +93,7 @@ bool CLagRecords::HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords)
 			return false;
 
 		if (pTotalRecords)
-			*pTotalRecords = static_cast<int>(nSize - 1);
+			*pTotalRecords = static_cast<int>(nSize);
 
 		return true;
 	}

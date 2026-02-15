@@ -132,12 +132,7 @@ public:
 
 		auto m_pMoveParent{ reinterpret_cast<EHANDLE *>(reinterpret_cast<uintptr_t>(this) + offset) };
 
-		if (!m_pMoveParent)
-		{
-			return nullptr;
-		}
-
-		return m_pMoveParent->Get();
+		return m_pMoveParent ? m_pMoveParent->Get() : nullptr;
 	}
 
 	C_BaseEntity *FirstMoveChild()
@@ -146,12 +141,7 @@ public:
 		
 		auto m_pMoveChild{ reinterpret_cast<EHANDLE *>(reinterpret_cast<uintptr_t>(this) + offset) };
 
-		if (!m_pMoveChild)
-		{
-			return nullptr;
-		}
-
-		return m_pMoveChild->Get();
+		return m_pMoveChild ? m_pMoveChild->Get() : nullptr;
 	}
 
 	C_BaseEntity *NextMovePeer()
@@ -160,12 +150,7 @@ public:
 
 		auto m_pMovePeer{ reinterpret_cast<EHANDLE *>(reinterpret_cast<uintptr_t>(this) + offset) };
 
-		if (!m_pMovePeer)
-		{
-			return nullptr;
-		}
-
-		return m_pMovePeer->Get();
+		return m_pMovePeer ? m_pMovePeer->Get() : nullptr;
 	}
 
 	void UpdateVisibility() {

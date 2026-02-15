@@ -82,6 +82,9 @@ std::uintptr_t Memory::FindSignature(const char *szModule, const char *szPattern
 		const auto signature_size = pattern_bytes.size();
 		const int *signature_bytes = pattern_bytes.data();
 
+		if (signature_size == 0 || signature_size > image_size)
+			return {};
+
 		/// Now loop through all bytes and check if the byte sequence matches
 		for (auto i = 0ul; i < image_size - signature_size; ++i)
 		{

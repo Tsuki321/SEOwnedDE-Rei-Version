@@ -115,7 +115,7 @@ public:
 		return reinterpret_cast<int(__fastcall *)(void *, int)>(Signatures::CBasePlayer_GetAmmoCount.Get())(this, iAmmoType);
 	}
 
-	int m_afButtonLast() {
+	int& m_afButtonLast() {
 		static int nOffset = NetVars::GetNetVar("CBasePlayer", "m_hConstraintEntity") - 24;
 		return *reinterpret_cast<int *>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
 	}
