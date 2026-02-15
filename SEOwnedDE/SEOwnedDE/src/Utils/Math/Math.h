@@ -147,15 +147,12 @@ namespace Math
 	inline Vec3 CalcAngle(const Vec3 &source, const Vec3 &destination, bool clamp = true)
 	{
 		Vec3 angles = {};
-		Vec3 delta = source - destination;
+		Vec3 delta = destination - source;
 		float fHyp = std::sqrtf((delta.x * delta.x) + (delta.y * delta.y));
 
-		angles.x = (atan2f(delta.z, fHyp) * M_RADPI);
+		angles.x = (atan2f(-delta.z, fHyp) * M_RADPI);
 		angles.y = (atan2f(delta.y, delta.x) * M_RADPI);
 		angles.z = 0.0f;
-
-		if (delta.x >= 0.0f)
-			angles.y += 180.0f;
 
 		if (clamp)
 			ClampAngles(angles);
