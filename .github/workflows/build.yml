@@ -1,0 +1,37 @@
+name: Build SEOwnedDE DLL
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (ReleaseAVX2 | x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore NuGet packages (if any)
+        run: nuget restore "SEOwnedDE/SEOwnedDE.sln"
+        shell: powershell
+
+      - name: Build solution (ReleaseAVX2 | x64)
+        run: msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
+        shell: powershell
+
+      - name: Verify DLL exists
+        run: |
+          $dll = "${{ github.workspace }}\SEOwnedDE\bin\ReleaseAVX2\SEOwnedDE.dll"
+          if (-not (Test-Path $dll)) { Write-Error "DLL not produced: $dll"; exit 1 }
+          Write-Output "Built: $dll"
+        shell: powershell
+
+      - name: Upload built DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEOwnedDE-SEOwnedDE.dll
+          path: SEOwnedDE/bin/ReleaseAVX2/SEOwnedDE.dll
+          retention-days: 7
