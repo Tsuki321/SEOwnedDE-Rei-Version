@@ -1306,8 +1306,9 @@ void CMenu::MainWindow()
 
 				SelectSingle("Prediction Method", CFG::Aimbot_Projectile_Aim_Prediction_Method, {
 					{ "Full Acceleration", 0 },
-			{ "Current Velocity", 1 },
-			{ "Velocity Extrapolation", 2 }
+					{ "Current Velocity", 1 },
+					{ "Velocity Extrapolation", 2 }
+				});
 				SliderFloat("FOV", CFG::Aimbot_Projectile_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Max Simulation Time", CFG::Aimbot_Projectile_Max_Simulation_Time, 1.0f, 5.0f, 0.5f, "%.1fs");
 				SliderInt("Max Targets", CFG::Aimbot_Projectile_Max_Processing_Targets, 1, 6, 1);
