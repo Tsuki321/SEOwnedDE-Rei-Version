@@ -311,27 +311,6 @@ namespace G
 
 	inline bool bUpdatingAnims = false;
 
-	// Visual interpolation for smooth player rendering
-	struct VisualInterpData_t
-	{
-		Vec3 vPreviousOrigin = {};
-		Vec3 vCurrentOrigin = {};
-		float flInterpDuration = 0.0f;
-		float flLastUpdateRealTime = 0.0f;
-		float flCurrentSimTime = 0.0f;
-		bool bInitialized = false;
-	};
-
-	struct VisualOffsetEntry_t
-	{
-		C_TFPlayer* pPlayer = nullptr;
-		Vec3 vOriginalAbsOrigin = {};
-		Vec3 vDelta = {};
-	};
-
-	inline std::unordered_map<C_TFPlayer*, VisualInterpData_t> mapVisualInterpData = {};
-	inline std::vector<VisualOffsetEntry_t> vecActiveVisualOffsets = {};
-
 	inline bool bStartedFakeTaunt = false;
 	inline float flFakeTauntStartYaw = 0.0f;
 }

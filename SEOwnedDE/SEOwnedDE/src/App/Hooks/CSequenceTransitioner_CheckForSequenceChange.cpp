@@ -7,7 +7,10 @@ MAKE_SIGNATURE(CSequenceTransitioner_CheckForSequenceChange, "client.dll", "48 8
 MAKE_HOOK(CSequenceTransitioner_CheckForSequenceChange, Signatures::CSequenceTransitioner_CheckForSequenceChange.Get(), void, __fastcall,
 	void* ecx, CStudioHdr* hdr, int nCurSequence, bool bForceNewSequence, bool bInterpolate)
 {
-	if (CFG::Misc_Accuracy_Improvements)
+	// Only force-disable sequence transition interpolation when SetupBones_Optimization is active,
+	// since cached bones can't reflect interpolated transitions anyway. When the optimization is
+	// off, allow transition blending for smoother animation visuals.
+	if (CFG::Misc_Accuracy_Improvements && CFG::Misc_SetupBones_Optimization)
 	{
 		bInterpolate = false;
 	}

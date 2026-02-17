@@ -5,175 +5,9 @@
 #include "../Features/LagRecords/LagRecords.h"
 #include "../Features/MiscVisuals/MiscVisuals.h"
 
-#include <algorithm>
-
-// Restores entity origins and bone caches to their accurate (non-interpolated) state
-// after visual offsets were applied for rendering in the previous frame.
-static void RestoreVisualOffsets()
-{
-	for (const auto& entry : G::vecActiveVisualOffsets)
-	{
-		if (!entry.pPlayer)
-			continue;
-
-		entry.pPlayer->SetAbsOrigin(entry.vOriginalAbsOrigin);
-
-		if (const auto pBones = entry.pPlayer->As<C_BaseAnimating>()->GetCachedBoneData())
-		{
-			const int nCount = pBones->Count();
-			auto* pBase = pBones->Base();
-
-			for (int i = 0; i < nCount; i++)
-			{
-				pBase[i][0][3] -= entry.vDelta.x;
-				pBase[i][1][3] -= entry.vDelta.y;
-				pBase[i][2][3] -= entry.vDelta.z;
-			}
-		}
-	}
-
-	G::vecActiveVisualOffsets.clear();
-}
-
-// Updates the per-player visual interpolation tracking data when new network updates arrive.
-static void UpdateVisualInterpData()
-{
-	if (!CFG::Misc_Accuracy_Improvements)
-		return;
-
-	const auto pLocal = H::Entities->GetLocal();
-
-	if (!pLocal)
-	{
-		G::mapVisualInterpData.clear();
-		return;
-	}
-
-	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
-	{
-		if (!pEntity || pEntity == pLocal)
-			continue;
-
-		const auto pPlayer = pEntity->As<C_TFPlayer>();
-
-		if (!pPlayer || pPlayer->deadflag())
-		{
-			G::mapVisualInterpData.erase(pPlayer);
-			continue;
-		}
-
-		auto& data = G::mapVisualInterpData[pPlayer];
-		const float flSimTime = pPlayer->m_flSimulationTime();
-
-		if (!data.bInitialized)
-		{
-			data.vPreviousOrigin = pPlayer->m_vecOrigin();
-			data.vCurrentOrigin = pPlayer->m_vecOrigin();
-			data.flCurrentSimTime = flSimTime;
-			data.flLastUpdateRealTime = I::GlobalVars->realtime;
-			data.flInterpDuration = TICK_INTERVAL;
-			data.bInitialized = true;
-		}
-		else if (flSimTime != data.flCurrentSimTime)
-		{
-			data.vPreviousOrigin = data.vCurrentOrigin;
-			data.vCurrentOrigin = pPlayer->m_vecOrigin();
-			data.flInterpDuration = std::max(flSimTime - data.flCurrentSimTime, TICK_INTERVAL);
-			data.flCurrentSimTime = flSimTime;
-			data.flLastUpdateRealTime = I::GlobalVars->realtime;
-
-			// Teleport detection: snap if distance is unreasonably large
-			if ((data.vCurrentOrigin - data.vPreviousOrigin).LengthSqr() > 200.0f * 200.0f)
-			{
-				data.vPreviousOrigin = data.vCurrentOrigin;
-			}
-		}
-	}
-
-	// Clean up stale entries for players no longer tracked
-	if (G::mapVisualInterpData.size() > 64)
-	{
-		G::mapVisualInterpData.clear();
-	}
-}
-
-// Applies smooth visual position offsets to non-local players right before rendering.
-// This offsets both the abs origin and the cached bone matrices so the model
-// renders at the interpolated position while internal aim data stays accurate.
-static void ApplyVisualOffsets()
-{
-	if (!CFG::Misc_Accuracy_Improvements)
-		return;
-
-	const auto pLocal = H::Entities->GetLocal();
-
-	if (!pLocal)
-		return;
-
-	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
-	{
-		if (!pEntity || pEntity == pLocal)
-			continue;
-
-		const auto pPlayer = pEntity->As<C_TFPlayer>();
-
-		if (!pPlayer || pPlayer->deadflag())
-			continue;
-
-		const auto it = G::mapVisualInterpData.find(pPlayer);
-
-		if (it == G::mapVisualInterpData.end() || !it->second.bInitialized)
-			continue;
-
-		const auto& data = it->second;
-
-		// Calculate interpolation fraction based on real elapsed time since last network update
-		const float flElapsed = I::GlobalVars->realtime - data.flLastUpdateRealTime;
-		float flFraction = data.flInterpDuration > 0.0f ? (flElapsed / data.flInterpDuration) : 1.0f;
-		flFraction = std::clamp(flFraction, 0.0f, 1.0f);
-
-		// Lerp between previous and current network origin
-		const Vec3 vVisualOrigin = data.vPreviousOrigin + (data.vCurrentOrigin - data.vPreviousOrigin) * flFraction;
-		const Vec3 vDelta = vVisualOrigin - pPlayer->GetAbsOrigin();
-
-		// Skip if no meaningful offset
-		if (vDelta.LengthSqr() < 0.01f)
-			continue;
-
-		// Store restore data
-		G::VisualOffsetEntry_t entry = {};
-		entry.pPlayer = pPlayer;
-		entry.vOriginalAbsOrigin = pPlayer->GetAbsOrigin();
-		entry.vDelta = vDelta;
-		G::vecActiveVisualOffsets.push_back(entry);
-
-		// Apply visual origin
-		pPlayer->SetAbsOrigin(vVisualOrigin);
-
-		// Offset cached bone matrices by the same delta so the skeleton matches the visual origin
-		if (const auto pBones = pPlayer->As<C_BaseAnimating>()->GetCachedBoneData())
-		{
-			const int nCount = pBones->Count();
-			auto* pBase = pBones->Base();
-
-			for (int i = 0; i < nCount; i++)
-			{
-				pBase[i][0][3] += vDelta.x;
-				pBase[i][1][3] += vDelta.y;
-				pBase[i][2][3] += vDelta.z;
-			}
-		}
-	}
-}
-
 MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35), void, __fastcall,
 	void* ecx, ClientFrameStage_t curStage)
 {
-	// Restore visual offsets from the previous render frame before the engine processes
-	// any new stage. This ensures CreateMove / aimbot always sees accurate (non-interpolated)
-	// entity data, while visual smoothing is only active during rendering.
-	RestoreVisualOffsets();
-
 	CALL_ORIGINAL(ecx, curStage);
 
 	switch (curStage)
@@ -257,9 +91,6 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 				G::mapVelFixRecords[pPlayer] = { pPlayer->m_vecOrigin(), pPlayer->m_fFlags(), pPlayer->m_flSimulationTime() };
 			}
 
-			// Update per-player visual interpolation tracking after all network data is processed
-			UpdateVisualInterpData();
-
 			break;
 		}
 
@@ -311,9 +142,6 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 					}
 				}
 			}
-
-			// Apply smooth visual position offsets right before the engine renders
-			ApplyVisualOffsets();
 
 			break;
 		}

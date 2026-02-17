@@ -40,9 +40,6 @@ MAKE_HOOK(CBaseEntity_BaseInterpolatePart1, Signatures::CBaseEntity_BaseInterpol
 		if (pEntity == pLocal)
 			return Shifting::bRecharging;
 
-		if (pEntity->GetClassId() == ETFClassIds::CTFPlayer)
-			return pEntity != pLocal;
-
 		if (pEntity->GetClassId() == ETFClassIds::CBaseDoor)
 			return true;
 

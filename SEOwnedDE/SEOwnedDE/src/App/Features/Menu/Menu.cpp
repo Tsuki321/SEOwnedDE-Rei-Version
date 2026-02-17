@@ -1411,6 +1411,27 @@ void CMenu::MainWindow()
 				});
 			}
 			GroupBoxEnd();
+
+			m_nCursorX += m_nLastGroupBoxW + (CFG::Menu_Spacing_X * 2);
+			m_nCursorY = anchor_y;
+
+			GroupBoxStart("Auto Shoot", 150);
+			{
+				CheckBox("Active", CFG::Triggerbot_AutoShoot_Active);
+				CheckBox("Wait For Headshot", CFG::Triggerbot_AutoShoot_Wait_For_Headshot);
+				SliderFloat("Head Scale", CFG::Triggerbot_AutoShoot_Head_Scale, 0.1f, 1.0f, 0.05f, "%.2f");
+				SliderFloat("Body Scale", CFG::Triggerbot_AutoShoot_Body_Scale, 0.5f, 1.2f, 0.05f, "%.2f");
+				SliderFloat("Other Scale", CFG::Triggerbot_AutoShoot_Other_Scale, 0.3f, 1.2f, 0.05f, "%.2f");
+
+				multiselect("Ignore", AutoShootIgnores,
+				{
+					{ "Friends", CFG::Triggerbot_AutoShoot_Ignore_Friends },
+					{ "Invisible", CFG::Triggerbot_AutoShoot_Ignore_Invisible },
+					{ "Invulnerable", CFG::Triggerbot_AutoShoot_Ignore_Invulnerable },
+					{ "Taunting", CFG::Triggerbot_AutoShoot_Ignore_Taunting }
+				});
+			}
+			GroupBoxEnd();
 		}
 	}
 

@@ -196,7 +196,7 @@ void CMisc::AutoRocketJump(CUserCmd* cmd)
 
 void CMisc::AutoDisguise(CUserCmd* cmd)
 {
-	if (!CFG::Misc_Auto_Disguise || I::GlobalVars->tickcount % 20 != 0)
+	if (!CFG::Misc_Auto_Disguise)
 	{
 		return;
 	}
@@ -208,7 +208,150 @@ void CMisc::AutoDisguise(CUserCmd* cmd)
 		return;
 	}
 
-	I::EngineClient->ClientCmd_Unrestricted("lastdisguise");
+	if (!m_bHasPendingDisguise)
+	{
+		return;
+	}
+
+	int nDisguiseClass = m_nPendingDisguiseClass;
+
+	// If the target class is a heavy class (Heavy, Soldier, Demoman), find nearest enemy instead
+	if (IsHeavyClass(nDisguiseClass))
+	{
+		const int nNearestClass = GetNearestEnemyPlayerClass(local);
+
+		if (nNearestClass == TF_CLASS_UNDEFINED)
+		{
+			// No valid nearby enemy found, fall back to last disguise
+			I::EngineClient->ClientCmd_Unrestricted("lastdisguise");
+			m_bHasPendingDisguise = false;
+			return;
+		}
+
+		nDisguiseClass = nNearestClass;
+	}
+
+	// Execute disguise command: disguise <class> -1 (where -1 = enemy team)
+	I::EngineClient->ClientCmd_Unrestricted(std::format("disguise {} -1", nDisguiseClass).c_str());
+	m_bHasPendingDisguise = false;
+}
+
+bool CMisc::IsHeavyClass(int nClass) const
+{
+	return nClass == TF_CLASS_HEAVYWEAPONS || nClass == TF_CLASS_SOLDIER || nClass == TF_CLASS_DEMOMAN;
+}
+
+int CMisc::GetNearestEnemyPlayerClass(C_TFPlayer* pLocal)
+{
+	float flBestDist = FLT_MAX;
+	int nBestClass = TF_CLASS_UNDEFINED;
+
+	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+	{
+		const auto pPlayer = pEntity->As<C_TFPlayer>();
+
+		if (!pPlayer || pPlayer->deadflag())
+		{
+			continue;
+		}
+
+		const int nClass = pPlayer->m_iClass();
+
+		// Skip heavy classes for nearest player too
+		if (IsHeavyClass(nClass))
+		{
+			continue;
+		}
+
+		const float flDist = pLocal->m_vecOrigin().DistTo(pPlayer->m_vecOrigin());
+
+		if (flDist < flBestDist)
+		{
+			flBestDist = flDist;
+			nBestClass = nClass;
+		}
+	}
+
+	return nBestClass;
+}
+
+void CMisc::OnPlayerDeath(IGameEvent* event)
+{
+	if (!CFG::Misc_Auto_Disguise)
+	{
+		return;
+	}
+
+	const auto pLocal = H::Entities->GetLocal();
+
+	if (!pLocal || pLocal->deadflag() || pLocal->m_iClass() != TF_CLASS_SPY)
+	{
+		return;
+	}
+
+	// Check if we are the attacker
+	player_info_t pi{};
+	if (!I::EngineClient->GetPlayerInfo(I::EngineClient->GetLocalPlayer(), &pi))
+	{
+		return;
+	}
+
+	if (event->GetInt("attacker") != pi.userID)
+	{
+		return;
+	}
+
+	// Get the weapon used for the kill
+	const auto pWeaponEnt = pLocal->m_hActiveWeapon().Get();
+
+	if (!pWeaponEnt)
+	{
+		return;
+	}
+
+	const auto pWeapon = pWeaponEnt->As<C_TFWeaponBase>();
+
+	if (!pWeapon)
+	{
+		return;
+	}
+
+	const int nWeaponID = pWeapon->GetWeaponID();
+	const int nItemDefIndex = pWeapon->m_iItemDefinitionIndex();
+
+	// Only process kills with knife (backstab) or revolver
+	const bool bIsKnife = (nWeaponID == TF_WEAPON_KNIFE);
+	const bool bIsRevolver = (nWeaponID == TF_WEAPON_REVOLVER);
+
+	if (!bIsKnife && !bIsRevolver)
+	{
+		return;
+	}
+
+	// Exclude Your Eternal Reward and The Wanga Prick - they auto-disguise on backstab
+	// and using disguise with full cloak on those knives consumes the entire cloak meter
+	if (bIsKnife && (nItemDefIndex == Spy_t_YourEternalReward || nItemDefIndex == Spy_t_TheWangaPrick))
+	{
+		return;
+	}
+
+	// Get victim's class
+	const auto pVictim = GET_ENT_FROM_USER_ID(event->GetInt("userid"));
+
+	if (!pVictim)
+	{
+		return;
+	}
+
+	const auto pVictimPlayer = pVictim->As<C_TFPlayer>();
+
+	if (!pVictimPlayer)
+	{
+		return;
+	}
+
+	m_nPendingDisguiseClass = pVictimPlayer->m_iClass();
+	m_bHasPendingDisguise = true;
 }
 
 void CMisc::AutoMedigun(CUserCmd* cmd)

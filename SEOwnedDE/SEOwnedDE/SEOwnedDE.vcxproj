@@ -454,6 +454,7 @@
     <ClCompile Include="src\App\Features\Triggerbot\AutoAirblast\AutoAirblast.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\AutoBackstab\AutoBackstab.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\AutoDetonate\AutoDetonate.cpp" />
+    <ClCompile Include="src\App\Features\Triggerbot\AutoShoot\AutoShoot.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\Triggerbot.cpp" />
     <ClCompile Include="src\App\Features\VisualUtils\VisualUtils.cpp" />
     <ClCompile Include="src\App\Features\WorldModulation\WorldModulation.cpp" />
@@ -520,6 +521,7 @@
     <ClInclude Include="src\App\Features\Triggerbot\AutoAirblast\AutoAirblast.h" />
     <ClInclude Include="src\App\Features\Triggerbot\AutoBackstab\AutoBackstab.h" />
     <ClInclude Include="src\App\Features\Triggerbot\AutoDetonate\AutoDetonate.h" />
+    <ClInclude Include="src\App\Features\Triggerbot\AutoShoot\AutoShoot.h" />
     <ClInclude Include="src\App\Features\Triggerbot\Triggerbot.h" />
     <ClInclude Include="src\App\Features\VisualUtils\VisualUtils.h" />
     <ClInclude Include="src\App\Features\WorldModulation\WorldModulation.h" />

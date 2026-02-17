@@ -48,7 +48,35 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 				if (pBoneToWorldOut)
 				{
 					if (const auto bones = ent->As<C_BaseAnimating>()->GetCachedBoneData())
-						std::memcpy(pBoneToWorldOut, bones->Base(), sizeof(matrix3x4_t) * std::min(nMaxBones, bones->Count()));
+					{
+						const int nCopyCount = std::min(nMaxBones, bones->Count());
+						std::memcpy(pBoneToWorldOut, bones->Base(), sizeof(matrix3x4_t) * nCopyCount);
+
+						// Offset cached bones to match the engine-interpolated visual origin.
+						// Bones were computed at server-tick origin (stored in the latest lag record).
+						// After engine interpolation runs, GetAbsOrigin() returns a smooth visual
+						// position that may differ. Apply the delta so the skeleton follows smoothly.
+						const auto pPlayer = ent->As<C_TFPlayer>();
+						int nRecords = 0;
+
+						if (pPlayer && F::LagRecords->HasRecords(pPlayer, &nRecords) && nRecords > 0)
+						{
+							if (const auto pRecord = F::LagRecords->GetRecord(pPlayer, 0, true))
+							{
+								const Vec3 vDelta = ent->GetAbsOrigin() - pRecord->AbsOrigin;
+
+								if (vDelta.LengthSqr() > 0.01f)
+								{
+									for (int i = 0; i < nCopyCount; i++)
+									{
+										pBoneToWorldOut[i][0][3] += vDelta.x;
+										pBoneToWorldOut[i][1][3] += vDelta.y;
+										pBoneToWorldOut[i][2][3] += vDelta.z;
+									}
+								}
+							}
+						}
+					}
 				}
 
 				return true;

@@ -5,6 +5,7 @@
 #include "AutoAirblast/AutoAirblast.h"
 #include "AutoBackstab/AutoBackstab.h"
 #include "AutoDetonate/AutoDetonate.h"
+#include "AutoShoot/AutoShoot.h"
 #include "AutoVaccinator/AutoVaccinator.h"
 
 void CTriggerbot::Run(CUserCmd* pCmd)
@@ -28,5 +29,6 @@ void CTriggerbot::Run(CUserCmd* pCmd)
 	F::AutoAirblast->Run(pLocal, pWeapon, pCmd);
 	F::AutoBackstab->Run(pLocal, pWeapon, pCmd);
 	F::AutoDetonate->Run(pLocal, pWeapon, pCmd);
+	F::AutoShoot->Run(pLocal, pWeapon, pCmd);
 	F::AutoVaccinator->Run(pLocal, pWeapon, pCmd);
 }
