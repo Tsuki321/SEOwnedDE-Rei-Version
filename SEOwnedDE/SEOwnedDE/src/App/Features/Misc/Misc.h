@@ -21,9 +21,6 @@ public:
 private:
 	int m_nPendingDisguiseClass = 0;
 	bool m_bHasPendingDisguise = false;
-
-	bool IsHeavyClass(int nClass) const;
-	int GetNearestEnemyPlayerClass(C_TFPlayer* pLocal);
 };
 
 MAKE_SINGLETON_SCOPED(CMisc, Misc, F);

@@ -122,6 +122,12 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 
 		// All checks passed - fire!
 		pCmd->buttons |= IN_ATTACK;
+
+		if (CFG::Misc_Accuracy_Improvements)
+		{
+			pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
+		}
+
 		return;
 	}
 }
