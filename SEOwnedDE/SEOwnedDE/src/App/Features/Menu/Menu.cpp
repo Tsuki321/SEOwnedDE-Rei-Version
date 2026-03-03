@@ -1307,7 +1307,8 @@ void CMenu::MainWindow()
 				SelectSingle("Prediction Method", CFG::Aimbot_Projectile_Aim_Prediction_Method, {
 					{ "Full Acceleration", 0 },
 					{ "Current Velocity", 1 },
-					{ "Velocity Extrapolation", 2 }
+					{ "Velocity Extrapolation", 2 },
+					{ "Adaptive Tracking", 3 }
 				});
 				SliderFloat("FOV", CFG::Aimbot_Projectile_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Max Simulation Time", CFG::Aimbot_Projectile_Max_Simulation_Time, 1.0f, 5.0f, 0.5f, "%.1fs");
@@ -1363,6 +1364,8 @@ void CMenu::MainWindow()
 			}
 			GroupBoxEnd();
 
+			int row1_bottom_y = m_nCursorY;
+
 			m_nCursorX += m_nLastGroupBoxW + (CFG::Menu_Spacing_X * 2);
 			m_nCursorY = anchor_y;
 
@@ -1382,6 +1385,8 @@ void CMenu::MainWindow()
 					});
 			}
 			GroupBoxEnd();
+
+			row1_bottom_y = std::max(row1_bottom_y, m_nCursorY);
 
 			m_nCursorX += m_nLastGroupBoxW + (CFG::Menu_Spacing_X * 2);
 			m_nCursorY = anchor_y;
@@ -1412,8 +1417,10 @@ void CMenu::MainWindow()
 			}
 			GroupBoxEnd();
 
-			m_nCursorX += m_nLastGroupBoxW + (CFG::Menu_Spacing_X * 2);
-			m_nCursorY = anchor_y;
+			row1_bottom_y = std::max(row1_bottom_y, m_nCursorY);
+
+			m_nCursorX = anchor_x + CFG::Menu_Spacing_X;
+			m_nCursorY = row1_bottom_y;
 
 			GroupBoxStart("Auto Shoot", 150);
 			{

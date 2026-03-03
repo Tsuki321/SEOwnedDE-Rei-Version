@@ -66,6 +66,8 @@ class CMovementSimulation
 	CMoveData m_MoveData = {};
 	bool m_bRunning = false;
 	float m_flYawTurnRate = 0.0f;
+	Vec3 m_vAccelTrend = {};
+	Vec3 m_vAdaptiveVelocity = {};
 
 	bool m_bOldInPrediction = false;
 	bool m_bOldFirstTimePredicted = false;
