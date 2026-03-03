@@ -213,66 +213,9 @@ void CMisc::AutoDisguise(CUserCmd* cmd)
 		return;
 	}
 
-	int nDisguiseClass = m_nPendingDisguiseClass;
-
-	// If the target class is a heavy class (Heavy, Soldier, Demoman), find nearest enemy instead
-	if (IsHeavyClass(nDisguiseClass))
-	{
-		const int nNearestClass = GetNearestEnemyPlayerClass(local);
-
-		if (nNearestClass == TF_CLASS_UNDEFINED)
-		{
-			// No valid nearby enemy found, fall back to last disguise
-			I::EngineClient->ClientCmd_Unrestricted("lastdisguise");
-			m_bHasPendingDisguise = false;
-			return;
-		}
-
-		nDisguiseClass = nNearestClass;
-	}
-
 	// Execute disguise command: disguise <class> -1 (where -1 = enemy team)
-	I::EngineClient->ClientCmd_Unrestricted(std::format("disguise {} -1", nDisguiseClass).c_str());
+	I::EngineClient->ClientCmd_Unrestricted(std::format("disguise {} -1", m_nPendingDisguiseClass).c_str());
 	m_bHasPendingDisguise = false;
-}
-
-bool CMisc::IsHeavyClass(int nClass) const
-{
-	return nClass == TF_CLASS_HEAVYWEAPONS || nClass == TF_CLASS_SOLDIER || nClass == TF_CLASS_DEMOMAN;
-}
-
-int CMisc::GetNearestEnemyPlayerClass(C_TFPlayer* pLocal)
-{
-	float flBestDist = FLT_MAX;
-	int nBestClass = TF_CLASS_UNDEFINED;
-
-	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
-	{
-		const auto pPlayer = pEntity->As<C_TFPlayer>();
-
-		if (!pPlayer || pPlayer->deadflag())
-		{
-			continue;
-		}
-
-		const int nClass = pPlayer->m_iClass();
-
-		// Skip heavy classes for nearest player too
-		if (IsHeavyClass(nClass))
-		{
-			continue;
-		}
-
-		const float flDist = pLocal->m_vecOrigin().DistTo(pPlayer->m_vecOrigin());
-
-		if (flDist < flBestDist)
-		{
-			flBestDist = flDist;
-			nBestClass = nClass;
-		}
-	}
-
-	return nBestClass;
 }
 
 void CMisc::OnPlayerDeath(IGameEvent* event)
