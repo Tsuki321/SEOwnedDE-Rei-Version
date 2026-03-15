@@ -24,6 +24,7 @@ namespace CFG
 	CFGVAR(Aimbot_Hitscan_Hitbox, 2); //0 Head 1 Body 2 Auto
 	CFGVAR(Aimbot_Hitscan_FOV, 45.0f);
 	CFGVAR(Aimbot_Hitscan_Smoothing, 5.0f);
+	CFGVAR(Aimbot_Hitscan_Smooth_Target_Switch_Delay, 0.0f); // seconds to wait before switching to a new target in Smooth mode
 	CFGVAR(Aimbot_Hitscan_Scan_Head, true);
 	CFGVAR(Aimbot_Hitscan_Scan_Body, true);
 	CFGVAR(Aimbot_Hitscan_Scan_Arms, false);

@@ -14,6 +14,10 @@ class CAimbotHitscan
 
 	std::vector<HitscanTarget_t> m_vecTargets = {};
 
+	// Smooth-mode target switch delay state
+	int   m_nSmoothLastTargetIdx  = -1;
+	float m_flSmoothSwitchReadyAt = 0.0f; // curtime after which a new target may be acquired
+
 	int GetAimHitbox(C_TFWeaponBase* pWeapon);
 	bool ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target);
 	bool ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target);

@@ -685,7 +685,55 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	const bool isFiring = IsFiring(pCmd, pWeapon);
 
 	HitscanTarget_t target = {};
-	if (GetTarget(pLocal, pWeapon, target) && target.Entity)
+	const bool bHasTarget = GetTarget(pLocal, pWeapon, target) && target.Entity;
+
+	// Smooth mode: enforce configurable target-switch delay
+	if (CFG::Aimbot_Hitscan_Aim_Type == 2 && CFG::Aimbot_Hitscan_Smooth_Target_Switch_Delay > 0.0f)
+	{
+		if (bHasTarget)
+		{
+			const int nCurIdx = target.Entity->entindex();
+
+			if (m_nSmoothLastTargetIdx == -1)
+			{
+				// First target — accept it immediately
+				m_nSmoothLastTargetIdx = nCurIdx;
+			}
+			else if (nCurIdx != m_nSmoothLastTargetIdx)
+			{
+				// Different target: only switch once the delay has elapsed
+				if (I::GlobalVars->curtime < m_flSmoothSwitchReadyAt)
+					return; // still in delay — do not aim or fire
+
+				m_nSmoothLastTargetIdx = nCurIdx;
+			}
+			// else: same target as before — no delay needed
+		}
+		else
+		{
+			// No valid target: start the switch-delay timer from now
+			if (m_nSmoothLastTargetIdx != -1)
+			{
+				m_flSmoothSwitchReadyAt = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Smooth_Target_Switch_Delay;
+				m_nSmoothLastTargetIdx  = -1;
+			}
+			return;
+		}
+	}
+	else if (!bHasTarget)
+	{
+		// Non-smooth or delay == 0: reset smooth tracking whenever no target
+		m_nSmoothLastTargetIdx  = -1;
+		m_flSmoothSwitchReadyAt = 0.0f;
+	}
+	else if (CFG::Aimbot_Hitscan_Aim_Type != 2)
+	{
+		// Aim type changed away from Smooth — clear stale delay state
+		m_nSmoothLastTargetIdx  = -1;
+		m_flSmoothSwitchReadyAt = 0.0f;
+	}
+
+	if (bHasTarget)
 	{
 		G::nTargetIndexEarly = target.Entity->entindex();
 

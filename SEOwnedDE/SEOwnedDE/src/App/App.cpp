@@ -19,7 +19,7 @@ void CApp::Start()
 		if (bUnload)
 			return;
 
-		Sleep(500);
+		Sleep(100);
 	}
 
 	U::Storage->Init("SEOwnedDE");
@@ -91,7 +91,7 @@ void CApp::Shutdown()
 
 		Hooks::WINAPI_WndProc::Release();
 
-		Sleep(250);
+		Sleep(100);
 
 		F::Materials->CleanUp();
 		F::Outlines->CleanUp();
