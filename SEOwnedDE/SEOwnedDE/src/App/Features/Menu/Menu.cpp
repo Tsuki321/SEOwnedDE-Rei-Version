@@ -1265,6 +1265,7 @@ void CMenu::MainWindow()
 
 				SliderFloat("FOV", CFG::Aimbot_Hitscan_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Smoothing", CFG::Aimbot_Hitscan_Smoothing, 0.0f, 20.0f, 0.5f, "%.1f");
+				SliderFloat("Smooth Switch Delay", CFG::Aimbot_Hitscan_Smooth_Target_Switch_Delay, 0.0f, 3.0f, 0.1f, "%.1fs");
 			}
 			GroupBoxEnd();
 
