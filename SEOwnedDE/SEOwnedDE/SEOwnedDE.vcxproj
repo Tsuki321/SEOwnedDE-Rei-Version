@@ -427,7 +427,6 @@
     <ClCompile Include="src\SDK\TF2\netmessages.cpp" />
     <ClCompile Include="src\Utils\Storage\Storage.cpp" />
     <ClCompile Include="src\SDK\Helpers\AimUtils\AimUtils.cpp" />
-    <ClCompile Include="src\App\Features\Triggerbot\AutoVaccinator\AutoVaccinator.cpp" />
     <ClCompile Include="src\App\Features\Chat\Chat.cpp" />
     <ClCompile Include="src\App\Features\EnginePrediction\EnginePrediction.cpp" />
     <ClCompile Include="src\App\Features\ESP\ESP.cpp" />
@@ -454,7 +453,6 @@
     <ClCompile Include="src\App\Features\Triggerbot\AutoAirblast\AutoAirblast.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\AutoBackstab\AutoBackstab.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\AutoDetonate\AutoDetonate.cpp" />
-    <ClCompile Include="src\App\Features\Triggerbot\AutoShoot\AutoShoot.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\Triggerbot.cpp" />
     <ClCompile Include="src\App\Features\VisualUtils\VisualUtils.cpp" />
     <ClCompile Include="src\App\Features\WorldModulation\WorldModulation.cpp" />
@@ -494,7 +492,6 @@
     <ClInclude Include="src\SDK\TF2\renderutils.h" />
     <ClInclude Include="src\Utils\Storage\Storage.h" />
     <ClInclude Include="src\SDK\Helpers\AimUtils\AimUtils.h" />
-    <ClInclude Include="src\App\Features\Triggerbot\AutoVaccinator\AutoVaccinator.h" />
     <ClInclude Include="src\App\Features\CFG.h" />
     <ClInclude Include="src\App\Features\EnginePrediction\EnginePrediction.h" />
     <ClInclude Include="src\App\Features\ESP\ESP.h" />
@@ -521,7 +518,6 @@
     <ClInclude Include="src\App\Features\Triggerbot\AutoAirblast\AutoAirblast.h" />
     <ClInclude Include="src\App\Features\Triggerbot\AutoBackstab\AutoBackstab.h" />
     <ClInclude Include="src\App\Features\Triggerbot\AutoDetonate\AutoDetonate.h" />
-    <ClInclude Include="src\App\Features\Triggerbot\AutoShoot\AutoShoot.h" />
     <ClInclude Include="src\App\Features\Triggerbot\Triggerbot.h" />
     <ClInclude Include="src\App\Features\VisualUtils\VisualUtils.h" />
     <ClInclude Include="src\App\Features\WorldModulation\WorldModulation.h" />
