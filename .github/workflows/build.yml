@@ -18,14 +18,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.nuget/packages
-            C:\Users\runneradmin\.nuget\packages
-          key: nuget-packages-${{ runner.os }}-${{ hashFiles('**/*.sln') }}
+            ${{ github.workspace }}\SEOwnedDE\packages
+          key: nuget-packages-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/packages.config', 'SEOwnedDE/**/packages.lock.json', '**/nuget.config', '**/NuGet.config') }}
           restore-keys: |
             nuget-packages-${{ runner.os }}-
 
       - name: Restore NuGet packages (if any)
-        run: nuget restore "SEOwnedDE/SEOwnedDE.sln"
+        run: nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
         shell: powershell
 
       - name: Setup MSBuild
