@@ -1,9 +1,7 @@
 #include "../../SDK/SDK.h"
 
 #include "../Features/CFG.h"
-#include "../Features/Triggerbot/AutoVaccinator/AutoVaccinator.h"
 #include "../Features/Players/Players.h"
-#include "../Features/Misc/Misc.h"
 
 MAKE_SIGNATURE(CGameEventManager_FireEventIntern, "engine.dll", "44 88 44 24 ? 48 89 4C 24 ? 55 57", 0x0);
 
@@ -47,27 +45,17 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 	if (event)
 	{
 		static constexpr auto vote_cast{ HASH_CT("vote_cast") };
-		static constexpr auto player_hurt{ HASH_CT("player_hurt") };
-		static constexpr auto player_death{ HASH_CT("player_death") };
 		static constexpr auto revive_player_notify{ HASH_CT("revive_player_notify") };
 		static constexpr auto player_connect_client{ HASH_CT("player_connect_client") };
 
-		if (HASH_RT(event->GetName()) == vote_cast)
+		const auto eventHash = HASH_RT(event->GetName());
+
+		if (eventHash == vote_cast)
 		{
 			OnVoteCast(event);
 		}
 
-		if (HASH_RT(event->GetName()) == player_hurt)
-		{
-			F::AutoVaccinator->ProcessPlayerHurt(event);
-		}
-
-		if (HASH_RT(event->GetName()) == player_death)
-		{
-			F::Misc->OnPlayerDeath(event);
-		}
-
-		if (HASH_RT(event->GetName()) == player_connect_client && bClientOnly && CFG::Visuals_Chat_Player_List_Info)
+		if (eventHash == player_connect_client && bClientOnly && CFG::Visuals_Chat_Player_List_Info)
 		{
 			PlayerPriority pi{};
 
@@ -94,7 +82,7 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 
 		if (const auto pLocal = H::Entities->GetLocal())
 		{
-			if (CFG::Misc_MVM_Instant_Revive && HASH_RT(event->GetName()) == revive_player_notify)
+			if (CFG::Misc_MVM_Instant_Revive && eventHash == revive_player_notify)
 			{
 				if (event->GetInt("entindex") == pLocal->entindex())
 				{

@@ -70,16 +70,6 @@ namespace CFG
 	CFGVAR(Triggerbot_Active, true);
 	CFGVAR(Triggerbot_Key, 0);
 
-	CFGVAR(Triggerbot_AutoShoot_Active, true);
-	CFGVAR(Triggerbot_AutoShoot_Ignore_Friends, true);
-	CFGVAR(Triggerbot_AutoShoot_Ignore_Invisible, false);
-	CFGVAR(Triggerbot_AutoShoot_Ignore_Invulnerable, true);
-	CFGVAR(Triggerbot_AutoShoot_Ignore_Taunting, false);
-	CFGVAR(Triggerbot_AutoShoot_Head_Scale, 0.5f); //Strict: hitbox shrink scale for head (lower = stricter)
-	CFGVAR(Triggerbot_AutoShoot_Body_Scale, 1.0f); //Lenient: hitbox scale for torso/body
-	CFGVAR(Triggerbot_AutoShoot_Other_Scale, 0.85f); //Medium: hitbox scale for arms/legs
-	CFGVAR(Triggerbot_AutoShoot_Wait_For_Headshot, true);
-
 	CFGVAR(Triggerbot_AutoBackstab_Active, true);
 	CFGVAR(Triggerbot_AutoBackstab_Knife_If_Lethal, true);
 	CFGVAR(Triggerbot_AutoBackstab_Mode, 1); //0 Legit 1 Rage
@@ -112,13 +102,6 @@ namespace CFG
 	CFGVAR(Triggerbot_AutoAirblast_Ignore_BallOfFire, false);
 	CFGVAR(Triggerbot_AutoAirblast_Ignore_EnergyRing, false);
 	CFGVAR(Triggerbot_AutoAirblast_Ignore_EnergyBall, false);
-
-#pragma endregion
-
-#pragma region AutoVaccinator
-
-	CFGVAR(AutoVaccinator_Active, true);
-	CFGVAR(AutoVaccinator_Pop, 0); //0 everyone 1 friends only
 
 #pragma endregion
 
@@ -435,7 +418,6 @@ namespace CFG
 	CFGVAR(Misc_Edge_Jump_Key, 0);
 	CFGVAR(Misc_Auto_Rocket_Jump_Key, 0);
 	CFGVAR(Misc_Auto_Air_Pogo_Key, 0);
-	CFGVAR(Misc_Auto_Disguise, false);
 	CFGVAR(Misc_Auto_Medigun_Key, 0);
 	CFGVAR(Misc_Movement_Lock_Key, 0);
 	CFGVAR(Misc_Clean_Screenshot, true);

@@ -1364,8 +1364,6 @@ void CMenu::MainWindow()
 			}
 			GroupBoxEnd();
 
-			int row1_bottom_y = m_nCursorY;
-
 			m_nCursorX += m_nLastGroupBoxW + (CFG::Menu_Spacing_X * 2);
 			m_nCursorY = anchor_y;
 
@@ -1385,8 +1383,6 @@ void CMenu::MainWindow()
 					});
 			}
 			GroupBoxEnd();
-
-			row1_bottom_y = std::max(row1_bottom_y, m_nCursorY);
 
 			m_nCursorX += m_nLastGroupBoxW + (CFG::Menu_Spacing_X * 2);
 			m_nCursorY = anchor_y;
@@ -1413,29 +1409,6 @@ void CMenu::MainWindow()
 					{ "Friends", CFG::Triggerbot_AutoBackstab_Ignore_Friends },
 					{ "Invisible", CFG::Triggerbot_AutoBackstab_Ignore_Invisible },
 					{ "Invulnerable", CFG::Triggerbot_AutoBackstab_Ignore_Invulnerable }
-				});
-			}
-			GroupBoxEnd();
-
-			row1_bottom_y = std::max(row1_bottom_y, m_nCursorY);
-
-			m_nCursorX = anchor_x + CFG::Menu_Spacing_X;
-			m_nCursorY = row1_bottom_y;
-
-			GroupBoxStart("Auto Shoot", 150);
-			{
-				CheckBox("Active", CFG::Triggerbot_AutoShoot_Active);
-				CheckBox("Wait For Headshot", CFG::Triggerbot_AutoShoot_Wait_For_Headshot);
-				SliderFloat("Head Scale", CFG::Triggerbot_AutoShoot_Head_Scale, 0.1f, 1.0f, 0.05f, "%.2f");
-				SliderFloat("Body Scale", CFG::Triggerbot_AutoShoot_Body_Scale, 0.5f, 1.2f, 0.05f, "%.2f");
-				SliderFloat("Other Scale", CFG::Triggerbot_AutoShoot_Other_Scale, 0.3f, 1.2f, 0.05f, "%.2f");
-
-				multiselect("Ignore", AutoShootIgnores,
-				{
-					{ "Friends", CFG::Triggerbot_AutoShoot_Ignore_Friends },
-					{ "Invisible", CFG::Triggerbot_AutoShoot_Ignore_Invisible },
-					{ "Invulnerable", CFG::Triggerbot_AutoShoot_Ignore_Invulnerable },
-					{ "Taunting", CFG::Triggerbot_AutoShoot_Ignore_Taunting }
 				});
 			}
 			GroupBoxEnd();
@@ -2259,12 +2232,6 @@ void CMenu::MainWindow()
 
 		GroupBoxStart("Auto", 150);
 		{
-			CheckBox("Auto Disguise", CFG::Misc_Auto_Disguise);
-			CheckBox("Auto Vaccinator", CFG::AutoVaccinator_Active);
-			SelectSingle("Auto Vaccinator Pop", CFG::AutoVaccinator_Pop, {
-				{ "Everyone", 0 },
-				{ "Friends Only", 1 }
-			});
 			CheckBox("Auto Strafe", CFG::Misc_Auto_Strafe);
 			SliderFloat("Auto Strafe Turn Scale", CFG::Misc_Auto_Strafe_Turn_Scale, 0.0f, 1.0f, 0.1f, "%.1f");
 			InputKey("Auto RJ Key", CFG::Misc_Auto_Rocket_Jump_Key);

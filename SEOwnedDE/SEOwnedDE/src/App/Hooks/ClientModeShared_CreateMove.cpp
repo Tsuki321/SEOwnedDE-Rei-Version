@@ -7,7 +7,6 @@
 #include "../Features/Misc/Misc.h"
 #include "../Features/RapidFire/RapidFire.h"
 #include "../Features/Triggerbot/Triggerbot.h"
-#include "../Features/Triggerbot/AutoVaccinator/AutoVaccinator.h"
 #include "../Features/SeedPred/SeedPred.h"
 #include "../Features/StickyJump/StickyJump.h"
 #include "../Features/Crits/Crits.h"
@@ -31,8 +30,6 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 		I::ClientState->last_command_ack,
 		I::ClientState->lastoutgoingcommand + I::ClientState->chokedcommands
 	);
-
-	F::AutoVaccinator->PreventReload(pCmd);
 
 	if (F::RapidFire->ShouldExitCreateMove(pCmd))
 	{
@@ -92,7 +89,6 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	F::Misc->FastStop(pCmd);
 	F::Misc->NoiseMakerSpam();
 	F::Misc->AutoRocketJump(pCmd);
-	F::Misc->AutoDisguise(pCmd);
 	F::Misc->MovementLock(pCmd);
 	F::Misc->MvmInstaRespawn();
 
