@@ -18,6 +18,10 @@ jobs:
         run: pwsh -File tests/test_animation_smoothness.ps1
         shell: powershell
 
+      - name: Run aimbot aim assist tests
+        run: pwsh -File tests/test_aimbot_aimassist.ps1
+        shell: powershell
+
   build:
     name: Build (ReleaseAVX2 | x64)
     runs-on: windows-latest

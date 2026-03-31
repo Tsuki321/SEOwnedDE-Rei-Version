@@ -19,11 +19,12 @@ namespace CFG
 	CFGVAR(Aimbot_Hitscan_Active, true);
 	CFGVAR(Aimbot_Hitscan_Target_LagRecords, true);
 	CFGVAR(Aimbot_Hitscan_Target_Stickies, true);
-	CFGVAR(Aimbot_Hitscan_Aim_Type, 1); //0 Normal 1 Silent 2 Smooth
+	CFGVAR(Aimbot_Hitscan_Aim_Type, 1); //0 Normal 1 Silent 2 Smooth 3 Aim Assist
 	CFGVAR(Aimbot_Hitscan_Sort, 0); //0 FOV 1 Distance
 	CFGVAR(Aimbot_Hitscan_Hitbox, 2); //0 Head 1 Body 2 Auto
 	CFGVAR(Aimbot_Hitscan_FOV, 45.0f);
 	CFGVAR(Aimbot_Hitscan_Smoothing, 5.0f);
+	CFGVAR(Aimbot_Hitscan_AimAssist_Strength, 15.0f);
 	CFGVAR(Aimbot_Hitscan_Scan_Head, true);
 	CFGVAR(Aimbot_Hitscan_Scan_Body, true);
 	CFGVAR(Aimbot_Hitscan_Scan_Arms, false);
