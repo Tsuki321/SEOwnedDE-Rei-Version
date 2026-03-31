@@ -17,10 +17,7 @@ MAKE_HOOK(CBaseEntity_AddVar, Signatures::CBaseEntity_AddVar.Get(), void, __fast
 		static constexpr auto m_iv_flCycle = HASH_CT("C_BaseAnimating::m_iv_flCycle");
 		static constexpr auto m_iv_flMaxGroundSpeed = HASH_CT("CMultiPlayerAnimState::m_iv_flMaxGroundSpeed");
 
-		if (hash == m_iv_vecVelocity
-			|| hash == m_iv_flPoseParameter
-			|| hash == m_iv_flCycle
-			|| hash == m_iv_flMaxGroundSpeed)
+		if (hash == m_iv_vecVelocity)
 			return;
 
 		if (ecx != H::Entities->GetLocal())
