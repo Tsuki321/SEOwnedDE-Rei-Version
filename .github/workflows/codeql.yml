@@ -86,7 +86,7 @@ jobs:
       if: matrix.build-mode == 'manual'
       shell: powershell
       run: |
-        nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
+        nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}/SEOwnedDE/packages" -NonInteractive
         msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
 
     - name: Perform CodeQL Analysis
