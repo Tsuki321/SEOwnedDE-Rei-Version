@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../../TF2/c_tf_player.h"
+#include <array>
+#include <unordered_map>
 
 enum class EEntGroup
 {
@@ -21,7 +23,8 @@ enum class EEntGroup
 	HEALTHPACKS,
 	AMMOPACKS,
 	HALLOWEEN_GIFT,
-	MVM_MONEY
+	MVM_MONEY,
+	GROUP_COUNT
 };
 
 class CEntityHelper
@@ -31,9 +34,9 @@ public:
 	C_TFWeaponBase* GetWeapon();
 
 private:
-	std::map<EEntGroup, std::vector<C_BaseEntity*>> m_mapGroups = {};
-	std::map<int, bool> m_mapHealthPacks = {};
-	std::map<int, bool> m_mapAmmoPacks = {};
+	std::array<std::vector<C_BaseEntity*>, static_cast<size_t>(EEntGroup::GROUP_COUNT)> m_vecGroups = {};
+	std::unordered_map<int, bool> m_mapHealthPacks = {};
+	std::unordered_map<int, bool> m_mapAmmoPacks = {};
 
 	bool IsHealthPack(C_BaseEntity* pEntity)
 	{
@@ -56,7 +59,7 @@ public:
 		m_mapAmmoPacks.clear();
 	}
 
-	const std::vector<C_BaseEntity*>& GetGroup(const EEntGroup group) { return m_mapGroups[group]; }
+	const std::vector<C_BaseEntity*>& GetGroup(const EEntGroup group) { return m_vecGroups[static_cast<size_t>(group)]; }
 };
 
 MAKE_SINGLETON_SCOPED(CEntityHelper, Entities, H);

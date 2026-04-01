@@ -34,6 +34,7 @@
 #include "TF2/itexture.h"
 #include "TF2/MD5.h"
 #include "TF2/c_tf_player.h"
+#include <unordered_map>
 
 #include "Helpers/Draw/Draw.h"
 #include "Helpers/Entities/Entities.h"
@@ -302,7 +303,7 @@ namespace G
 		float m_flSimulationTime = 0.0f;
 	};
 
-	inline std::map<C_BasePlayer *, VelFixRecord_t> mapVelFixRecords = {};
+	inline std::unordered_map<C_BasePlayer *, VelFixRecord_t> mapVelFixRecords = {};
 
 	inline bool bFiring = false;
 	inline int nTicksTargetSame = 0;

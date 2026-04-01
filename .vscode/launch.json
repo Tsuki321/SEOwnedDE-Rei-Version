@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/CIRILO/Desktop/Coding Shenanigans/SEOwnedDE-Rei/SEOwnedDE-Rei-Version",
-      "program": "c:/Users/CIRILO/Desktop/Coding Shenanigans/SEOwnedDE-Rei/SEOwnedDE-Rei-Version/build/Debug/outDebug",
+      "cwd": ".",
+      "program": "build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

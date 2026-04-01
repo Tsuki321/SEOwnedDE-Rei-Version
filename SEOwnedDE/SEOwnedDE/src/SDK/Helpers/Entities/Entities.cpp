@@ -49,14 +49,14 @@ void CEntityHelper::UpdateCache()
 					const auto pPlayer = pEntity->As<C_TFPlayer>();
 					if (pPlayer->deadflag() && pPlayer->m_iObserverMode() != OBS_MODE_NONE)
 					{
-						m_mapGroups[EEntGroup::PLAYERS_OBSERVER].push_back(pEntity);
+						m_vecGroups[static_cast<size_t>(EEntGroup::PLAYERS_OBSERVER)].push_back(pEntity);
 					}
 
 					if (!pEntity->IsInValidTeam(&nPlayerTeam))
 						continue;
 
-					m_mapGroups[EEntGroup::PLAYERS_ALL].push_back(pEntity);
-					m_mapGroups[nLocalTeam != nPlayerTeam ? EEntGroup::PLAYERS_ENEMIES : EEntGroup::PLAYERS_TEAMMATES].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(EEntGroup::PLAYERS_ALL)].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(nLocalTeam != nPlayerTeam ? EEntGroup::PLAYERS_ENEMIES : EEntGroup::PLAYERS_TEAMMATES)].push_back(pEntity);
 
 					break;
 				}
@@ -70,8 +70,8 @@ void CEntityHelper::UpdateCache()
 					if (!pEntity->IsInValidTeam(&nObjectTeam))
 						continue;
 
-					m_mapGroups[EEntGroup::BUILDINGS_ALL].push_back(pEntity);
-					m_mapGroups[nLocalTeam != nObjectTeam ? EEntGroup::BUILDINGS_ENEMIES : EEntGroup::BUILDINGS_TEAMMATES].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(EEntGroup::BUILDINGS_ALL)].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(nLocalTeam != nObjectTeam ? EEntGroup::BUILDINGS_ENEMIES : EEntGroup::BUILDINGS_TEAMMATES)].push_back(pEntity);
 
 					break;
 				}
@@ -103,11 +103,11 @@ void CEntityHelper::UpdateCache()
 							continue;*/
 
 						if (pPipebomb->HasStickyEffects() && pPipebomb->As<C_BaseGrenade>()->m_hThrower().Get() == pLocal)
-							m_mapGroups[EEntGroup::PROJECTILES_LOCAL_STICKIES].push_back(pEntity);
+							m_vecGroups[static_cast<size_t>(EEntGroup::PROJECTILES_LOCAL_STICKIES)].push_back(pEntity);
 					}
 
-					m_mapGroups[EEntGroup::PROJECTILES_ALL].push_back(pEntity);
-					m_mapGroups[nLocalTeam != nProjectileTeam ? EEntGroup::PROJECTILES_ENEMIES : EEntGroup::PROJECTILES_TEAMMATES].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(EEntGroup::PROJECTILES_ALL)].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(nLocalTeam != nProjectileTeam ? EEntGroup::PROJECTILES_ENEMIES : EEntGroup::PROJECTILES_TEAMMATES)].push_back(pEntity);
 
 					break;
 				}
@@ -115,23 +115,23 @@ void CEntityHelper::UpdateCache()
 			case ETFClassIds::CBaseAnimating:
 				{
 					if (IsHealthPack(pEntity))
-						m_mapGroups[EEntGroup::HEALTHPACKS].push_back(pEntity);
+						m_vecGroups[static_cast<size_t>(EEntGroup::HEALTHPACKS)].push_back(pEntity);
 
 					if (IsAmmoPack(pEntity))
-						m_mapGroups[EEntGroup::AMMOPACKS].push_back(pEntity);
+						m_vecGroups[static_cast<size_t>(EEntGroup::AMMOPACKS)].push_back(pEntity);
 
 					break;
 				}
 
 			case ETFClassIds::CTFAmmoPack:
 				{
-					m_mapGroups[EEntGroup::AMMOPACKS].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(EEntGroup::AMMOPACKS)].push_back(pEntity);
 					break;
 				}
 
 			case ETFClassIds::CHalloweenGiftPickup:
 				{
-					m_mapGroups[EEntGroup::HALLOWEEN_GIFT].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(EEntGroup::HALLOWEEN_GIFT)].push_back(pEntity);
 
 					break;
 				}
@@ -143,7 +143,7 @@ void CEntityHelper::UpdateCache()
 						continue;
 					}
 
-					m_mapGroups[EEntGroup::MVM_MONEY].push_back(pEntity);
+					m_vecGroups[static_cast<size_t>(EEntGroup::MVM_MONEY)].push_back(pEntity);
 
 					break;
 				}
@@ -186,7 +186,7 @@ void CEntityHelper::UpdateModelIndexes()
 
 void CEntityHelper::ClearCache()
 {
-	for (auto& group : m_mapGroups | std::views::values)
+	for (auto& group : m_vecGroups)
 	{
 		group.clear();
 	}
