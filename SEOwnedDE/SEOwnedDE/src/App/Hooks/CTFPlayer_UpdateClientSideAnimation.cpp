@@ -21,8 +21,12 @@ MAKE_HOOK(CTFPlayer_UpdateClientSideAnimation, Signatures::CTFPlayer_UpdateClien
 					return;
 				}
 				CALL_ORIGINAL(ecx);
+				return;
 			}
 		}
+
+		if (!G::bUpdatingAnims)
+			return;
 	}
 
 	CALL_ORIGINAL(ecx);

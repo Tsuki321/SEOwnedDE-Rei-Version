@@ -82,10 +82,10 @@ $updateAnimFile = Get-Content (Join-Path $hooksDir "CTFPlayer_UpdateClientSideAn
 
 Write-Host "  [Engine Animation Updates]"
 
-# TEST: The bUpdatingAnims gate should NOT block engine calls for other players
-Assert-False `
-    -Condition ($updateAnimFile -match '!G::bUpdatingAnims\s*\)\s*\{?\s*return') `
-    -Message "bUpdatingAnims gate is REMOVED (engine can update other player animations per frame)"
+# TEST: The bUpdatingAnims gate MUST block engine calls to preserve aimbot cycle accuracy and prevent fast-forwarding
+Assert-True `
+    -Condition ($updateAnimFile -match '!G::bUpdatingAnims.*?return') `
+    -Message "bUpdatingAnims gate is PRESENT (preserves aimbot accuracy & prevents fast-forwarding)"
 
 # TEST: CALL_ORIGINAL(ecx) should still be present (so engine calls still go through)
 Assert-True `
@@ -139,10 +139,10 @@ Write-Host "  [SetupBones Optimization Unaffected]"
 
 $setupBonesFile = Get-Content (Join-Path $hooksDir "CBaseAnimating_SetupBones.cpp") -Raw
 
-# TEST: SetupBones optimization code is unchanged
+# TEST: SetupBones optimization flag check evaluates accuracy improvements
 Assert-True `
-    -Condition ($setupBonesFile -match 'Misc_SetupBones_Optimization') `
-    -Message "SetupBones optimization flag check is still present"
+    -Condition ($setupBonesFile -match 'CFG::Misc_SetupBones_Optimization.*?&&.*?!CFG::Misc_Accuracy_Improvements') `
+    -Message "SetupBones optimization selectively bypasses visual cache for smooth poses"
 
 Assert-True `
     -Condition ($setupBonesFile -match 'GetCachedBoneData') `

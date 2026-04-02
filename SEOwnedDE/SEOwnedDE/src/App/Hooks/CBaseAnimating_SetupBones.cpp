@@ -34,7 +34,7 @@ C_BaseEntity* GetRootMoveParent(C_BaseEntity* baseEnt)
 MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get(), bool, __fastcall,
 	C_BaseAnimating* ecx, matrix3x4_t* pBoneToWorldOut, int nMaxBones, int boneMask, float currentTime)
 {
-	if (CFG::Misc_SetupBones_Optimization && !F::LagRecords->IsSettingUpBones())
+	if (CFG::Misc_SetupBones_Optimization && !F::LagRecords->IsSettingUpBones() && !CFG::Misc_Accuracy_Improvements)
 	{
 		const auto baseEnt = reinterpret_cast<C_BaseEntity*>(reinterpret_cast<uintptr_t>(ecx) - sizeof(uintptr_t));
 
