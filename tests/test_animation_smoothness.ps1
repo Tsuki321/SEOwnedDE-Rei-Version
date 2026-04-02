@@ -84,7 +84,7 @@ Write-Host "  [Engine Animation Updates]"
 
 # TEST: The bUpdatingAnims gate MUST block engine calls to preserve aimbot cycle accuracy and prevent fast-forwarding
 Assert-True `
-    -Condition ($updateAnimFile -match '!G::bUpdatingAnims.*?return') `
+    -Condition ($updateAnimFile -match '(?s)!G::bUpdatingAnims.*?return') `
     -Message "bUpdatingAnims gate is PRESENT (preserves aimbot accuracy & prevents fast-forwarding)"
 
 # TEST: CALL_ORIGINAL(ecx) should still be present (so engine calls still go through)
