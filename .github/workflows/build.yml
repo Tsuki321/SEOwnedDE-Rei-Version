@@ -1,0 +1,48 @@
+name: Build SEOwnedDE DLL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (ReleaseAVX2 | x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\SEOwnedDE\packages
+          key: nuget-packages-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/packages.config', 'SEOwnedDE/**/packages.lock.json', '**/nuget.config', '**/NuGet.config') }}
+          restore-keys: |
+            nuget-packages-${{ runner.os }}-
+
+      - name: Restore NuGet packages (if any)
+        run: nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
+        shell: powershell
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
+
+      - name: Build solution (ReleaseAVX2 | x64)
+        run: msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
+        shell: powershell
+
+      - name: Verify DLL exists
+        run: |
+          $dll = "${{ github.workspace }}\SEOwnedDE\bin\ReleaseAVX2\SEOwnedDE.dll"
+          if (-not (Test-Path $dll)) { Write-Error "DLL not produced: $dll"; exit 1 }
+          Write-Output "Built: $dll"
+        shell: powershell
+
+      - name: Upload built DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEOwnedDE-SEOwnedDE.dll
+          path: SEOwnedDE/bin/ReleaseAVX2/SEOwnedDE.dll
+          retention-days: 7
+
