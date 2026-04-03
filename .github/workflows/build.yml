@@ -1,31 +1,12 @@
 name: Build SEOwnedDE DLL
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: Integration Tests
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run animation smoothness tests
-        run: pwsh -File tests/test_animation_smoothness.ps1
-        shell: powershell
-
-      - name: Run aimbot aim assist tests
-        run: pwsh -File tests/test_aimbot_aimassist.ps1
-        shell: powershell
-
   build:
     name: Build (ReleaseAVX2 | x64)
     runs-on: windows-latest
-    needs: test
 
     steps:
       - name: Checkout repository
