@@ -23,7 +23,11 @@ MAKE_HOOK(CBaseEntity_AddVar, Signatures::CBaseEntity_AddVar.Get(), void, __fast
 			|| hash == m_iv_flMaxGroundSpeed)
 			return;
 
-		if (ecx != H::Entities->GetLocal())
+		C_BaseEntity* pLocal = nullptr;
+		if (H::Entities && I::ClientEntityList && I::EngineClient)
+			pLocal = H::Entities->GetLocal();
+
+		if (ecx != pLocal)
 		{
 			if (hash == m_iv_angEyeAngles)
 				return;
