@@ -3,6 +3,7 @@
 #include "../Features/CFG.h"
 #include "../Features/Triggerbot/AutoVaccinator/AutoVaccinator.h"
 #include "../Features/Crits/Crits.h"
+#include "../Features/Killstreak/Killstreak.h"
 #include "../Features/Players/Players.h"
 #include "../Features/Misc/Misc.h"
 
@@ -50,6 +51,7 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 		static constexpr auto vote_cast{ HASH_CT("vote_cast") };
 		static constexpr auto player_hurt{ HASH_CT("player_hurt") };
 		static constexpr auto player_death{ HASH_CT("player_death") };
+		static constexpr auto player_spawn{ HASH_CT("player_spawn") };
 		static constexpr auto revive_player_notify{ HASH_CT("revive_player_notify") };
 		static constexpr auto player_connect_client{ HASH_CT("player_connect_client") };
 
@@ -61,17 +63,24 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 			OnVoteCast(event);
 		}
 
-		if (HASH_RT(event->GetName()) == player_hurt)
+<<<<<<< HEAD
+		if (eventHash == player_hurt)
 		{
 			F::AutoVaccinator->ProcessPlayerHurt(event);
 		}
 
-		if (HASH_RT(event->GetName()) == player_death)
+		if (eventHash == player_death)
 		{
+			F::Killstreak->PlayerDeath(event);
 			F::Misc->OnPlayerDeath(event);
 		}
 
-		if (HASH_RT(event->GetName()) == player_connect_client && bClientOnly && CFG::Visuals_Chat_Player_List_Info)
+		if (eventHash == player_spawn)
+		{
+			F::Killstreak->PlayerSpawn(event);
+		}
+
+		if (eventHash == player_connect_client && bClientOnly && CFG::Visuals_Chat_Player_List_Info)
 		{
 			PlayerPriority pi{};
 
@@ -98,7 +107,7 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 
 		if (const auto pLocal = H::Entities->GetLocal())
 		{
-			if (CFG::Misc_MVM_Instant_Revive && HASH_RT(event->GetName()) == revive_player_notify)
+			if (CFG::Misc_MVM_Instant_Revive && eventHash == revive_player_notify)
 			{
 				if (event->GetInt("entindex") == pLocal->entindex())
 				{

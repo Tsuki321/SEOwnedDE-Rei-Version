@@ -9,6 +9,7 @@
     <ClCompile Include="src\App\Features\EnginePrediction\EnginePrediction.cpp" />
     <ClCompile Include="src\App\Features\ESP\ESP.cpp" />
     <ClCompile Include="src\App\Features\LagRecords\LagRecords.cpp" />
+    <ClCompile Include="src\App\Features\Killstreak\Killstreak.cpp" />
     <ClCompile Include="src\App\Features\Materials\Materials.cpp" />
     <ClCompile Include="src\App\Features\Menu\LateRenderer\LateRenderer.cpp" />
     <ClCompile Include="src\App\Features\Menu\Menu.cpp" />
@@ -111,6 +112,7 @@
     <ClCompile Include="src\App\Hooks\CBaseEntity_BaseInterpolatePart1.cpp" />
     <ClCompile Include="src\App\Hooks\CBaseHudChatLine_InsertAndColorizeText.cpp" />
     <ClCompile Include="src\App\Hooks\CBasePlayer_CalcPlayerView.cpp" />
+    <ClCompile Include="src\App\Hooks\CHudItemEffectMeter_Weapon_C_TFWeaponBase_IsEnabled.cpp" />
     <ClCompile Include="src\App\Hooks\CHudTFCrosshair_ShouldDraw.cpp" />
     <ClCompile Include="src\App\Hooks\CMultiPlayerAnimState_ResetGestureSlot.cpp" />
     <ClCompile Include="src\App\Hooks\CParticleSystemMgr_DrawRenderCache.cpp" />
@@ -135,6 +137,7 @@
     <ClInclude Include="src\App\Features\EnginePrediction\EnginePrediction.h" />
     <ClInclude Include="src\App\Features\ESP\ESP.h" />
     <ClInclude Include="src\App\Features\LagRecords\LagRecords.h" />
+    <ClInclude Include="src\App\Features\Killstreak\Killstreak.h" />
     <ClInclude Include="src\App\Features\Materials\Materials.h" />
     <ClInclude Include="src\App\Features\Menu\LateRenderer\LateRenderer.h" />
     <ClInclude Include="src\App\Features\Menu\Menu.h" />

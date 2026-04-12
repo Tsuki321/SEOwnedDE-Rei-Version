@@ -5,6 +5,7 @@
 #include "../Features/WorldModulation/WorldModulation.h"
 #include "../Features/Paint/Paint.h"
 #include "../Features/SeedPred/SeedPred.h"
+#include "../Features/Killstreak/Killstreak.h"
 
 MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), void, __fastcall,
 	void* ecx)
@@ -20,6 +21,7 @@ MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), v
 	F::WorldModulation->LevelShutdown();
 
 	F::SeedPred->Reset();
+	F::Killstreak->Reset();
 
 	G::mapVelFixRecords.clear();
 

@@ -342,6 +342,7 @@ namespace CFG
 	CFGVAR(Visuals_SpectatorList_Pos_X, 400);
 	CFGVAR(Visuals_SpectatorList_Pos_Y, 20);
 	CFGVAR(Visuals_SpectatorList_Width, 200);
+	CFGVAR(Visuals_Killstreak_Weapons, false);
 
 	CFGVAR(Visuals_Ragdolls_Active, false);
 	CFGVAR(Visuals_Ragdolls_No_Gib, false);
