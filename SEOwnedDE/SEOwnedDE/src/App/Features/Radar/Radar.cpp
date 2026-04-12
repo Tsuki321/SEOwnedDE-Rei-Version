@@ -4,6 +4,21 @@
 #include "../Menu/Menu.h"
 #include "../VisualUtils/VisualUtils.h"
 
+void CRadar::UpdateRadarCache(C_TFPlayer* pLocal)
+{
+	m_pCachedLocal = pLocal;
+	m_vCachedLocalCenter = pLocal ? pLocal->GetCenter() : Vec3{};
+	m_nCachedRadarSize = CFG::Radar_Size;
+	m_nCachedRadarStyle = CFG::Radar_Style;
+	m_nCachedRadarX = CFG::Radar_Pos_X + (m_nCachedRadarSize / 2);
+	m_nCachedRadarY = CFG::Radar_Pos_Y + (m_nCachedRadarSize / 2);
+	m_flCachedRadius = std::max(CFG::Radar_Radius, 1.0f);
+
+	const float flYaw = I::EngineClient->GetViewAngles().y * (static_cast<float>(PI) / 180.0f);
+	m_flCachedCos = std::cosf(flYaw);
+	m_flCachedSin = std::sinf(flYaw);
+}
+
 void CRadar::Drag()
 {
 	const int nMouseX = H::Input->GetMouseX();
@@ -73,41 +88,34 @@ void CRadar::Drag()
 
 bool CRadar::GetDrawPosition(int& x, int& y, const Vec3& vWorld)
 {
-	const auto pLocal = H::Entities->GetLocal();
-
-	if (!pLocal)
+	if (!m_pCachedLocal)
 		return false;
 
-	const int nRadarX = CFG::Radar_Pos_X + (CFG::Radar_Size / 2);
-	const int nRadarY = CFG::Radar_Pos_Y + (CFG::Radar_Size / 2);
+	const Vec3 vDelta = vWorld - m_vCachedLocalCenter;
+	Vec2 vPos = {
+		(vDelta.y * (-m_flCachedCos) + vDelta.x * m_flCachedSin),
+		(vDelta.x * (-m_flCachedCos) - vDelta.y * m_flCachedSin)
+	};
 
-	const float flYaw = I::EngineClient->GetViewAngles().y * (static_cast<float>(PI) / 180.0f);
-	const float flRadius = CFG::Radar_Radius;
-	const float flCos = std::cosf(flYaw);
-	const float flSin = std::sinf(flYaw);
-
-	const Vec3 vDelta = vWorld - pLocal->GetCenter();
-	Vec2 vPos = { (vDelta.y * (-flCos) + vDelta.x * flSin), (vDelta.x * (-flCos) - vDelta.y * flSin) };
-
-	switch (CFG::Radar_Style)
+	switch (m_nCachedRadarStyle)
 	{
 		// Rectangle
 		case 0:
 		{
-			if (fabsf(vPos.x) > flRadius || fabsf(vPos.y) > flRadius)
+			if (fabsf(vPos.x) > m_flCachedRadius || fabsf(vPos.y) > m_flCachedRadius)
 			{
 				if (vPos.y > vPos.x)
 				{
 					if (vPos.y > -vPos.x)
 					{
-						vPos.x = flRadius * vPos.x / vPos.y;
-						vPos.y = flRadius;
+						vPos.x = m_flCachedRadius * vPos.x / vPos.y;
+						vPos.y = m_flCachedRadius;
 					}
 
 					else
 					{
-						vPos.y = -flRadius * vPos.y / vPos.x;
-						vPos.x = -flRadius;
+						vPos.y = -m_flCachedRadius * vPos.y / vPos.x;
+						vPos.x = -m_flCachedRadius;
 					}
 				}
 
@@ -115,20 +123,20 @@ bool CRadar::GetDrawPosition(int& x, int& y, const Vec3& vWorld)
 				{
 					if (vPos.y > -vPos.x)
 					{
-						vPos.y = flRadius * vPos.y / vPos.x;
-						vPos.x = flRadius;
+						vPos.y = m_flCachedRadius * vPos.y / vPos.x;
+						vPos.x = m_flCachedRadius;
 					}
 
 					else
 					{
-						vPos.x = -flRadius * vPos.x / vPos.y;
-						vPos.y = -flRadius;
+						vPos.x = -m_flCachedRadius * vPos.x / vPos.y;
+						vPos.y = -m_flCachedRadius;
 					}
 				}
 			}
 
-			x = nRadarX + static_cast<int>(vPos.x / flRadius * static_cast<float>(CFG::Radar_Size / 2));
-			y = nRadarY + static_cast<int>(vPos.y / flRadius * static_cast<float>(CFG::Radar_Size / 2));
+			x = m_nCachedRadarX + static_cast<int>(vPos.x / m_flCachedRadius * static_cast<float>(m_nCachedRadarSize / 2));
+			y = m_nCachedRadarY + static_cast<int>(vPos.y / m_flCachedRadius * static_cast<float>(m_nCachedRadarSize / 2));
 
 			break;
 		}
@@ -136,17 +144,18 @@ bool CRadar::GetDrawPosition(int& x, int& y, const Vec3& vWorld)
 		// Circle
 		case 1:
 		{
-			const int nPosX = nRadarX + static_cast<int>(vPos.x / flRadius * static_cast<float>(CFG::Radar_Size / 2));
-			const int nPosY = nRadarY + static_cast<int>(vPos.y / flRadius * static_cast<float>(CFG::Radar_Size / 2));
+			const int nPosX = m_nCachedRadarX + static_cast<int>(vPos.x / m_flCachedRadius * static_cast<float>(m_nCachedRadarSize / 2));
+			const int nPosY = m_nCachedRadarY + static_cast<int>(vPos.y / m_flCachedRadius * static_cast<float>(m_nCachedRadarSize / 2));
 
-			const Vec2 vRadar = { static_cast<float>(nRadarX), static_cast<float>(nRadarY) };
+			const Vec2 vRadar = { static_cast<float>(m_nCachedRadarX), static_cast<float>(m_nCachedRadarY) };
 			Vec2 vPoint = { static_cast<float>(nPosX), static_cast<float>(nPosY) };
 
 			Vec2 vDelta = vPoint - vRadar;
+			const float flDeltaLength = vDelta.Length();
 
-			if (static_cast<int>(vDelta.Length()) > CFG::Radar_Size / 2)
+			if (static_cast<int>(flDeltaLength) > m_nCachedRadarSize / 2)
 			{
-				vDelta *= static_cast<float>(CFG::Radar_Size / 2) / vDelta.Length();
+				vDelta *= static_cast<float>(m_nCachedRadarSize / 2) / flDeltaLength;
 				vPoint = vRadar + vDelta;
 
 				x = static_cast<int>(vPoint.x);
@@ -256,6 +265,8 @@ void CRadar::Run()
 	if (!pLocal)
 		return;
 
+	UpdateRadarCache(pLocal);
+
 	const int nIconSize = CFG::Radar_Icon_Size;
 
 	// Draw world objects
@@ -322,40 +333,17 @@ void CRadar::Run()
 	// Draw buildings
 	if (CFG::Radar_Buildings_Active)
 	{
-		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::BUILDINGS_ALL))
+		for (const auto pBuilding : F::VisualUtils->GetBuildingCandidates(pLocal))
 		{
-			if (!pEntity)
+			if (!F::VisualUtils->ShouldRenderBuilding(
+				pLocal,
+				pBuilding,
+				CFG::Radar_Buildings_Ignore_Local,
+				CFG::Radar_Buildings_Ignore_Teammates,
+				CFG::Radar_Buildings_Show_Teammate_Dispensers,
+				CFG::Radar_Buildings_Ignore_Enemies
+			))
 				continue;
-
-			const auto pBuilding = pEntity->As<C_BaseObject>();
-
-			if (pBuilding->m_bPlacing())
-				continue;
-
-			const bool bIsLocal = F::VisualUtils->IsEntityOwnedBy(pBuilding, pLocal);
-
-			if (CFG::Radar_Buildings_Ignore_Local && bIsLocal)
-				continue;
-
-			if (!bIsLocal)
-			{
-				if (CFG::Radar_Buildings_Ignore_Teammates && pBuilding->m_iTeamNum() == pLocal->m_iTeamNum())
-				{
-					if (CFG::Radar_Buildings_Show_Teammate_Dispensers)
-					{
-						if (pBuilding->GetClassId() != ETFClassIds::CObjectDispenser)
-							continue;
-					}
-
-					else
-					{
-						continue;
-					}
-				}
-
-				if (CFG::Radar_Buildings_Ignore_Enemies && pBuilding->m_iTeamNum() != pLocal->m_iTeamNum())
-					continue;
-			}
 
 			const auto nTexture = F::VisualUtils->GetBuildingTextureId(pBuilding);
 
@@ -379,50 +367,19 @@ void CRadar::Run()
 	// Draw players
 	if (CFG::Radar_Players_Active)
 	{
-		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
+		for (const auto pPlayer : F::VisualUtils->GetPlayerCandidates(pLocal))
 		{
-			if (!pEntity)
+			if (!F::VisualUtils->ShouldRenderPlayer(
+				pLocal,
+				pPlayer,
+				CFG::Radar_Players_Ignore_Local,
+				CFG::Radar_Players_Ignore_Friends,
+				CFG::Radar_Players_Ignore_Teammates,
+				CFG::Radar_Players_Show_Teammate_Medics,
+				CFG::Radar_Players_Ignore_Enemies,
+				CFG::Radar_Players_Ignore_Invisible
+			))
 				continue;
-
-			const auto pPlayer = pEntity->As<C_TFPlayer>();
-
-			if (pPlayer->deadflag())
-				continue;
-
-			const bool bIsLocal = pPlayer == pLocal;
-			const bool bIsFriend = pPlayer->IsPlayerOnSteamFriendsList();
-
-			if (CFG::Radar_Players_Ignore_Local && bIsLocal)
-				continue;
-
-			if (CFG::Radar_Players_Ignore_Friends && bIsFriend)
-				continue;
-
-			if (!bIsLocal)
-			{
-				if (!bIsFriend)
-				{
-					if (CFG::Radar_Players_Ignore_Teammates && pPlayer->m_iTeamNum() == pLocal->m_iTeamNum())
-					{
-						if (CFG::Radar_Players_Show_Teammate_Medics)
-						{
-							if (pPlayer->m_iClass() != TF_CLASS_MEDIC)
-								continue;
-						}
-
-						else
-						{
-							continue;
-						}
-					}
-
-					if (CFG::Radar_Players_Ignore_Enemies && pPlayer->m_iTeamNum() != pLocal->m_iTeamNum())
-						continue;
-				}
-
-				if (CFG::Radar_Players_Ignore_Invisible && pPlayer->m_flInvisibility() >= 1.0f)
-					continue;
-			}
 
 			int x = 0, y = 0;
 

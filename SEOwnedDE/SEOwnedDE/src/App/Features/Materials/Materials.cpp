@@ -26,33 +26,15 @@ void SetModelStencilForOutlines(C_BaseEntity* pEntity)
 
 			const auto pPlayer = pEntity->As<C_TFPlayer>();
 
-			const bool bIsLocal = pPlayer == pLocal;
-			const bool bIsFriend = pPlayer->IsPlayerOnSteamFriendsList();
-
-			if (CFG::Outlines_Players_Ignore_Local && bIsLocal)
-				return false;
-
-			if (CFG::Outlines_Players_Ignore_Friends && bIsFriend)
-				return false;
-
-			if (!bIsLocal && !bIsFriend)
-			{
-				if (CFG::Outlines_Players_Ignore_Teammates && pPlayer->m_iTeamNum() == pLocal->m_iTeamNum())
-				{
-					if (CFG::Outlines_Players_Show_Teammate_Medics)
-					{
-						if (pPlayer->m_iClass() != TF_CLASS_MEDIC)
-							return false;
-					}
-					else
-					{
-						return false;
-					}
-				}
-
-				if (CFG::Outlines_Players_Ignore_Enemies && pPlayer->m_iTeamNum() != pLocal->m_iTeamNum())
-					return false;
-			}
+			return F::VisualUtils->ShouldRenderPlayer(
+				pLocal,
+				pPlayer,
+				CFG::Outlines_Players_Ignore_Local,
+				CFG::Outlines_Players_Ignore_Friends,
+				CFG::Outlines_Players_Ignore_Teammates,
+				CFG::Outlines_Players_Show_Teammate_Medics,
+				CFG::Outlines_Players_Ignore_Enemies
+			);
 		}
 
 		if (pEntity->GetClassId() == ETFClassIds::CObjectSentrygun
@@ -62,35 +44,14 @@ void SetModelStencilForOutlines(C_BaseEntity* pEntity)
 			if (!CFG::Outlines_Buildings_Active)
 				return false;
 
-			auto pBuilding = pEntity->As<C_BaseObject>();
-
-			if (pBuilding->m_bPlacing())
-				return false;
-
-			bool bIsLocal = F::VisualUtils->IsEntityOwnedBy(pBuilding, pLocal);
-
-			if (CFG::Outlines_Buildings_Ignore_Local && bIsLocal)
-				return false;
-
-			if (!bIsLocal)
-			{
-				if (CFG::Outlines_Buildings_Ignore_Teammates && pBuilding->m_iTeamNum() == pLocal->m_iTeamNum())
-				{
-					if (CFG::Outlines_Buildings_Show_Teammate_Dispensers)
-					{
-						if (pBuilding->GetClassId() != ETFClassIds::CObjectDispenser)
-							return false;
-					}
-
-					else
-					{
-						return false;
-					}
-				}
-
-				if (CFG::Outlines_Buildings_Ignore_Enemies && pBuilding->m_iTeamNum() != pLocal->m_iTeamNum())
-					return false;
-			}
+			return F::VisualUtils->ShouldRenderBuilding(
+				pLocal,
+				pEntity->As<C_BaseObject>(),
+				CFG::Outlines_Buildings_Ignore_Local,
+				CFG::Outlines_Buildings_Ignore_Teammates,
+				CFG::Outlines_Buildings_Show_Teammate_Dispensers,
+				CFG::Outlines_Buildings_Ignore_Enemies
+			);
 		}
 
 		//fuck rest
@@ -268,7 +229,7 @@ void CMaterials::DrawEntity(C_BaseEntity* pEntity)
 		I::RenderView->SetBlend(1.0f);
 	}
 
-	m_mapDrawnEntities[pEntity] = true;
+	m_setDrawnEntities.insert(pEntity);
 
 	m_bRendering = false;
 }
@@ -393,8 +354,8 @@ void CMaterials::Run()
 {
 	Initialize();
 
-	if (!m_mapDrawnEntities.empty())
-		m_mapDrawnEntities.clear();
+	if (!m_setDrawnEntities.empty())
+		m_setDrawnEntities.clear();
 
 	if (!CFG::Materials_Active || I::EngineVGui->IsGameUIVisible() || F::SpyCamera->IsRendering())
 		return;
@@ -449,49 +410,17 @@ void CMaterials::Run()
 		if (CFG::Materials_Players_No_Depth)
 			pRenderContext->DepthRange(0.0f, 0.2f);
 
-		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
+		for (const auto pPlayer : F::VisualUtils->GetModelPlayerCandidates(pLocal))
 		{
-			if (!pEntity)
-				continue;
-
-			const auto pPlayer = pEntity->As<C_TFPlayer>();
-
-			if (pPlayer->deadflag())
-				continue;
-
-			const bool bIsLocal = pPlayer == pLocal;
-			const bool bIsFriend = pPlayer->IsPlayerOnSteamFriendsList();
-
-			if (CFG::Materials_Players_Ignore_Local && bIsLocal)
-				continue;
-
-			if (CFG::Materials_Players_Ignore_Friends && bIsFriend)
-				continue;
-
-			if (!bIsLocal)
-			{
-				if (!bIsFriend)
-				{
-					if (CFG::Materials_Players_Ignore_Teammates && pPlayer->m_iTeamNum() == pLocal->m_iTeamNum())
-					{
-						if (CFG::Materials_Players_Show_Teammate_Medics)
-						{
-							if (pPlayer->m_iClass() != TF_CLASS_MEDIC)
-								continue;
-						}
-
-						else
-						{
-							continue;
-						}
-					}
-
-					if (CFG::Materials_Players_Ignore_Enemies && pPlayer->m_iTeamNum() != pLocal->m_iTeamNum())
-						continue;
-				}
-			}
-
-			if (!F::VisualUtils->IsOnScreen(pLocal, pPlayer))
+			if (!F::VisualUtils->ShouldRenderPlayer(
+				pLocal,
+				pPlayer,
+				CFG::Materials_Players_Ignore_Local,
+				CFG::Materials_Players_Ignore_Friends,
+				CFG::Materials_Players_Ignore_Teammates,
+				CFG::Materials_Players_Show_Teammate_Medics,
+				CFG::Materials_Players_Ignore_Enemies
+			))
 				continue;
 
 			const auto entColor = F::VisualUtils->GetEntityColor(pLocal, pPlayer);
@@ -543,42 +472,16 @@ void CMaterials::Run()
 		if (CFG::Materials_Buildings_No_Depth)
 			pRenderContext->DepthRange(0.0f, 0.2f);
 
-		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::BUILDINGS_ALL))
+		for (const auto pBuilding : F::VisualUtils->GetModelBuildingCandidates(pLocal))
 		{
-			if (!pEntity)
-				continue;
-
-			const auto pBuilding = pEntity->As<C_BaseObject>();
-
-			if (pBuilding->m_bPlacing())
-				continue;
-
-			const bool bIsLocal = F::VisualUtils->IsEntityOwnedBy(pBuilding, pLocal);
-
-			if (CFG::Materials_Buildings_Ignore_Local && bIsLocal)
-				continue;
-
-			if (!bIsLocal)
-			{
-				if (CFG::Materials_Buildings_Ignore_Teammates && pBuilding->m_iTeamNum() == pLocal->m_iTeamNum())
-				{
-					if (CFG::Materials_Buildings_Show_Teammate_Dispensers)
-					{
-						if (pBuilding->GetClassId() != ETFClassIds::CObjectDispenser)
-							continue;
-					}
-
-					else
-					{
-						continue;
-					}
-				}
-
-				if (CFG::Materials_Buildings_Ignore_Enemies && pBuilding->m_iTeamNum() != pLocal->m_iTeamNum())
-					continue;
-			}
-
-			if (!F::VisualUtils->IsOnScreen(pLocal, pBuilding))
+			if (!F::VisualUtils->ShouldRenderBuilding(
+				pLocal,
+				pBuilding,
+				CFG::Materials_Buildings_Ignore_Local,
+				CFG::Materials_Buildings_Ignore_Teammates,
+				CFG::Materials_Buildings_Show_Teammate_Dispensers,
+				CFG::Materials_Buildings_Ignore_Enemies
+			))
 				continue;
 
 			const auto entColor = F::VisualUtils->GetEntityColor(pLocal, pBuilding);
@@ -617,20 +520,24 @@ void CMaterials::Run()
 		if (CFG::Materials_World_No_Depth)
 			pRenderContext->DepthRange(0.0f, 0.2f);
 
+		auto ApplyWorldColor = [&](const Color_t& color)
+		{
+			if (pMaterial && pMaterial != m_pGlow)
+				I::RenderView->SetColorModulation(color);
+
+			if (pMaterial == m_pGlow)
+				m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(color.r), ColorUtils::ToFloat(color.g), ColorUtils::ToFloat(color.b));
+		};
+
 		if (!CFG::Materials_World_Ignore_HealthPacks)
 		{
 			const auto color = CFG::Color_HealthPack;
+			ApplyWorldColor(color);
 
 			for (const auto pEntity : H::Entities->GetGroup(EEntGroup::HEALTHPACKS))
 			{
 				if (!pEntity || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
-
-				if (pMaterial && pMaterial != m_pGlow)
-					I::RenderView->SetColorModulation(color);
-
-				if (pMaterial == m_pGlow)
-					m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(color.r), ColorUtils::ToFloat(color.g), ColorUtils::ToFloat(color.b));
 
 				DrawEntity(pEntity);
 			}
@@ -639,17 +546,12 @@ void CMaterials::Run()
 		if (!CFG::Materials_World_Ignore_AmmoPacks)
 		{
 			const auto color = CFG::Color_AmmoPack;
+			ApplyWorldColor(color);
 
 			for (const auto pEntity : H::Entities->GetGroup(EEntGroup::AMMOPACKS))
 			{
 				if (!pEntity || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
-
-				if (pMaterial && pMaterial != m_pGlow)
-					I::RenderView->SetColorModulation(color);
-
-				if (pMaterial == m_pGlow)
-					m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(color.r), ColorUtils::ToFloat(color.g), ColorUtils::ToFloat(color.b));
 
 				DrawEntity(pEntity);
 			}
@@ -658,17 +560,12 @@ void CMaterials::Run()
 		if (!CFG::Materials_World_Ignore_Halloween_Gift)
 		{
 			const auto color = CFG::Color_Halloween_Gift;
+			ApplyWorldColor(color);
 
 			for (const auto pEntity : H::Entities->GetGroup(EEntGroup::HALLOWEEN_GIFT))
 			{
 				if (!pEntity || !pEntity->ShouldDraw() || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
-
-				if (pMaterial && pMaterial != m_pGlow)
-					I::RenderView->SetColorModulation(color);
-
-				if (pMaterial == m_pGlow)
-					m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(color.r), ColorUtils::ToFloat(color.g), ColorUtils::ToFloat(color.b));
 
 				DrawEntity(pEntity);
 			}
@@ -677,17 +574,12 @@ void CMaterials::Run()
 		if (!CFG::Materials_World_Ignore_MVM_Money)
 		{
 			const auto color = CFG::Color_MVM_Money;
+			ApplyWorldColor(color);
 
 			for (const auto pEntity : H::Entities->GetGroup(EEntGroup::MVM_MONEY))
 			{
 				if (!pEntity || !pEntity->ShouldDraw() || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
-
-				if (pMaterial && pMaterial != m_pGlow)
-					I::RenderView->SetColorModulation(color);
-
-				if (pMaterial == m_pGlow)
-					m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(color.r), ColorUtils::ToFloat(color.g), ColorUtils::ToFloat(color.b));
 
 				DrawEntity(pEntity);
 			}
@@ -699,26 +591,15 @@ void CMaterials::Run()
 
 		if (!bIgnoringAllProjectiles)
 		{
-			for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PROJECTILES_ALL))
+			for (const auto pEntity : F::VisualUtils->GetModelProjectileCandidates(pLocal))
 			{
-				if (!pEntity || !pEntity->ShouldDraw())
-					continue;
-
-				const bool bIsLocal = F::VisualUtils->IsEntityOwnedBy(pEntity, pLocal);
-
-				if (CFG::Materials_World_Ignore_LocalProjectiles && bIsLocal)
-					continue;
-
-				if (!bIsLocal)
-				{
-					if (CFG::Materials_World_Ignore_EnemyProjectiles && pEntity->m_iTeamNum() != pLocal->m_iTeamNum())
-						continue;
-
-					if (CFG::Materials_World_Ignore_TeammateProjectiles && pEntity->m_iTeamNum() == pLocal->m_iTeamNum())
-						continue;
-				}
-
-				if (!F::VisualUtils->IsOnScreen(pLocal, pEntity))
+				if (!F::VisualUtils->ShouldRenderProjectile(
+					pLocal,
+					pEntity,
+					CFG::Materials_World_Ignore_LocalProjectiles,
+					CFG::Materials_World_Ignore_EnemyProjectiles,
+					CFG::Materials_World_Ignore_TeammateProjectiles
+				))
 					continue;
 
 				const auto color = F::VisualUtils->GetEntityColor(pLocal, pEntity);

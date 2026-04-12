@@ -1,11 +1,80 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
+#include <unordered_map>
+#include <vector>
 
 class CVisualUtils
 {
+private:
+	struct FrameCacheEntry
+	{
+		int Frame = -1;
+		const C_TFPlayer* Local = nullptr;
+		bool OwnedByLocalValid = false;
+		bool OwnedByLocal = false;
+		bool ColorValid = false;
+		Color_t Color = { 255, 255, 255, 255 };
+		bool OnScreenValid = false;
+		bool OnScreen = false;
+	};
+
+	int m_nCachedFrame = -1;
+	const C_TFPlayer* m_pCachedLocal = nullptr;
+	int m_nCachedScreenW = 0;
+	int m_nCachedScreenH = 0;
+	Vec3 m_vCachedLocalOrigin = {};
+	std::unordered_map<const C_BaseEntity*, FrameCacheEntry> m_mapFrameCache = {};
+	bool m_bEntityCandidatesPrepared = false;
+	std::vector<C_TFPlayer*> m_vecPlayerCandidates = {};
+	std::vector<C_BaseObject*> m_vecBuildingCandidates = {};
+	std::vector<C_BaseEntity*> m_vecProjectileCandidates = {};
+	bool m_bModelCandidatesPrepared = false;
+	std::vector<C_TFPlayer*> m_vecModelPlayerCandidates = {};
+	std::vector<C_BaseObject*> m_vecModelBuildingCandidates = {};
+	std::vector<C_BaseEntity*> m_vecModelProjectileCandidates = {};
+
+	void ResetFrameCacheIfNeeded(const C_TFPlayer* pLocal);
+	FrameCacheEntry& GetFrameCacheEntry(const C_BaseEntity* pEntity, const C_TFPlayer* pLocal);
+	bool IsOwnedByLocalCached(const C_TFPlayer* pLocal, const C_BaseEntity* pEntity);
+	void BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal);
+	void BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal);
+
 public:
 	bool IsEntityOwnedBy(C_BaseEntity* pEntity, C_BaseEntity* pWho);
+	bool ShouldRenderPlayer(
+		const C_TFPlayer* pLocal,
+		const C_TFPlayer* pPlayer,
+		bool bIgnoreLocal,
+		bool bIgnoreFriends,
+		bool bIgnoreTeammates,
+		bool bShowTeammateMedics,
+		bool bIgnoreEnemies,
+		bool bIgnoreInvisible = false
+	);
+	bool ShouldRenderBuilding(
+		const C_TFPlayer* pLocal,
+		const C_BaseObject* pBuilding,
+		bool bIgnoreLocal,
+		bool bIgnoreTeammates,
+		bool bShowTeammateDispensers,
+		bool bIgnoreEnemies
+	);
+	bool ShouldRenderProjectile(
+		const C_TFPlayer* pLocal,
+		const C_BaseEntity* pProjectile,
+		bool bIgnoreLocal,
+		bool bIgnoreEnemies,
+		bool bIgnoreTeammates
+	);
+
+	const std::vector<C_TFPlayer*>& GetPlayerCandidates(C_TFPlayer* pLocal);
+	const std::vector<C_BaseObject*>& GetBuildingCandidates(C_TFPlayer* pLocal);
+	const std::vector<C_BaseEntity*>& GetProjectileCandidates(C_TFPlayer* pLocal);
+
+	const std::vector<C_TFPlayer*>& GetModelPlayerCandidates(C_TFPlayer* pLocal);
+	const std::vector<C_BaseObject*>& GetModelBuildingCandidates(C_TFPlayer* pLocal);
+	const std::vector<C_BaseEntity*>& GetModelProjectileCandidates(C_TFPlayer* pLocal);
 
 	Color_t GetAlphaColor(Color_t base, float alpha);
 	Color_t GetEntityColor(C_TFPlayer* pLocal, C_BaseEntity* pEntity);

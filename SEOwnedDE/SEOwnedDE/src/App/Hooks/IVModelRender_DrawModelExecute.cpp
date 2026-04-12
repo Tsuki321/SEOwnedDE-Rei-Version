@@ -9,40 +9,45 @@
 MAKE_SIGNATURE(CBaseAnimating_DrawModel, "client.dll", "4C 8B DC 49 89 5B ? 89 54 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC ? 48 8B 05 ? ? ? ? 48 8D 3D", 0x0);
 MAKE_SIGNATURE(ViewmodelAttachment_DrawModel, "client.dll", "41 8B D5 FF 50 ? 8B 97", 0x6);
 
+static IMaterial* GetViewmodelMaterialByIndex(int nIndex)
+{
+	switch (nIndex)
+	{
+	case 0: return nullptr;
+	case 1: return F::Materials->m_pFlat;
+	case 2: return F::Materials->m_pShaded;
+	case 3: return F::Materials->m_pGlossy;
+	case 4: return F::Materials->m_pGlow;
+	case 5: return F::Materials->m_pPlastic;
+	default: return nullptr;
+	}
+}
+
 MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), void, __fastcall,
 	IVModelRender* ecx, const DrawModelState_t& state, ModelRenderInfo_t& pInfo, matrix3x4_t* pCustomBoneToWorld)
 {
-	if (!F::SpyCamera->IsRendering())
+	const bool bSpyCamRendering = F::SpyCamera->IsRendering();
+	const bool bTakingScreenshot = I::EngineClient->IsTakingScreenshot();
+	const bool bCleanScreenshot = CFG::Misc_Clean_Screenshot && bTakingScreenshot;
+
+	if (!bSpyCamRendering)
 	{
 		const auto pClientEntity = I::ClientEntityList->GetClientEntity(pInfo.entity_index);
 
 		if (pClientEntity)
 		{
-			if (CFG::Visuals_Disable_Dropped_Weapons && pClientEntity->GetClassId() == ETFClassIds::CTFDroppedWeapon)
+			const auto nClassId = pClientEntity->GetClassId();
+
+			if (CFG::Visuals_Disable_Dropped_Weapons && nClassId == ETFClassIds::CTFDroppedWeapon)
 				return;
 
-			const bool clean_ss = CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot();
-
-			if (CFG::Materials_ViewModel_Active && !clean_ss && pClientEntity->GetClassId() == ETFClassIds::CTFViewModel)
+			if (CFG::Materials_ViewModel_Active && !bCleanScreenshot && nClassId == ETFClassIds::CTFViewModel)
 			{
 				if (const auto pLocal = H::Entities->GetLocal())
 				{
 					if (!pLocal->IsUbered() && !pLocal->deadflag())
 					{
-						auto getMaterial = [&](int nIndex) -> IMaterial* {
-							switch (nIndex)
-							{
-								case 0: return nullptr;
-								case 1: return F::Materials->m_pFlat;
-								case 2: return F::Materials->m_pShaded;
-								case 3: return F::Materials->m_pGlossy;
-								case 4: return F::Materials->m_pGlow;
-								case 5: return F::Materials->m_pPlastic;
-								default: return nullptr;
-							}
-						};
-
-						const auto mat = getMaterial(CFG::Materials_ViewModel_Hands_Material);
+						const auto mat = GetViewmodelMaterialByIndex(CFG::Materials_ViewModel_Hands_Material);
 
 						if (mat)
 						{
@@ -99,10 +104,10 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 				}
 			}
 
-			if (CFG::Visuals_Disable_Wearables && pClientEntity->GetClassId() == ETFClassIds::CTFWearable)
+			if (CFG::Visuals_Disable_Wearables && nClassId == ETFClassIds::CTFWearable)
 				return;
 
-			if (pClientEntity->GetClassId() == ETFClassIds::CDynamicProp)
+			if (nClassId == ETFClassIds::CDynamicProp)
 			{
 				if (CFG::Visuals_World_Modulation_Mode == 0)
 				{
@@ -126,7 +131,7 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 				return;
 			}
 
-			if (!I::EngineClient->IsTakingScreenshot())
+			if (!bTakingScreenshot)
 			{
 				const auto pEntity = pClientEntity->As<C_BaseEntity>();
 
@@ -156,20 +161,7 @@ MAKE_HOOK(CBaseAnimating_DrawModel, Signatures::CBaseAnimating_DrawModel.Get(), 
 		{
 			if (!pLocal->IsUbered() && !pLocal->deadflag())
 			{
-				auto getMaterial = [&](int nIndex) -> IMaterial* {
-					switch (nIndex)
-					{
-						case 0: return nullptr;
-						case 1: return F::Materials->m_pFlat;
-						case 2: return F::Materials->m_pShaded;
-						case 3: return F::Materials->m_pGlossy;
-						case 4: return F::Materials->m_pGlow;
-						case 5: return F::Materials->m_pPlastic;
-						default: return nullptr;
-					}
-				};
-
-				const auto mat = getMaterial(CFG::Materials_ViewModel_Weapon_Material);
+				const auto mat = GetViewmodelMaterialByIndex(CFG::Materials_ViewModel_Weapon_Material);
 
 				if (mat)
 				{

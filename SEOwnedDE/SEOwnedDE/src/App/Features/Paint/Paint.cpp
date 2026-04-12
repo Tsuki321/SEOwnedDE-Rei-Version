@@ -1,6 +1,7 @@
 #include "Paint.h"
 
 #include "../CFG.h"
+#include <algorithm>
 
 #pragma warning (disable : 4244) //possible loss of data (int to float)
 
@@ -182,28 +183,30 @@ void CPaint::Run()
 				continue;
 			}
 
+			const float flLifeTime = CFG::Visuals_Paint_LifeTime;
+			if (flLifeTime > 0.0f)
+			{
+				const float flCutoff = I::GlobalVars->curtime - flLifeTime;
+				v.erase(
+					std::remove_if(v.begin(), v.end(), [flCutoff](const PaintRecord_t& record)
+					{
+						return record.TimeAdded < flCutoff;
+					}),
+					v.end()
+				);
+
+				if (v.empty())
+				{
+					it = m_mapPositions.erase(it);
+					continue;
+				}
+			}
+
 			if (v.size() > 1)
 			{
-				for (size_t n = 1; n < v.size(); )
+				for (size_t n = 1; n < v.size(); ++n)
 				{
-					auto flLifeTime = CFG::Visuals_Paint_LifeTime;
-					if (flLifeTime != 0.f)
-					{
-						if (fabsf(I::GlobalVars->curtime - v[n].TimeAdded) > flLifeTime)
-						{
-							v.erase(v.begin() + n);
-							continue;
-						}
-
-						if (fabsf(I::GlobalVars->curtime - v[n - 1].TimeAdded) > flLifeTime)
-						{
-							v.erase(v.begin() + (n - 1));
-							continue;
-						}
-					}
-
 					RenderUtils::RenderLine(v[n].Position, v[n - 1].Position, Rainbow(int(n)), false);
-					n++;
 				}
 
 				bDrewSomething = true;

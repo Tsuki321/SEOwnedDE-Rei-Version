@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
+#include <unordered_set>
 
 class COutlines
 {
@@ -11,7 +12,7 @@ class COutlines
 
 	void Initialize();
 
-	std::map<C_BaseEntity*, bool> m_mapDrawnEntities = {};
+	std::unordered_set<C_BaseEntity*> m_setDrawnEntities = {};
 	bool m_bRendering = false;
 	bool m_bRenderingOutlines = false;
 	bool m_bCleaningUp = false;
@@ -35,7 +36,7 @@ public:
 
 	bool HasDrawn(C_BaseEntity* pEntity)
 	{
-		return m_mapDrawnEntities.contains(pEntity);
+		return m_setDrawnEntities.contains(pEntity);
 	}
 
 	bool IsRendering()

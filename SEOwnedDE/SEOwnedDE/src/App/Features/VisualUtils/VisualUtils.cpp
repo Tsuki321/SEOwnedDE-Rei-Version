@@ -5,6 +5,201 @@
 
 #include "../Players/Players.h"
 
+void CVisualUtils::ResetFrameCacheIfNeeded(const C_TFPlayer* pLocal)
+{
+	const int nFrame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+
+	if (m_nCachedFrame != nFrame || m_pCachedLocal != pLocal)
+	{
+		m_nCachedFrame = nFrame;
+		m_pCachedLocal = pLocal;
+		m_mapFrameCache.clear();
+		m_bEntityCandidatesPrepared = false;
+		m_vecPlayerCandidates.clear();
+		m_vecBuildingCandidates.clear();
+		m_vecProjectileCandidates.clear();
+		m_bModelCandidatesPrepared = false;
+		m_vecModelPlayerCandidates.clear();
+		m_vecModelBuildingCandidates.clear();
+		m_vecModelProjectileCandidates.clear();
+	}
+
+	if (pLocal)
+	{
+		m_vCachedLocalOrigin = pLocal->GetAbsOrigin();
+	}
+
+	m_nCachedScreenW = H::Draw->GetScreenW();
+	m_nCachedScreenH = H::Draw->GetScreenH();
+}
+
+CVisualUtils::FrameCacheEntry& CVisualUtils::GetFrameCacheEntry(const C_BaseEntity* pEntity, const C_TFPlayer* pLocal)
+{
+	auto [it, inserted] = m_mapFrameCache.try_emplace(pEntity);
+	auto& entry = it->second;
+
+	if (entry.Frame != m_nCachedFrame || entry.Local != pLocal)
+	{
+		entry = {};
+		entry.Frame = m_nCachedFrame;
+		entry.Local = pLocal;
+	}
+
+	return entry;
+}
+
+bool CVisualUtils::IsOwnedByLocalCached(const C_TFPlayer* pLocal, const C_BaseEntity* pEntity)
+{
+	if (!pLocal || !pEntity)
+		return false;
+
+	ResetFrameCacheIfNeeded(pLocal);
+
+	auto& cache = GetFrameCacheEntry(pEntity, pLocal);
+
+	if (cache.OwnedByLocalValid)
+		return cache.OwnedByLocal;
+
+	cache.OwnedByLocal = pEntity == pLocal || IsEntityOwnedBy(
+		const_cast<C_BaseEntity*>(pEntity),
+		const_cast<C_TFPlayer*>(pLocal)
+	);
+	cache.OwnedByLocalValid = true;
+
+	return cache.OwnedByLocal;
+}
+
+void CVisualUtils::BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal)
+{
+	ResetFrameCacheIfNeeded(pLocal);
+
+	if (!pLocal || m_bEntityCandidatesPrepared)
+		return;
+
+	m_bEntityCandidatesPrepared = true;
+
+	const auto& players = H::Entities->GetGroup(EEntGroup::PLAYERS_ALL);
+	m_vecPlayerCandidates.reserve(players.size());
+
+	for (const auto pEntity : players)
+	{
+		if (!pEntity)
+			continue;
+
+		auto pPlayer = pEntity->As<C_TFPlayer>();
+
+		if (!pPlayer || pPlayer->deadflag())
+			continue;
+
+		m_vecPlayerCandidates.push_back(pPlayer);
+	}
+
+	const auto& buildings = H::Entities->GetGroup(EEntGroup::BUILDINGS_ALL);
+	m_vecBuildingCandidates.reserve(buildings.size());
+
+	for (const auto pEntity : buildings)
+	{
+		if (!pEntity)
+			continue;
+
+		auto pBuilding = pEntity->As<C_BaseObject>();
+
+		if (!pBuilding || pBuilding->m_bPlacing())
+			continue;
+
+		m_vecBuildingCandidates.push_back(pBuilding);
+	}
+
+	const auto& projectiles = H::Entities->GetGroup(EEntGroup::PROJECTILES_ALL);
+	m_vecProjectileCandidates.reserve(projectiles.size());
+
+	for (const auto pEntity : projectiles)
+	{
+		if (!pEntity || !pEntity->ShouldDraw())
+			continue;
+
+		m_vecProjectileCandidates.push_back(pEntity);
+	}
+}
+
+void CVisualUtils::BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal)
+{
+	ResetFrameCacheIfNeeded(pLocal);
+
+	if (!pLocal || m_bModelCandidatesPrepared)
+		return;
+
+	BuildEntityCandidatesIfNeeded(pLocal);
+
+	m_bModelCandidatesPrepared = true;
+
+	m_vecModelPlayerCandidates.reserve(m_vecPlayerCandidates.size());
+
+	for (const auto pPlayer : m_vecPlayerCandidates)
+	{
+		if (!IsOnScreen(pLocal, pPlayer))
+			continue;
+
+		m_vecModelPlayerCandidates.push_back(pPlayer);
+	}
+
+	m_vecModelBuildingCandidates.reserve(m_vecBuildingCandidates.size());
+
+	for (const auto pBuilding : m_vecBuildingCandidates)
+	{
+		if (!IsOnScreen(pLocal, pBuilding))
+			continue;
+
+		m_vecModelBuildingCandidates.push_back(pBuilding);
+	}
+
+	m_vecModelProjectileCandidates.reserve(m_vecProjectileCandidates.size());
+
+	for (const auto pEntity : m_vecProjectileCandidates)
+	{
+		if (!IsOnScreen(pLocal, pEntity))
+			continue;
+
+		m_vecModelProjectileCandidates.push_back(pEntity);
+	}
+}
+
+const std::vector<C_TFPlayer*>& CVisualUtils::GetPlayerCandidates(C_TFPlayer* pLocal)
+{
+	BuildEntityCandidatesIfNeeded(pLocal);
+	return m_vecPlayerCandidates;
+}
+
+const std::vector<C_BaseObject*>& CVisualUtils::GetBuildingCandidates(C_TFPlayer* pLocal)
+{
+	BuildEntityCandidatesIfNeeded(pLocal);
+	return m_vecBuildingCandidates;
+}
+
+const std::vector<C_BaseEntity*>& CVisualUtils::GetProjectileCandidates(C_TFPlayer* pLocal)
+{
+	BuildEntityCandidatesIfNeeded(pLocal);
+	return m_vecProjectileCandidates;
+}
+
+const std::vector<C_TFPlayer*>& CVisualUtils::GetModelPlayerCandidates(C_TFPlayer* pLocal)
+{
+	BuildModelCandidatesIfNeeded(pLocal);
+	return m_vecModelPlayerCandidates;
+}
+
+const std::vector<C_BaseObject*>& CVisualUtils::GetModelBuildingCandidates(C_TFPlayer* pLocal)
+{
+	BuildModelCandidatesIfNeeded(pLocal);
+	return m_vecModelBuildingCandidates;
+}
+
+const std::vector<C_BaseEntity*>& CVisualUtils::GetModelProjectileCandidates(C_TFPlayer* pLocal)
+{
+	BuildModelCandidatesIfNeeded(pLocal);
+	return m_vecModelProjectileCandidates;
+}
+
 bool CVisualUtils::IsEntityOwnedBy(C_BaseEntity* pEntity, C_BaseEntity* pWho)
 {
 	switch (pEntity->GetClassId())
@@ -39,6 +234,121 @@ bool CVisualUtils::IsEntityOwnedBy(C_BaseEntity* pEntity, C_BaseEntity* pWho)
 	return false;
 }
 
+bool CVisualUtils::ShouldRenderPlayer(
+	const C_TFPlayer* pLocal,
+	const C_TFPlayer* pPlayer,
+	bool bIgnoreLocal,
+	bool bIgnoreFriends,
+	bool bIgnoreTeammates,
+	bool bShowTeammateMedics,
+	bool bIgnoreEnemies,
+	bool bIgnoreInvisible)
+{
+	if (!pLocal || !pPlayer || pPlayer->deadflag())
+		return false;
+
+	const bool bIsLocal = pPlayer == pLocal;
+	const bool bIsFriend = pPlayer->IsPlayerOnSteamFriendsList();
+
+	if (bIgnoreLocal && bIsLocal)
+		return false;
+
+	if (bIgnoreFriends && bIsFriend)
+		return false;
+
+	if (!bIsLocal)
+	{
+		if (!bIsFriend)
+		{
+			if (bIgnoreTeammates && pPlayer->m_iTeamNum() == pLocal->m_iTeamNum())
+			{
+				if (bShowTeammateMedics)
+				{
+					if (pPlayer->m_iClass() != TF_CLASS_MEDIC)
+						return false;
+				}
+				else
+				{
+					return false;
+				}
+			}
+
+			if (bIgnoreEnemies && pPlayer->m_iTeamNum() != pLocal->m_iTeamNum())
+				return false;
+		}
+
+		if (bIgnoreInvisible && pPlayer->m_flInvisibility() >= 1.0f)
+			return false;
+	}
+
+	return true;
+}
+
+bool CVisualUtils::ShouldRenderBuilding(
+	const C_TFPlayer* pLocal,
+	const C_BaseObject* pBuilding,
+	bool bIgnoreLocal,
+	bool bIgnoreTeammates,
+	bool bShowTeammateDispensers,
+	bool bIgnoreEnemies)
+{
+	if (!pLocal || !pBuilding || pBuilding->m_bPlacing())
+		return false;
+
+	const bool bIsLocal = IsOwnedByLocalCached(pLocal, pBuilding);
+
+	if (bIgnoreLocal && bIsLocal)
+		return false;
+
+	if (!bIsLocal)
+	{
+		if (bIgnoreTeammates && pBuilding->m_iTeamNum() == pLocal->m_iTeamNum())
+		{
+			if (bShowTeammateDispensers)
+			{
+				if (pBuilding->GetClassId() != ETFClassIds::CObjectDispenser)
+					return false;
+			}
+			else
+			{
+				return false;
+			}
+		}
+
+		if (bIgnoreEnemies && pBuilding->m_iTeamNum() != pLocal->m_iTeamNum())
+			return false;
+	}
+
+	return true;
+}
+
+bool CVisualUtils::ShouldRenderProjectile(
+	const C_TFPlayer* pLocal,
+	const C_BaseEntity* pProjectile,
+	bool bIgnoreLocal,
+	bool bIgnoreEnemies,
+	bool bIgnoreTeammates)
+{
+	if (!pLocal || !pProjectile)
+		return false;
+
+	const bool bIsLocal = IsOwnedByLocalCached(pLocal, pProjectile);
+
+	if (bIgnoreLocal && bIsLocal)
+		return false;
+
+	if (!bIsLocal)
+	{
+		if (bIgnoreEnemies && pProjectile->m_iTeamNum() != pLocal->m_iTeamNum())
+			return false;
+
+		if (bIgnoreTeammates && pProjectile->m_iTeamNum() == pLocal->m_iTeamNum())
+			return false;
+	}
+
+	return true;
+}
+
 Color_t CVisualUtils::GetAlphaColor(Color_t base, float alpha)
 {
 	base.a = static_cast<byte>(alpha * 255.f);
@@ -50,23 +360,42 @@ Color_t CVisualUtils::GetEntityColor(C_TFPlayer* pLocal, C_BaseEntity* pEntity)
 	if (!pLocal || !pEntity)
 		return { 255, 255, 255, 255 };
 
-	if (pEntity->entindex() == G::nTargetIndex)
-		return CFG::Color_Target;
+	ResetFrameCacheIfNeeded(pLocal);
 
-	if (pEntity->GetClassId() == ETFClassIds::CTFPlayer)
+	auto& cache = GetFrameCacheEntry(pEntity, pLocal);
+
+	if (cache.ColorValid)
+		return cache.Color;
+
+	Color_t result = { 255, 255, 255, 255 };
+	bool bResolved = false;
+
+	if (pEntity->entindex() == G::nTargetIndex)
+	{
+		result = CFG::Color_Target;
+		bResolved = true;
+	}
+
+	if (!bResolved && pEntity->GetClassId() == ETFClassIds::CTFPlayer)
 	{
 		const auto pPlayer = pEntity->As<C_TFPlayer>();
 
 		if (pPlayer->IsInvulnerable())
-			return CFG::Color_Invulnerable;
-
-		if (pPlayer->IsInvisible())
-			return CFG::Color_Invisible;
-
-		if (pPlayer != pLocal && pPlayer->IsPlayerOnSteamFriendsList())
-			return CFG::Color_Friend;
-
-		if (pPlayer != pLocal)
+		{
+			result = CFG::Color_Invulnerable;
+			bResolved = true;
+		}
+		else if (pPlayer->IsInvisible())
+		{
+			result = CFG::Color_Invisible;
+			bResolved = true;
+		}
+		else if (pPlayer != pLocal && pPlayer->IsPlayerOnSteamFriendsList())
+		{
+			result = CFG::Color_Friend;
+			bResolved = true;
+		}
+		else if (pPlayer != pLocal)
 		{
 			// TODO: Handle these colors in F::Players
 			PlayerPriority info{};
@@ -74,26 +403,38 @@ Color_t CVisualUtils::GetEntityColor(C_TFPlayer* pLocal, C_BaseEntity* pEntity)
 
 			if (info.Cheater)
 			{
-				return CFG::Color_Cheater;
+				result = CFG::Color_Cheater;
+				bResolved = true;
 			}
-
-			if (info.RetardLegit)
+			else if (info.RetardLegit)
 			{
-				return CFG::Color_RetardLegit;
+				result = CFG::Color_RetardLegit;
+				bResolved = true;
 			}
 		}
 	}
 
-	if (pEntity == pLocal || IsEntityOwnedBy(pEntity, pLocal))
-		return CFG::Color_Local;
+	if (!bResolved && IsOwnedByLocalCached(pLocal, pEntity))
+	{
+		result = CFG::Color_Local;
+		bResolved = true;
+	}
 
-	if (pEntity->m_iTeamNum() == pLocal->m_iTeamNum())
-		return CFG::Color_Teammate;
+	if (!bResolved && pEntity->m_iTeamNum() == pLocal->m_iTeamNum())
+	{
+		result = CFG::Color_Teammate;
+		bResolved = true;
+	}
 
-	if (pEntity->m_iTeamNum() != pLocal->m_iTeamNum())
-		return CFG::Color_Enemy;
+	if (!bResolved && pEntity->m_iTeamNum() != pLocal->m_iTeamNum())
+	{
+		result = CFG::Color_Enemy;
+	}
 
-	return { 255, 255, 255, 255 };
+	cache.Color = result;
+	cache.ColorValid = true;
+
+	return cache.Color;
 }
 
 Color_t CVisualUtils::GetHealthColor(int nHealth, int nMaxHealth)
@@ -218,42 +559,61 @@ int CVisualUtils::GetHalloweenGiftTextureId()
 
 bool CVisualUtils::IsOnScreen(const C_TFPlayer* pLocal, const C_BaseEntity* pEntity)
 {
+	if (!pLocal || !pEntity)
+		return false;
+
+	ResetFrameCacheIfNeeded(pLocal);
+
+	auto& cache = GetFrameCacheEntry(pEntity, pLocal);
+
+	if (cache.OnScreenValid)
+		return cache.OnScreen;
+
+	bool bOnScreen = true;
 	const Vec3& vPos = pEntity->GetAbsOrigin();
-	if (vPos.DistTo(pLocal->GetAbsOrigin()) > 300.0f)
+	if (vPos.DistToSqr(m_vCachedLocalOrigin) > (300.0f * 300.0f))
 	{
 		Vec3 vScreen = {};
 
 		if (H::Draw->W2S(vPos, vScreen))
 		{
 			if (vScreen.x < -400
-				|| vScreen.x > H::Draw->GetScreenW() + 400
+				|| vScreen.x > m_nCachedScreenW + 400
 				|| vScreen.y < -400
-				|| vScreen.y > H::Draw->GetScreenH() + 400)
-				return false;
+				|| vScreen.y > m_nCachedScreenH + 400)
+				bOnScreen = false;
 		}
 
 		else
 		{
-			return false;
+			bOnScreen = false;
 		}
 	}
 
-	return true;
+	cache.OnScreen = bOnScreen;
+	cache.OnScreenValid = true;
+
+	return bOnScreen;
 }
 
 bool CVisualUtils::IsOnScreenNoEntity(const C_TFPlayer* pLocal, const Vec3& vAbsOrigin)
 {
+	if (!pLocal)
+		return false;
+
+	ResetFrameCacheIfNeeded(pLocal);
+
 	const Vec3& vPos = vAbsOrigin;
-	if (vPos.DistTo(pLocal->GetAbsOrigin()) > 300.0f)
+	if (vPos.DistToSqr(m_vCachedLocalOrigin) > (300.0f * 300.0f))
 	{
 		Vec3 vScreen = {};
 
 		if (H::Draw->W2S(vPos, vScreen))
 		{
 			if (vScreen.x < -400
-				|| vScreen.x > H::Draw->GetScreenW() + 400
+				|| vScreen.x > m_nCachedScreenW + 400
 				|| vScreen.y < -400
-				|| vScreen.y > H::Draw->GetScreenH() + 400)
+				|| vScreen.y > m_nCachedScreenH + 400)
 				return false;
 		}
 		else

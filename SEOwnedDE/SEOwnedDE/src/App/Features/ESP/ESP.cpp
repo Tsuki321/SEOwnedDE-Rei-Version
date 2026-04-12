@@ -62,6 +62,28 @@ const char* GetPlayerClassName(C_TFPlayer* pPlayer)
 	}
 }
 
+int GetTracerFromY()
+{
+	switch (CFG::ESP_Tracer_From)
+	{
+	case 0: return 0;
+	case 1: return H::Draw->GetScreenH() / 2;
+	case 2: return H::Draw->GetScreenH();
+	default: return 0;
+	}
+}
+
+int GetTracerToY(int y, int h)
+{
+	switch (CFG::ESP_Tracer_To)
+	{
+	case 0: return y;
+	case 1: return y + (h / 2);
+	case 2: return y + h;
+	default: return 0;
+	}
+}
+
 bool CESP::GetDrawBounds(C_BaseEntity* pEntity, int& x, int& y, int& w, int& h)
 {
 	if (!pEntity)
@@ -127,56 +149,62 @@ bool CESP::GetDrawBounds(C_BaseEntity* pEntity, int& x, int& y, int& w, int& h)
 		Math::VectorTransform(vPoints[n], transform, vTransformed[n]);
 	}
 
-	Vec3 flb = {}, brt = {}, blb = {}, frt = {}, frb = {}, brb = {}, blt = {}, flt = {};
+	Vec3 vProjected[8] = {};
 
-	if (H::Draw->W2S(vTransformed[3], flb) && H::Draw->W2S(vTransformed[5], brt)
-		&& H::Draw->W2S(vTransformed[0], blb) && H::Draw->W2S(vTransformed[4], frt)
-		&& H::Draw->W2S(vTransformed[2], frb) && H::Draw->W2S(vTransformed[1], brb)
-		&& H::Draw->W2S(vTransformed[6], blt) && H::Draw->W2S(vTransformed[7], flt)
-		&& H::Draw->W2S(vTransformed[6], blt) && H::Draw->W2S(vTransformed[7], flt))
+	for (int n = 0; n < 8; n++)
 	{
-		const Vec3 arr[] = {flb, brt, blb, frt, frb, brb, blt, flt};
-
-		float left = flb.x;
-		float top = flb.y;
-		float righ = flb.x;
-		float bottom = flb.y;
-
-		for (int n = 1; n < 8; n++)
-		{
-			if (left > arr[n].x)
-				left = arr[n].x;
-
-			if (top < arr[n].y)
-				top = arr[n].y;
-
-			if (righ < arr[n].x)
-				righ = arr[n].x;
-
-			if (bottom > arr[n].y)
-				bottom = arr[n].y;
-		}
-
-		float x_ = left;
-		float y_ = bottom;
-		float w_ = (righ - left);
-		float h_ = (top - bottom);
-
-		if (bIsPlayer)
-		{
-			x_ += ((righ - left) / 8.0f);
-			w_ -= (((righ - left) / 8.0f) * 2.0f);
-		}
-
-		x = static_cast<int>(x_);
-		y = static_cast<int>(y_);
-		w = static_cast<int>(w_);
-		h = static_cast<int>(h_);
-
-		return x <= H::Draw->GetScreenW() && (x + w) >= 0 && y <= H::Draw->GetScreenH() && (y + h) >= 0;
+		if (!H::Draw->W2S(vTransformed[n], vProjected[n]))
+			return false;
 	}
 
-	return false;
+	const Vec3 flb = vProjected[3];
+	const Vec3 brt = vProjected[5];
+	const Vec3 blb = vProjected[0];
+	const Vec3 frt = vProjected[4];
+	const Vec3 frb = vProjected[2];
+	const Vec3 brb = vProjected[1];
+	const Vec3 blt = vProjected[6];
+	const Vec3 flt = vProjected[7];
+
+	const Vec3 arr[] = {flb, brt, blb, frt, frb, brb, blt, flt};
+
+	float left = flb.x;
+	float top = flb.y;
+	float righ = flb.x;
+	float bottom = flb.y;
+
+	for (int n = 1; n < 8; n++)
+	{
+		if (left > arr[n].x)
+			left = arr[n].x;
+
+		if (top < arr[n].y)
+			top = arr[n].y;
+
+		if (righ < arr[n].x)
+			righ = arr[n].x;
+
+		if (bottom > arr[n].y)
+			bottom = arr[n].y;
+	}
+
+	float x_ = left;
+	float y_ = bottom;
+	float w_ = (righ - left);
+	float h_ = (top - bottom);
+
+	if (bIsPlayer)
+	{
+		x_ += ((righ - left) / 8.0f);
+		w_ -= (((righ - left) / 8.0f) * 2.0f);
+	}
+
+	x = static_cast<int>(x_);
+	y = static_cast<int>(y_);
+	w = static_cast<int>(w_);
+	h = static_cast<int>(h_);
+
+	return x <= H::Draw->GetScreenW() && (x + w) >= 0 && y <= H::Draw->GetScreenH() && (y + h) >= 0;
 }
 
 void CESP::DrawBones(C_TFPlayer* pPlayer, Color_t color)
@@ -243,54 +271,31 @@ void CESP::Run()
 		return;
 
 	float flOriginalAlpha = I::MatSystemSurface->DrawGetAlphaMultiplier();
+	const int nTracerFromX = H::Draw->GetScreenW() / 2;
+	const int nTracerFromY = GetTracerFromY();
 
 	if (CFG::ESP_Players_Active)
 	{
 		I::MatSystemSurface->DrawSetAlphaMultiplier(CFG::ESP_Players_Alpha);
 
-		for (auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
+		for (auto pPlayer : F::VisualUtils->GetPlayerCandidates(pLocal))
 		{
-			if (!pEntity)
-				continue;
-
-			auto pPlayer = pEntity->As<C_TFPlayer>();
-
-			if (pPlayer->deadflag())
-				continue;
-
 			bool bIsLocal = pPlayer == pLocal;
-			bool bIsFriend = pPlayer->IsPlayerOnSteamFriendsList();
 
-			if ((CFG::ESP_Players_Ignore_Local && bIsLocal) || (!I::Input->CAM_IsThirdPerson() && bIsLocal))
+			if (!I::Input->CAM_IsThirdPerson() && bIsLocal)
 				continue;
 
-			if (CFG::ESP_Players_Ignore_Friends && bIsFriend)
+			if (!F::VisualUtils->ShouldRenderPlayer(
+				pLocal,
+				pPlayer,
+				CFG::ESP_Players_Ignore_Local,
+				CFG::ESP_Players_Ignore_Friends,
+				CFG::ESP_Players_Ignore_Teammates,
+				CFG::ESP_Players_Show_Teammate_Medics,
+				CFG::ESP_Players_Ignore_Enemies,
+				CFG::ESP_Players_Ignore_Invisible
+			))
 				continue;
-
-			if (!bIsLocal)
-			{
-				if (!bIsFriend)
-				{
-					if (CFG::ESP_Players_Ignore_Teammates && pPlayer->m_iTeamNum() == pLocal->m_iTeamNum())
-					{
-						if (CFG::ESP_Players_Show_Teammate_Medics)
-						{
-							if (pPlayer->m_iClass() != TF_CLASS_MEDIC)
-								continue;
-						}
-						else
-						{
-							continue;
-						}
-					}
-
-					if (CFG::ESP_Players_Ignore_Enemies && pPlayer->m_iTeamNum() != pLocal->m_iTeamNum())
-						continue;
-				}
-
-				if (CFG::ESP_Players_Ignore_Invisible && pPlayer->m_flInvisibility() >= 1.0f)
-					continue;
-			}
 
 			int x = 0, y = 0, w = 0, h = 0;
 
@@ -339,29 +344,7 @@ void CESP::Run()
 			{
 				if (!bIsLocal)
 				{
-					auto nFromY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_From)
-						{
-						case 0: return 0;
-						case 1: return H::Draw->GetScreenH() / 2;
-						case 2: return H::Draw->GetScreenH();
-						default: return 0;
-						}
-					};
-
-					auto nToY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_To)
-						{
-						case 0: return y;
-						case 1: return y + (h / 2);
-						case 2: return y + h;
-						default: return 0;
-						}
-					};
-
-					H::Draw->Line(H::Draw->GetScreenW() / 2, nFromY(), x + (w / 2), nToY(), entColor);
+					H::Draw->Line(nTracerFromX, nTracerFromY, x + (w / 2), GetTracerToY(y, h), entColor);
 				}
 			}
 
@@ -594,39 +577,17 @@ void CESP::Run()
 	{
 		I::MatSystemSurface->DrawSetAlphaMultiplier(CFG::ESP_Buildings_Alpha);
 
-		for (auto pEntity : H::Entities->GetGroup(EEntGroup::BUILDINGS_ALL))
+		for (auto pBuilding : F::VisualUtils->GetBuildingCandidates(pLocal))
 		{
-			if (!pEntity)
+			if (!F::VisualUtils->ShouldRenderBuilding(
+				pLocal,
+				pBuilding,
+				CFG::ESP_Buildings_Ignore_Local,
+				CFG::ESP_Buildings_Ignore_Teammates,
+				CFG::ESP_Buildings_Show_Teammate_Dispensers,
+				CFG::ESP_Buildings_Ignore_Enemies
+			))
 				continue;
-
-			auto pBuilding = pEntity->As<C_BaseObject>();
-
-			if (pBuilding->m_bPlacing())
-				continue;
-
-			bool bIsLocal = F::VisualUtils->IsEntityOwnedBy(pBuilding, pLocal);
-
-			if (CFG::ESP_Buildings_Ignore_Local && bIsLocal)
-				continue;
-
-			if (!bIsLocal)
-			{
-				if (CFG::ESP_Buildings_Ignore_Teammates && pBuilding->m_iTeamNum() == pLocal->m_iTeamNum())
-				{
-					if (CFG::ESP_Buildings_Show_Teammate_Dispensers)
-					{
-						if (pBuilding->GetClassId() != ETFClassIds::CObjectDispenser)
-							continue;
-					}
-					else
-					{
-						continue;
-					}
-				}
-
-				if (CFG::ESP_Buildings_Ignore_Enemies && pBuilding->m_iTeamNum() != pLocal->m_iTeamNum())
-					continue;
-			}
 
 			int x = 0, y = 0, w = 0, h = 0;
 
@@ -641,29 +602,7 @@ void CESP::Run()
 
 			if (CFG::ESP_Buildings_Tracer)
 			{
-				auto nFromY = [&]() -> int
-				{
-					switch (CFG::ESP_Tracer_From)
-					{
-					case 0: return 0;
-					case 1: return H::Draw->GetScreenH() / 2;
-					case 2: return H::Draw->GetScreenH();
-					default: return 0;
-					}
-				};
-
-				auto nToY = [&]() -> int
-				{
-					switch (CFG::ESP_Tracer_To)
-					{
-					case 0: return y;
-					case 1: return y + (h / 2);
-					case 2: return y + h;
-					default: return 0;
-					}
-				};
-
-				H::Draw->Line(H::Draw->GetScreenW() / 2, nFromY(), x + (w / 2), nToY(), entColor);
+				H::Draw->Line(nTracerFromX, nTracerFromY, x + (w / 2), GetTracerToY(y, h), entColor);
 			}
 
 			if (CFG::ESP_Buildings_Name)
@@ -800,29 +739,7 @@ void CESP::Run()
 
 				if (CFG::ESP_World_Tracer)
 				{
-					auto nFromY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_From)
-						{
-						case 0: return 0;
-						case 1: return H::Draw->GetScreenH() / 2;
-						case 2: return H::Draw->GetScreenH();
-						default: return 0;
-						}
-					};
-
-					auto nToY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_To)
-						{
-						case 0: return y;
-						case 1: return y + (h / 2);
-						case 2: return y + h;
-						default: return 0;
-						}
-					};
-
-					H::Draw->Line(H::Draw->GetScreenW() / 2, nFromY(), x + (w / 2), nToY(), color);
+					H::Draw->Line(nTracerFromX, nTracerFromY, x + (w / 2), GetTracerToY(y, h), color);
 				}
 
 				if (CFG::ESP_World_Name)
@@ -857,29 +774,7 @@ void CESP::Run()
 
 				if (CFG::ESP_World_Tracer)
 				{
-					auto nFromY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_From)
-						{
-						case 0: return 0;
-						case 1: return H::Draw->GetScreenH() / 2;
-						case 2: return H::Draw->GetScreenH();
-						default: return 0;
-						}
-					};
-
-					auto nToY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_To)
-						{
-						case 0: return y;
-						case 1: return y + (h / 2);
-						case 2: return y + h;
-						default: return 0;
-						}
-					};
-
-					H::Draw->Line(H::Draw->GetScreenW() / 2, nFromY(), x + (w / 2), nToY(), color);
+					H::Draw->Line(nTracerFromX, nTracerFromY, x + (w / 2), GetTracerToY(y, h), color);
 				}
 
 				if (CFG::ESP_World_Name)
@@ -908,24 +803,16 @@ void CESP::Run()
 
 		if (!bIgnoringAllProjectiles)
 		{
-			for (auto pEntity : H::Entities->GetGroup(EEntGroup::PROJECTILES_ALL))
+			for (auto pEntity : F::VisualUtils->GetProjectileCandidates(pLocal))
 			{
-				if (!pEntity || !pEntity->ShouldDraw())
+				if (!F::VisualUtils->ShouldRenderProjectile(
+					pLocal,
+					pEntity,
+					CFG::ESP_World_Ignore_LocalProjectiles,
+					CFG::ESP_World_Ignore_EnemyProjectiles,
+					CFG::ESP_World_Ignore_TeammateProjectiles
+				))
 					continue;
-
-				bool bIsLocal = F::VisualUtils->IsEntityOwnedBy(pEntity, pLocal);
-
-				if (CFG::ESP_World_Ignore_LocalProjectiles && bIsLocal)
-					continue;
-
-				if (!bIsLocal)
-				{
-					if (CFG::ESP_World_Ignore_EnemyProjectiles && pEntity->m_iTeamNum() != pLocal->m_iTeamNum())
-						continue;
-
-					if (CFG::ESP_World_Ignore_TeammateProjectiles && pEntity->m_iTeamNum() == pLocal->m_iTeamNum())
-						continue;
-				}
 
 				if (!GetDrawBounds(pEntity, x, y, w, h))
 					continue;
@@ -935,29 +822,7 @@ void CESP::Run()
 
 				if (CFG::ESP_World_Tracer)
 				{
-					auto nFromY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_From)
-						{
-						case 0: return 0;
-						case 1: return H::Draw->GetScreenH() / 2;
-						case 2: return H::Draw->GetScreenH();
-						default: return 0;
-						}
-					};
-
-					auto nToY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_To)
-						{
-						case 0: return y;
-						case 1: return y + (h / 2);
-						case 2: return y + h;
-						default: return 0;
-						}
-					};
-
-					H::Draw->Line(H::Draw->GetScreenW() / 2, nFromY(), x + (w / 2), nToY(), entColor);
+					H::Draw->Line(nTracerFromX, nTracerFromY, x + (w / 2), GetTracerToY(y, h), entColor);
 				}
 
 				if (CFG::ESP_World_Name)
@@ -992,29 +857,7 @@ void CESP::Run()
 
 				if (CFG::ESP_World_Tracer)
 				{
-					auto nFromY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_From)
-						{
-						case 0: return 0;
-						case 1: return H::Draw->GetScreenH() / 2;
-						case 2: return H::Draw->GetScreenH();
-						default: return 0;
-						}
-					};
-
-					auto nToY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_To)
-						{
-						case 0: return y;
-						case 1: return y + (h / 2);
-						case 2: return y + h;
-						default: return 0;
-						}
-					};
-
-					H::Draw->Line(H::Draw->GetScreenW() / 2, nFromY(), x + (w / 2), nToY(), color);
+					H::Draw->Line(nTracerFromX, nTracerFromY, x + (w / 2), GetTracerToY(y, h), color);
 				}
 
 				if (CFG::ESP_World_Name)
@@ -1049,29 +892,7 @@ void CESP::Run()
 
 				if (CFG::ESP_World_Tracer)
 				{
-					auto nFromY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_From)
-						{
-						case 0: return 0;
-						case 1: return H::Draw->GetScreenH() / 2;
-						case 2: return H::Draw->GetScreenH();
-						default: return 0;
-						}
-					};
-
-					auto nToY = [&]() -> int
-					{
-						switch (CFG::ESP_Tracer_To)
-						{
-						case 0: return y;
-						case 1: return y + (h / 2);
-						case 2: return y + h;
-						default: return 0;
-						}
-					};
-
-					H::Draw->Line(H::Draw->GetScreenW() / 2, nFromY(), x + (w / 2), nToY(), color);
+					H::Draw->Line(nTracerFromX, nTracerFromY, x + (w / 2), GetTracerToY(y, h), color);
 				}
 
 				if (CFG::ESP_World_Name)
