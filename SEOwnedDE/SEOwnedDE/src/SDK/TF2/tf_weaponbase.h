@@ -309,6 +309,42 @@ public:
 		return *reinterpret_cast<int *>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
 	}
 
+	float& m_flCritTokenBucket()
+	{
+		static int nOffset = NetVars::GetNetVar("CTFWeaponBase", "m_iReloadMode") - 244;
+		return *reinterpret_cast<float*>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
+	}
+
+	int& m_nCritChecks()
+	{
+		static int nOffset = NetVars::GetNetVar("CTFWeaponBase", "m_iReloadMode") - 240;
+		return *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
+	}
+
+	int& m_nCritSeedRequests()
+	{
+		static int nOffset = NetVars::GetNetVar("CTFWeaponBase", "m_iReloadMode") - 236;
+		return *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
+	}
+
+	int& m_iWeaponMode()
+	{
+		static int nOffset = NetVars::GetNetVar("CTFWeaponBase", "m_iReloadMode") - 4;
+		return *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
+	}
+
+	float& m_flCritTime()
+	{
+		static int nOffset = NetVars::GetNetVar("CTFWeaponBase", "m_flLastCritCheckTime") - 4;
+		return *reinterpret_cast<float*>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
+	}
+
+	float& m_flLastRapidFireCritCheckTime()
+	{
+		static int nOffset = NetVars::GetNetVar("CTFWeaponBase", "m_flLastCritCheckTime") + 12;
+		return *reinterpret_cast<float*>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
+	}
+
 	void GetProjectileFireSetup(void *pPlayer, Vector vecOffset, Vector *vecSrc, QAngle *angForward, bool bHitTeammates = true, float flEndDist = 2000.0f) {
 		using fn = void(__fastcall *)(C_TFWeaponBase *, void *, Vector, Vector *, QAngle *, bool, float);
 		reinterpret_cast<fn>(Memory::GetVFunc(this, 402))(this, pPlayer, vecOffset, vecSrc, angForward, bHitTeammates, flEndDist);
@@ -334,6 +370,11 @@ public:
 		return reinterpret_cast<bool(__fastcall *)(void *)>(Signatures::CTFWeaponBase_CalcIsAttackCriticalHelper.Get())(this);
 	}
 
+	bool AreRandomCritsEnabled()
+	{
+		return reinterpret_cast<bool(__fastcall*)(void*)>(Memory::GetVFunc(this, 405))(this);
+	}
+
 	C_BaseAnimating *GetAppropriateWorldOrViewModel() {
 		return reinterpret_cast<C_BaseAnimating * (__fastcall *)(void *)>(Signatures::CTFWeaponBase_GetAppropriateWorldOrViewModel.Get())(this);
 	}
@@ -341,6 +382,49 @@ public:
 	float GetWeaponSpread()
 	{
 		return reinterpret_cast<float(__fastcall *)(void *)>(Signatures::CTFWeaponBaseGun_GetWeaponSpread.Get())(this);
+	}
+
+	float GetDamage(bool bAttribHookValue = true)
+	{
+		if (const auto pWeaponInfo = GetWeaponInfo())
+		{
+			const float flDamage = static_cast<float>(pWeaponInfo->GetWeaponData(TF_WEAPON_PRIMARY_MODE).m_nDamage);
+			return bAttribHookValue ? SDKUtils::AttribHookValue(flDamage, "mult_dmg", this) : flDamage;
+		}
+
+		return 0.0f;
+	}
+
+	float GetFireRate(bool bAttribHookValue = true)
+	{
+		if (const auto pWeaponInfo = GetWeaponInfo())
+		{
+			const float flRate = pWeaponInfo->GetWeaponData(TF_WEAPON_PRIMARY_MODE).m_flTimeFireDelay;
+			return bAttribHookValue ? SDKUtils::AttribHookValue(flRate, "mult_postfiredelay", this) : flRate;
+		}
+
+		return 0.315f;
+	}
+
+	int GetBulletsPerShot(bool bAttribHookValue = true)
+	{
+		if (const auto pWeaponInfo = GetWeaponInfo())
+		{
+			const int nBullets = pWeaponInfo->GetWeaponData(TF_WEAPON_PRIMARY_MODE).m_nBulletsPerShot;
+			return bAttribHookValue ? static_cast<int>(SDKUtils::AttribHookValue(static_cast<float>(nBullets), "mult_bullets_per_shot", this)) : nBullets;
+		}
+
+		return 1;
+	}
+
+	bool IsRapidFire()
+	{
+		if (const auto pWeaponInfo = GetWeaponInfo())
+		{
+			return pWeaponInfo->GetWeaponData(TF_WEAPON_PRIMARY_MODE).m_bUseRapidFireCrits;
+		}
+
+		return false;
 	}
 };
 

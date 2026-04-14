@@ -2313,6 +2313,7 @@ void CMenu::MainWindow()
 			InputKey("Key", CFG::Exploits_Crits_Force_Crit_Key);
 			InputKey("Melee Key", CFG::Exploits_Crits_Force_Crit_Key_Melee);
 			CheckBox("Skip Random Crits", CFG::Exploits_Crits_Skip_Random_Crits);
+			CheckBox("Draw Indicator", CFG::Exploits_Crits_Draw_Indicator);
 		}
 		GroupBoxEnd();
 

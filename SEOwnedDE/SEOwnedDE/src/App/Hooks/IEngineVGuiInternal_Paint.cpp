@@ -9,6 +9,7 @@
 #include "../Features/SpyWarning/SpyWarning.h"
 #include "../Features/TeamWellBeing/TeamWellBeing.h"
 #include "../Features/SeedPred/SeedPred.h"
+#include "../Features/Crits/Crits.h"
 
 MAKE_HOOK(IEngineVGuiInternal_Paint, Memory::GetVFunc(I::EngineVGui, 14), void, __fastcall,
 	void *ecx, int mode)
@@ -24,6 +25,7 @@ MAKE_HOOK(IEngineVGuiInternal_Paint, Memory::GetVFunc(I::EngineVGui, 14), void, 
 			F::ESP->Run();
 			F::TeamWellBeing->Run();
 			F::MiscVisuals->ShiftBar();
+			F::Crits->Paint();
 			F::Radar->Run();
 			F::SpectatorList->Run();
 			F::MiscVisuals->AimbotFOVCircle();

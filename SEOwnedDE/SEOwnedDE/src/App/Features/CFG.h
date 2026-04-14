@@ -458,6 +458,7 @@ namespace CFG
 	CFGVAR(Exploits_Crits_Force_Crit_Key, 0);
 	CFGVAR(Exploits_Crits_Force_Crit_Key_Melee, 0);
 	CFGVAR(Exploits_Crits_Skip_Random_Crits, true);
+	CFGVAR(Exploits_Crits_Draw_Indicator, true);
 
 	CFGVAR(Exploits_SeedPred_Active, true);
 	CFGVAR(Exploits_SeedPred_DrawIndicator, true);

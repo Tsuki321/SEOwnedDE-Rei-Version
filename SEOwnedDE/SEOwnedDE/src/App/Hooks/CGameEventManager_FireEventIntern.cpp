@@ -2,6 +2,8 @@
 
 #include "../Features/CFG.h"
 #include "../Features/Triggerbot/AutoVaccinator/AutoVaccinator.h"
+#include "../Features/Crits/Crits.h"
+#include "../Features/Killstreak/Killstreak.h"
 #include "../Features/Players/Players.h"
 #include "../Features/Misc/Misc.h"
 
@@ -52,7 +54,10 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 		static constexpr auto revive_player_notify{ HASH_CT("revive_player_notify") };
 		static constexpr auto player_connect_client{ HASH_CT("player_connect_client") };
 
-		if (HASH_RT(event->GetName()) == vote_cast)
+		const auto eventHash = HASH_RT(event->GetName());
+		F::Crits->Event(event, eventHash);
+
+		if (eventHash == vote_cast)
 		{
 			OnVoteCast(event);
 		}
