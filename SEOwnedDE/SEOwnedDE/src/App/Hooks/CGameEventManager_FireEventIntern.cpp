@@ -3,7 +3,6 @@
 #include "../Features/CFG.h"
 #include "../Features/Triggerbot/AutoVaccinator/AutoVaccinator.h"
 #include "../Features/Crits/Crits.h"
-#include "../Features/Killstreak/Killstreak.h"
 #include "../Features/Players/Players.h"
 #include "../Features/Misc/Misc.h"
 

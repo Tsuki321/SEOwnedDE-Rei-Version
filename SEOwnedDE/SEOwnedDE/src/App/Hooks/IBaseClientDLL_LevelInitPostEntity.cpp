@@ -1,6 +1,5 @@
 #include "../../SDK/SDK.h"
 
-#include "../Features/Killstreak/Killstreak.h"
 #include "../Features/Crits/Crits.h"
 #include "../Features/Players/Players.h"
 #include "../Features/CFG.h"
@@ -11,7 +10,6 @@ MAKE_HOOK(IBaseClientDLL_LevelInitPostEntity, Memory::GetVFunc(I::BaseClientDLL,
 	CALL_ORIGINAL(ecx);
 
 	H::Entities->UpdateModelIndexes();
-	F::Killstreak->Reset();
 	F::Crits->Reset();
 
 	if (CFG::Visuals_Chat_Player_List_Info)
