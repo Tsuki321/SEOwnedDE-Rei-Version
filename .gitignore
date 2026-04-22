@@ -9,6 +9,7 @@
 .github/lib/
 .github/skills/
 .github/tests/
+.github/instructions/
 !.github/workflows/
 
 ### C++ ###
@@ -440,6 +441,9 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Unibox
+Unibox-master/
 
 ### VisualStudio Patch ###
 # Additional files built by Visual Studio
