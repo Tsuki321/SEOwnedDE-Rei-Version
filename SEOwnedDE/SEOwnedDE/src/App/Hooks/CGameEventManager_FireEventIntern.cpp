@@ -63,7 +63,6 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 			OnVoteCast(event);
 		}
 
-<<<<<<< HEAD
 		if (eventHash == player_hurt)
 		{
 			F::AutoVaccinator->ProcessPlayerHurt(event);
