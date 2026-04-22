@@ -182,6 +182,14 @@ namespace Math
 			output[i] = input.Dot((Vec3 &)matrix[i]) + matrix[i][3];
 	}
 
+	inline float RemapVal(float val, float A, float B, float C, float D)
+	{
+		if (A == B)
+			return val >= B ? D : C;
+
+		return C + (D - C) * ((val - A) / (B - A));
+	}
+
 	inline float RemapValClamped(float val, float A, float B, float C, float D)
 	{
 		if (A == B)

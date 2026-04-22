@@ -1,7 +1,6 @@
 name: Build SEOwnedDE DLL
 
 on:
-  push:
   pull_request:
   workflow_dispatch:
 

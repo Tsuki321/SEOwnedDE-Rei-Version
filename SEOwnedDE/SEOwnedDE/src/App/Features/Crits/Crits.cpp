@@ -538,7 +538,7 @@ void CCrits::Paint()
 	}
 
 	H::Draw->Rect(x, y, nBoxW, nTextAreaH, {0, 0, 0, 180});
-	H::Draw->OutlinedRect(x, y, nBoxW, nTextAreaH, CFG::Menu_Outline);
+	H::Draw->OutlinedRect(x, y, nBoxW, nTextAreaH, CFG::Menu_Accent_Primary);
 
 	H::Draw->Rect(x, y + nTextAreaH, nBoxW, nBarH, {0, 0, 0, 180});
 
@@ -656,5 +656,4 @@ void CCrits::Reset()
 	m_bMelee = false;
 	m_flCritChance = 0.0f;
 	m_flMultCritChance = 1.0f;
-	}
 }
