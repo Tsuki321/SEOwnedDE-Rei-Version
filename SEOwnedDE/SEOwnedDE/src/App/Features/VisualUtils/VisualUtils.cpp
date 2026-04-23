@@ -235,8 +235,8 @@ bool CVisualUtils::IsEntityOwnedBy(C_BaseEntity* pEntity, C_BaseEntity* pWho)
 }
 
 bool CVisualUtils::ShouldRenderPlayer(
-	const C_TFPlayer* pLocal,
-	const C_TFPlayer* pPlayer,
+	C_TFPlayer* pLocal,
+	C_TFPlayer* pPlayer,
 	bool bIgnoreLocal,
 	bool bIgnoreFriends,
 	bool bIgnoreTeammates,
@@ -285,8 +285,8 @@ bool CVisualUtils::ShouldRenderPlayer(
 }
 
 bool CVisualUtils::ShouldRenderBuilding(
-	const C_TFPlayer* pLocal,
-	const C_BaseObject* pBuilding,
+	C_TFPlayer* pLocal,
+	C_BaseObject* pBuilding,
 	bool bIgnoreLocal,
 	bool bIgnoreTeammates,
 	bool bShowTeammateDispensers,
@@ -323,8 +323,8 @@ bool CVisualUtils::ShouldRenderBuilding(
 }
 
 bool CVisualUtils::ShouldRenderProjectile(
-	const C_TFPlayer* pLocal,
-	const C_BaseEntity* pProjectile,
+	C_TFPlayer* pLocal,
+	C_BaseEntity* pProjectile,
 	bool bIgnoreLocal,
 	bool bIgnoreEnemies,
 	bool bIgnoreTeammates)

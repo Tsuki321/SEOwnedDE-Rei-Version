@@ -43,8 +43,8 @@ private:
 public:
 	bool IsEntityOwnedBy(C_BaseEntity* pEntity, C_BaseEntity* pWho);
 	bool ShouldRenderPlayer(
-		const C_TFPlayer* pLocal,
-		const C_TFPlayer* pPlayer,
+		C_TFPlayer* pLocal,
+		C_TFPlayer* pPlayer,
 		bool bIgnoreLocal,
 		bool bIgnoreFriends,
 		bool bIgnoreTeammates,
@@ -53,16 +53,16 @@ public:
 		bool bIgnoreInvisible = false
 	);
 	bool ShouldRenderBuilding(
-		const C_TFPlayer* pLocal,
-		const C_BaseObject* pBuilding,
+		C_TFPlayer* pLocal,
+		C_BaseObject* pBuilding,
 		bool bIgnoreLocal,
 		bool bIgnoreTeammates,
 		bool bShowTeammateDispensers,
 		bool bIgnoreEnemies
 	);
 	bool ShouldRenderProjectile(
-		const C_TFPlayer* pLocal,
-		const C_BaseEntity* pProjectile,
+		C_TFPlayer* pLocal,
+		C_BaseEntity* pProjectile,
 		bool bIgnoreLocal,
 		bool bIgnoreEnemies,
 		bool bIgnoreTeammates
