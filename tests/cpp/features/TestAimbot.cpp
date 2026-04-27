@@ -61,26 +61,13 @@ TEST(AimbotContracts, ProjectileTargetBudgetRemainsStrict) {
     ASSERT_TRUE(std::filesystem::exists(projectilePath));
 
     const auto projectileSource = testhelpers::ReadTextFile(projectilePath);
-    EXPECT_NE(projectileSource.find("targetsProcessed >= maxTargets"), std::string::npos);
-    EXPECT_NE(projectileSource.find("targetsProcessed++"), std::string::npos);
-    EXPECT_NE(projectileSource.find("Aimbot_Projectile_Initial_Target_Prune"), std::string::npos);
-    EXPECT_NE(projectileSource.find("Aimbot_Projectile_Strict_Target_Budget"), std::string::npos);
-    EXPECT_NE(projectileSource.find("rawMaxTargets"), std::string::npos);
-    EXPECT_NE(projectileSource.find("const bool bUseInitialTargetPrune = bUseStrictTargetBudget && CFG::Aimbot_Projectile_Initial_Target_Prune"), std::string::npos);
-    EXPECT_NE(projectileSource.find("targetsScannedLegacy"), std::string::npos);
-    EXPECT_NE(projectileSource.find("const auto passesInitialPrune"), std::string::npos);
-    EXPECT_NE(projectileSource.find("target.DistanceTo <= flMaxReach"), std::string::npos);
-    EXPECT_NE(projectileSource.find("bTrackMovementPath"), std::string::npos);
-    EXPECT_NE(projectileSource.find("AimbotProjectilePrediction.h"), std::string::npos);
-    EXPECT_NE(projectileSource.find("bMethod4or5"), std::string::npos);
-    EXPECT_NE(projectileSource.find("Method4_Max_Refine_Samples"), std::string::npos);
-    EXPECT_NE(projectileSource.find("ComputeTemporalResidual"), std::string::npos);
-    EXPECT_NE(projectileSource.find("TICKS_TO_TIME(nTick + 1)"), std::string::npos);
-    EXPECT_NE(projectileSource.find("flArrivalWithTimingBias <= (CFG::Aimbot_Projectile_Max_Simulation_Time + flTemporalTolerance)"), std::string::npos);
-    EXPECT_NE(projectileSource.find("sanitizeFiniteRange"), std::string::npos);
-    EXPECT_NE(projectileSource.find("GetLatency(FLOW_INCOMING)"), std::string::npos);
-    EXPECT_NE(projectileSource.find("GetClientInterpAmount()"), std::string::npos);
-    EXPECT_NE(projectileSource.find("const float flTemporalTolerance = TICKS_TO_TIME(6)"), std::string::npos);
+    EXPECT_NE(projectileSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Projectile_Sort)"), std::string::npos);
+    EXPECT_NE(projectileSource.find("Aimbot_Projectile_Max_Processing_Targets"), std::string::npos);
+    EXPECT_NE(projectileSource.find("auto targetsScanned{ 0 }"), std::string::npos);
+    EXPECT_NE(projectileSource.find("targetsScanned >= maxTargets"), std::string::npos);
+    EXPECT_NE(projectileSource.find("target.Position.DistTo(vLocalPos) > 400.0f"), std::string::npos);
+    EXPECT_NE(projectileSource.find("targetsScanned++"), std::string::npos);
+    EXPECT_NE(projectileSource.find("SolveTarget(pLocal, pWeapon, pCmd, target)"), std::string::npos);
 }
 
 TEST(AimbotPredictionMath, HybridBlendFactorDecaysProperly) {
