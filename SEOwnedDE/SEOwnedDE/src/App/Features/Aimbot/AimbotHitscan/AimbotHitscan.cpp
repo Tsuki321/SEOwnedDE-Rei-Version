@@ -411,7 +411,7 @@ bool CAimbotHitscan::ShouldAim(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWea
 	if (CFG::Aimbot_Hitscan_Aim_Type == 1 && (!IsFiring(pCmd, pWeapon) || !pWeapon->HasPrimaryAmmoForShot()))
 		return false;
 
-	if (CFG::Aimbot_Hitscan_Aim_Type == 2)
+	if (CFG::Aimbot_Hitscan_Aim_Type == 2 || CFG::Aimbot_Hitscan_Aim_Type == 3)
 	{
 		const int nWeaponID = pWeapon->GetWeaponID();
 		if (nWeaponID == TF_WEAPON_SNIPERRIFLE || nWeaponID == TF_WEAPON_SNIPERRIFLE_CLASSIC || nWeaponID == TF_WEAPON_SNIPERRIFLE_DECAP)
@@ -463,6 +463,39 @@ void CAimbotHitscan::Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, const Vec3& vAngles
 			// Apply smoothing
 			if (vDelta.Length() > 0.0f && CFG::Aimbot_Hitscan_Smoothing > 0.f)
 				pCmd->viewangles += vDelta / CFG::Aimbot_Hitscan_Smoothing;
+
+			break;
+		}
+
+		// Aim Assist
+		case 3:
+		{
+			Vec3 vDelta = vAngleTo - pCmd->viewangles;
+			Math::ClampAngles(vDelta);
+
+			if (vDelta.Length() > 0.0f && CFG::Aimbot_Hitscan_AimAssist_Strength > 0.0f)
+			{
+				if (!CFG::Aimbot_Hitscan_AimAssist_Stabilization)
+				{
+					pCmd->viewangles += vDelta / CFG::Aimbot_Hitscan_AimAssist_Strength;
+					break;
+				}
+
+				Vec3 vAssistStep = vDelta / CFG::Aimbot_Hitscan_AimAssist_Strength;
+
+				// Keep legacy feel: tiny deadzone and per-tick step clamp only.
+				if (vAssistStep.LengthSqr() < (0.02f * 0.02f))
+					break;
+
+				constexpr float flMaxAssistStep = 4.0f;
+				if (vAssistStep.x > flMaxAssistStep) vAssistStep.x = flMaxAssistStep;
+				if (vAssistStep.x < -flMaxAssistStep) vAssistStep.x = -flMaxAssistStep;
+				if (vAssistStep.y > flMaxAssistStep) vAssistStep.y = flMaxAssistStep;
+				if (vAssistStep.y < -flMaxAssistStep) vAssistStep.y = -flMaxAssistStep;
+
+				pCmd->viewangles += vAssistStep;
+				Math::ClampAngles(pCmd->viewangles);
+			}
 
 			break;
 		}
@@ -549,7 +582,7 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 		}
 	}
 
-	if (CFG::Aimbot_Hitscan_Advanced_Smooth_AutoShoot && CFG::Aimbot_Hitscan_Aim_Type == 2)
+	if (CFG::Aimbot_Hitscan_Advanced_Smooth_AutoShoot && (CFG::Aimbot_Hitscan_Aim_Type == 2 || CFG::Aimbot_Hitscan_Aim_Type == 3))
 	{
 		Vec3 vForward = {};
 		Math::AngleVectors(pCmd->viewangles, &vForward);
