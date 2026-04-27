@@ -1,0 +1,42 @@
+name: Feature Unit Tests (Google Test)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test_features:
+    name: Run Unit Tests (ReleaseAVX2 | x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\SEOwnedDE\packages
+          key: nuget-packages-tests-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/packages.config', 'tests/**/packages.config') }}
+          restore-keys: |
+            nuget-packages-tests-${{ runner.os }}-
+
+      - name: Restore NuGet packages
+        run: nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
+        shell: powershell
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
+
+      - name: Build Google Test Project
+        run: msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE_Tests /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
+        shell: powershell
+
+      - name: Run Features Unit Tests
+        run: |
+          $testExe = "${{ github.workspace }}\SEOwnedDE\bin\tests\ReleaseAVX2\SEOwnedDE_Tests.exe"
+          if (-not (Test-Path $testExe)) { Write-Error "Test executable not produced: $testExe"; exit 1 }
+          Write-Output "Running tests: $testExe"
+          & $testExe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: powershell
