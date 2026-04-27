@@ -145,8 +145,9 @@ TEST(AimbotContracts, SharedTargetScoringIsCentralizedAcrossModes) {
     const auto meleeSource = testhelpers::ReadTextFile(meleePath);
     const auto projectileSource = testhelpers::ReadTextFile(projectilePath);
 
-    EXPECT_NE(commonSource.find("bool BuildTarget("), std::string::npos);
-    EXPECT_NE(hitscanSource.find("F::AimbotCommon->BuildTarget("), std::string::npos);
-    EXPECT_NE(meleeSource.find("F::AimbotCommon->BuildTarget("), std::string::npos);
-    EXPECT_NE(projectileSource.find("F::AimbotCommon->BuildTarget("), std::string::npos);
+    EXPECT_NE(commonSource.find("void Sort(std::vector<T>& targets, int sortMode)"), std::string::npos);
+    EXPECT_NE(commonSource.find("std::ranges::sort(targets"), std::string::npos);
+    EXPECT_NE(hitscanSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Hitscan_Sort)"), std::string::npos);
+    EXPECT_NE(meleeSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Melee_Sort)"), std::string::npos);
+    EXPECT_NE(projectileSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Projectile_Sort)"), std::string::npos);
 }

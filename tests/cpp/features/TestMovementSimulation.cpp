@@ -30,10 +30,11 @@ TEST(MovementSimulationContracts, MainSourceContainsFeatureTokens) {
 
     const auto mainSource = testhelpers::ReadTextFile(mainPath);
     EXPECT_NE(mainSource.find("CFG::Aimbot_Projectile_Aim_Prediction_Method"), std::string::npos);
-    EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 4"), std::string::npos);
-    EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 5"), std::string::npos);
-    EXPECT_NE(mainSource.find("m_vMethod5SmoothedVelocity"), std::string::npos);
-    EXPECT_NE(mainSource.find("ComputeHybridBlendFactor(m_nMethod5TickCount, CFG::Aimbot_Projectile_Method5_Decay_Rate, m_flMethod5Confidence, TICK_INTERVAL)"), std::string::npos);
+    EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 2"), std::string::npos);
+    EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 3"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_vAdaptiveVelocity"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_vAccelTrend"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_vAdaptiveVelocity.Length2D() > 1.0f"), std::string::npos);
     EXPECT_NE(mainSource.find("H::Entities"), std::string::npos);
     EXPECT_NE(mainSource.find("CPlayerDataBackup::Store("), std::string::npos);
     EXPECT_GE(testhelpers::CountTokenAcrossFiles(cppFiles, "CFG::"), 1u);

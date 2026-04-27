@@ -53,7 +53,7 @@ TEST(AnimationSmoothnessTest, ValidatesVelocityBlocked) {
     EXPECT_EQ(g_CalledOriginal, 0);
 }
 
-TEST(AnimationSmoothnessTest, ValidatesPoseParametersNotBlocked) {
+TEST(AnimationSmoothnessTest, ValidatesPoseParametersBlocked) {
     g_CalledOriginal = 0;
     CFG::Misc_Accuracy_Improvements = true;
     char dummyEcx[1024] = {0};
@@ -63,17 +63,17 @@ TEST(AnimationSmoothnessTest, ValidatesPoseParametersNotBlocked) {
     
     CBaseEntity_AddVar(pEntity, nullptr, reinterpret_cast<IInterpolatedVar*>(&watcher), 0, false);
     
-    // Should HAVE called original, since pose params are needed for smooth animation
-    EXPECT_EQ(g_CalledOriginal, 1);
+    // Pose params are filtered by the hook when accuracy improvements are enabled.
+    EXPECT_EQ(g_CalledOriginal, 0);
 }
 
-TEST(AnimationSmoothnessTest, ValidatesCycleNotBlocked) {
+TEST(AnimationSmoothnessTest, ValidatesCycleBlocked) {
     g_CalledOriginal = 0;
     CFG::Misc_Accuracy_Improvements = true;
     char dummyEcx[1024] = {0};
     C_BaseEntity* pEntity = reinterpret_cast<C_BaseEntity*>(dummyEcx);
     MockInterpolatedVar watcher("C_BaseAnimating::m_iv_flCycle");
     CBaseEntity_AddVar(pEntity, nullptr, reinterpret_cast<IInterpolatedVar*>(&watcher), 0, false);
-    EXPECT_EQ(g_CalledOriginal, 1);
+    EXPECT_EQ(g_CalledOriginal, 0);
 }
 

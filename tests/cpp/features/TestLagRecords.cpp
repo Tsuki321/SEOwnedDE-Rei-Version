@@ -32,9 +32,9 @@ TEST(LagRecordsContracts, MainSourceContainsFeatureTokens) {
     EXPECT_NE(mainSource.find("CFG::Misc_SetupBones_Optimization"), std::string::npos);
     EXPECT_NE(mainSource.find("H::Entities"), std::string::npos);
     EXPECT_NE(mainSource.find("CLagRecords::IsSimulationTimeValid("), std::string::npos);
-    EXPECT_NE(mainSource.find("std::unordered_set<C_TFPlayer*> validPlayers"), std::string::npos);
-    EXPECT_NE(mainSource.find("GetAbsOrigin() - pRecord->AbsOrigin"), std::string::npos);
-    EXPECT_NE(mainSource.find("std::min<int>(pCachedBoneData->Count(), 128)"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_LagRecords[pPlayer].emplace_front(newRecord)"), std::string::npos);
+    EXPECT_NE(mainSource.find("for (auto& records : m_LagRecords | std::views::values)"), std::string::npos);
+    EXPECT_NE(mainSource.find("memcpy(pCachedBoneData->Base(), pRecord->BoneMatrix, sizeof(matrix3x4_t) * pCachedBoneData->Count())"), std::string::npos);
     EXPECT_GE(testhelpers::CountTokenAcrossFiles(cppFiles, "CFG::"), 1u);
 }
 
