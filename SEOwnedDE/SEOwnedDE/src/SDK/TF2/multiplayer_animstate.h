@@ -207,6 +207,8 @@ public:
 	virtual void SetDebug(bool bDebug) = 0;
 };
 
+inline IInterpolatedVar::~IInterpolatedVar() = default;
+
 class CInterpolatedVar
 {
 public:

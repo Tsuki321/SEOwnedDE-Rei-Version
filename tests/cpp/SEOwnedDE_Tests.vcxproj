@@ -380,6 +380,8 @@
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\Triggerbot\AutoAirblast\AutoAirblast.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\Triggerbot\AutoBackstab\AutoBackstab.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\Triggerbot\AutoDetonate\AutoDetonate.cpp" />
+    <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\Triggerbot\AutoShoot\AutoShoot.cpp" />
+    <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\Triggerbot\AutoVaccinator\AutoVaccinator.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\Triggerbot\Triggerbot.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\VisualUtils\VisualUtils.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\WorldModulation\WorldModulation.cpp" />
