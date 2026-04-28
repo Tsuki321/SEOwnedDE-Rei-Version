@@ -2,6 +2,8 @@
 
 #include "../../../SDK/SDK.h"
 
+#include <unordered_set>
+
 struct LagRecord_t
 {
 	C_TFPlayer* Player = nullptr;
@@ -22,6 +24,12 @@ class CLagRecords
 	std::unordered_map<C_TFPlayer*, std::deque<LagRecord_t>> m_LagRecords = {};
 	bool m_bSettingUpBones = false;
 
+	// Phase 2: tracks wearable / move-child entities whose SetupBones call failed
+	// during the most recent AddRecord invocation. The SetupBones cache short-circuit
+	// must defer to the engine implementation for these entities so a one-frame
+	// stale pose is rebuilt instead of being copied from a partial cache.
+	std::unordered_set<C_BaseEntity*> m_FailedChildBones = {};
+
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime);
 
 public:
@@ -31,6 +39,13 @@ public:
 	void UpdateRecords();
 	bool DiffersFromCurrent(const LagRecord_t* pRecord);
 	bool IsSettingUpBones() { return m_bSettingUpBones; }
+
+	// Phase 2: query whether a wearable / move-child entity failed its most recent
+	// SetupBones capture and should bypass the cached-bone short-circuit.
+	bool HasFailedBones(C_BaseEntity* pEntity) const
+	{
+		return m_FailedChildBones.contains(pEntity);
+	}
 };
 
 MAKE_SINGLETON_SCOPED(CLagRecords, LagRecords, F);

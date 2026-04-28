@@ -15,6 +15,25 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 	m_bSettingUpBones = true;
 
+	// Phase 2: scope failed-child tracking per AddRecord call. Any wearable that
+	// successfully refreshes below removes itself from the set; failures stay
+	// tracked until the next AddRecord for this player.
+	{
+		auto it = m_FailedChildBones.begin();
+		while (it != m_FailedChildBones.end())
+		{
+			auto* child = *it;
+			if (!child || child->GetMoveParent() == pPlayer)
+			{
+				it = m_FailedChildBones.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+	}
+
 	const auto setup_bones_optimization{ CFG::Misc_SetupBones_Optimization };
 
 	if (setup_bones_optimization)
@@ -32,7 +51,15 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 			if (attach->ShouldDraw())
 			{
 				attach->InvalidateBoneCache();
-				attach->SetupBones(nullptr, -1, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
+				const auto childResult = attach->SetupBones(nullptr, -1, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
+
+				// Phase 2: track wearables whose SetupBones returned false so the
+				// cached-bone fast path can defer to the engine implementation
+				// next frame and avoid serving a partial pose.
+				if (!childResult)
+				{
+					m_FailedChildBones.insert(attach);
+				}
 			}
 
 			attach = attach->NextMovePeer();
@@ -110,6 +137,14 @@ void CLagRecords::UpdateRecords()
 		if (!m_LagRecords.empty())
 		{
 			m_LagRecords.clear();
+		}
+
+		// Phase 2: drop any tracked failed-child entries when the local player
+		// is no longer in a valid state for record-keeping (map change, ghost,
+		// kart, etc.) to prevent stale pointers persisting across respawn.
+		if (!m_FailedChildBones.empty())
+		{
+			m_FailedChildBones.clear();
 		}
 
 		return;
