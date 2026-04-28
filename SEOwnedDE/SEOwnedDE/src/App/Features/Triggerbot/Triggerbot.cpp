@@ -5,12 +5,13 @@
 #include "AutoAirblast/AutoAirblast.h"
 #include "AutoBackstab/AutoBackstab.h"
 #include "AutoDetonate/AutoDetonate.h"
+#include "AutoDetonateFlares/AutoDetonateFlares.h"
 #include "AutoShoot/AutoShoot.h"
 #include "AutoVaccinator/AutoVaccinator.h"
 
 void CTriggerbot::Run(CUserCmd* pCmd)
 {
-	if (!CFG::Triggerbot_Active || (CFG::Triggerbot_Key && !H::Input->IsDown(CFG::Triggerbot_Key)))
+	if (!CFG::Triggerbot_Active)
 		return;
 
 	const auto pLocal = H::Entities->GetLocal();
@@ -24,6 +25,13 @@ void CTriggerbot::Run(CUserCmd* pCmd)
 	const auto pWeapon = H::Entities->GetWeapon();
 
 	if (!pWeapon)
+		return;
+
+	// AutoDetonateFlares dispatches BEFORE the parent Triggerbot_Key gate so its own
+	// Require_Key / Ignore_Key toggles can independently honour or bypass the master key.
+	F::AutoDetonateFlares->Run(pLocal, pWeapon, pCmd);
+
+	if (CFG::Triggerbot_Key && !H::Input->IsDown(CFG::Triggerbot_Key))
 		return;
 
 	F::AutoAirblast->Run(pLocal, pWeapon, pCmd);

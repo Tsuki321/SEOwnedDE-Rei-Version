@@ -89,6 +89,7 @@ namespace CFG
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Friends, true);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Invisible, false);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Invulnerable, true);
+	CFGVAR(Triggerbot_AutoBackstab_Ignore_Razorback, true);
 
 	CFGVAR(Triggerbot_AutoDetonate_Active, true);
 	CFGVAR(Triggerbot_AutoDetonate_Target_Players, true);
@@ -96,6 +97,15 @@ namespace CFG
 	CFGVAR(Triggerbot_AutoDetonate_Ignore_Friends, true);
 	CFGVAR(Triggerbot_AutoDetonate_Ignore_Invisible, false);
 	CFGVAR(Triggerbot_AutoDetonate_Ignore_Invulnerable, false);
+
+	CFGVAR(Triggerbot_AutoDetonateFlares_Active, true);
+	CFGVAR(Triggerbot_AutoDetonateFlares_Radius, 110);              // % of base explosion radius
+	CFGVAR(Triggerbot_AutoDetonateFlares_Account_Ping, true);
+	CFGVAR(Triggerbot_AutoDetonateFlares_Ignore_Friends, true);
+	CFGVAR(Triggerbot_AutoDetonateFlares_Ignore_Invisible, false);
+	CFGVAR(Triggerbot_AutoDetonateFlares_Ignore_Invulnerable, true);
+	CFGVAR(Triggerbot_AutoDetonateFlares_Require_Key, true);        // gate on Triggerbot_Key (master key)
+	CFGVAR(Triggerbot_AutoDetonateFlares_Ignore_Key, false);        // bypass Triggerbot_Key entirely
 
 	CFGVAR(Triggerbot_AutoAirblast_Active, true);
 	CFGVAR(Triggerbot_AutoAirblast_Aim_Assist, true);

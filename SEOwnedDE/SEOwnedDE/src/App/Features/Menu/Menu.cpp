@@ -1389,6 +1389,22 @@ void CMenu::MainWindow()
 			}
 			GroupBoxEnd();
 
+			GroupBoxStart("Auto Detonate Flares", 150);
+			{
+				CheckBox("Active", CFG::Triggerbot_AutoDetonateFlares_Active);
+				CheckBox("Require Key", CFG::Triggerbot_AutoDetonateFlares_Require_Key);
+				CheckBox("Ignore Key", CFG::Triggerbot_AutoDetonateFlares_Ignore_Key);
+				CheckBox("Account Ping", CFG::Triggerbot_AutoDetonateFlares_Account_Ping);
+				SliderInt("Radius", CFG::Triggerbot_AutoDetonateFlares_Radius, 50, 200, 5);
+
+				multiselect("Ignore", AutoDetonateFlaresIgnores, {
+					{ "Friends", CFG::Triggerbot_AutoDetonateFlares_Ignore_Friends },
+					{ "Invisible", CFG::Triggerbot_AutoDetonateFlares_Ignore_Invisible },
+					{ "Invulnerable", CFG::Triggerbot_AutoDetonateFlares_Ignore_Invulnerable }
+					});
+			}
+			GroupBoxEnd();
+
 			row1_bottom_y = std::max(row1_bottom_y, m_nCursorY);
 
 			m_nCursorX += m_nLastGroupBoxW + (CFG::Menu_Spacing_X * 2);
@@ -1415,7 +1431,8 @@ void CMenu::MainWindow()
 				{
 					{ "Friends", CFG::Triggerbot_AutoBackstab_Ignore_Friends },
 					{ "Invisible", CFG::Triggerbot_AutoBackstab_Ignore_Invisible },
-					{ "Invulnerable", CFG::Triggerbot_AutoBackstab_Ignore_Invulnerable }
+					{ "Invulnerable", CFG::Triggerbot_AutoBackstab_Ignore_Invulnerable },
+					{ "Razorback", CFG::Triggerbot_AutoBackstab_Ignore_Razorback }
 				});
 			}
 			GroupBoxEnd();

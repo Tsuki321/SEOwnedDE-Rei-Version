@@ -4,6 +4,48 @@
 
 #include "../../LagRecords/LagRecords.h"
 
+// Returns true if pPlayer has an active (drawn / unbroken) Razorback wearable equipped.
+// Mirrors Unibox's set_blockbackstab_once + ShouldDraw() check, but resolved by walking
+// the entity list since SEOwnedDE's SDKUtils::AttribHookValue does not expose the
+// CUtlVector<C_BaseEntity*> out-list overload.
+static bool HasActiveRazorback(C_TFPlayer* pPlayer)
+{
+	if (!pPlayer)
+	{
+		return false;
+	}
+
+	for (int i = 1; i <= I::ClientEntityList->GetHighestEntityIndex(); i++)
+	{
+		const auto pClient = I::ClientEntityList->GetClientEntity(i);
+
+		if (!pClient || pClient->IsDormant())
+		{
+			continue;
+		}
+
+		const auto pEntity = pClient->As<C_BaseEntity>();
+
+		if (!pEntity || pEntity->GetClassId() != ETFClassIds::CTFWearableRazorback)
+		{
+			continue;
+		}
+
+		if (pEntity->m_hOwnerEntity().Get() != pPlayer)
+		{
+			continue;
+		}
+
+		// ShouldDraw() is false once the shield breaks; mirrors Unibox's pShield->ShouldDraw() gate.
+		if (pEntity->ShouldDraw())
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool IsBehindAndFacingTarget(const Vec3& ownerCenter, const Vec3& ownerViewangles, const Vec3& targetCenter, const Vec3& targetEyeAngles)
 {
 	Vec3 toTarget = targetCenter - ownerCenter;
@@ -96,6 +138,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		}
 
 		if (CFG::Triggerbot_AutoBackstab_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+		{
+			continue;
+		}
+
+		if (CFG::Triggerbot_AutoBackstab_Ignore_Razorback && HasActiveRazorback(pPlayer))
 		{
 			continue;
 		}

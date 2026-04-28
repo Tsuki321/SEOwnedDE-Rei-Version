@@ -43,6 +43,7 @@
     <ClCompile Include="src\DllMain.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\Triggerbot.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\AutoDetonate\AutoDetonate.cpp" />
+    <ClCompile Include="src\App\Features\Triggerbot\AutoDetonateFlares\AutoDetonateFlares.cpp" />
     <ClCompile Include="src\App\Features\SpyCamera\SpyCamera.cpp" />
     <ClCompile Include="src\App\Features\SpyWarning\SpyWarning.cpp" />
     <ClCompile Include="src\App\Features\Triggerbot\AutoBackstab\AutoBackstab.cpp" />
@@ -287,6 +288,7 @@
     <ClInclude Include="src\Utils\Utils.h" />
     <ClInclude Include="src\App\Features\Triggerbot\Triggerbot.h" />
     <ClInclude Include="src\App\Features\Triggerbot\AutoDetonate\AutoDetonate.h" />
+    <ClInclude Include="src\App\Features\Triggerbot\AutoDetonateFlares\AutoDetonateFlares.h" />
     <ClInclude Include="src\SDK\TF2\iviewrender_beams.h" />
     <ClInclude Include="src\App\Features\SpyCamera\SpyCamera.h" />
     <ClInclude Include="src\App\Features\SpyWarning\SpyWarning.h" />
