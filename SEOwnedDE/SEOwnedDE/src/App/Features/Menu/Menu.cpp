@@ -2232,6 +2232,12 @@ void CMenu::MainWindow()
 		}
 		GroupBoxEnd();
 		
+		GroupBoxStart("Lag Records", 160);
+		{
+			SliderInt("Backtrack Window", CFG::LagRecords_BacktrackWindow, 0, 1000, 25);
+		}
+		GroupBoxEnd();
+
 		GroupBoxStart("Game", 160);
 		{
 			//at this point this does so much and lots of stuff relies on it, better make it impossible to turn off

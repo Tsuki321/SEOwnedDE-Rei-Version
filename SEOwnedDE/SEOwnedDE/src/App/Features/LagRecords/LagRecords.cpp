@@ -6,11 +6,31 @@
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 {
-	return flCurSimTime - flCmprSimTime < 0.2f;
+	const int nWindow = CFG::LagRecords_BacktrackWindow;
+
+	if (nWindow <= 0)
+		return false;
+
+	float flMaxWindow = nWindow / 1000.0f;
+
+	static ConVar* sv_maxunlag = I::CVar->FindVar("sv_maxunlag");
+
+	if (sv_maxunlag)
+	{
+		const float flUnlag = static_cast<float>(sv_maxunlag->GetInt()) / 1000.0f;
+
+		if (flUnlag > 0.0f && flMaxWindow > flUnlag)
+			flMaxWindow = flUnlag;
+	}
+
+	return flCurSimTime - flCmprSimTime < flMaxWindow;
 }
 
 void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 {
+	if (CFG::LagRecords_BacktrackWindow <= 0)
+		return;
+
 	LagRecord_t newRecord = {};
 
 	m_bSettingUpBones = true;
@@ -85,6 +105,11 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		newRecord.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 
 	m_LagRecords[pPlayer].emplace_front(newRecord);
+
+	constexpr size_t MAX_RECORDS = 128;
+
+	if (m_LagRecords[pPlayer].size() > MAX_RECORDS)
+		m_LagRecords[pPlayer].pop_back();
 }
 
 const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord, bool bSafe)
@@ -162,7 +187,7 @@ void CLagRecords::UpdateRecords()
 
 		if (pPlayer->deadflag())
 		{
-			m_LagRecords[pPlayer].clear();
+			m_LagRecords.erase(pPlayer);
 		}
 	}
 
@@ -181,6 +206,14 @@ void CLagRecords::UpdateRecords()
 				++it;
 			}
 		}
+	}
+
+	for (auto it = m_LagRecords.begin(); it != m_LagRecords.end(); )
+	{
+		if (it->second.empty())
+			it = m_LagRecords.erase(it);
+		else
+			++it;
 	}
 }
 
