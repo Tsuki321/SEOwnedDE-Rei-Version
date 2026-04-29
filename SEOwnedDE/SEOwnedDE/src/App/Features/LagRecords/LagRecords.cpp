@@ -17,7 +17,7 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 
 	if (sv_maxunlag)
 	{
-		const float flUnlag = static_cast<float>(sv_maxunlag->GetInt()) / 1000.0f;
+		const float flUnlag = sv_maxunlag->GetFloat();
 
 		if (flUnlag > 0.0f && flMaxWindow > flUnlag)
 			flMaxWindow = flUnlag;
