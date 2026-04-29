@@ -39,13 +39,16 @@ TEST(LagRecordsRotationalContracts, RecordCapturesAnglesAndFeetYaw) {
     EXPECT_NE(src.find("m_flCurrentFeetYaw"), std::string::npos);
 }
 
-TEST(LagRecordsRotationalContracts, SimulationTimeWindowIs200ms) {
+TEST(LagRecordsRotationalContracts, SimulationTimeWindowIsConfigurable) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
 
-    // The validity window matches the engine's typical interpolation horizon.
-    EXPECT_NE(src.find("flCurSimTime - flCmprSimTime < 0.2f"), std::string::npos);
     EXPECT_NE(src.find("IsSimulationTimeValid"), std::string::npos);
+
+    EXPECT_NE(src.find("LagRecords_BacktrackWindow"), std::string::npos);
+
+    EXPECT_NE(src.find("sv_maxunlag"), std::string::npos);
+    EXPECT_NE(src.find("GetFloat"), std::string::npos);
 }
 
 TEST(LagRecordsRotationalContracts, BoneMatrixHelperPreservesAndRestores) {
