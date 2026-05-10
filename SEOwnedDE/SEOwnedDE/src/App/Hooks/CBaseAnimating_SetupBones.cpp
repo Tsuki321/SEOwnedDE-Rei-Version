@@ -105,10 +105,13 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 						// Bones were computed at server-tick origin (stored in the latest lag record).
 						// After engine interpolation runs, GetAbsOrigin() returns a smooth visual
 						// position that may differ. Apply the delta so the skeleton follows smoothly.
+						// Skip correction when LagRecordMatrixHelper::Set() is active — the caller
+						// has already swapped in a specific lag record's bones and origin, and
+						// applying delta correction from record 0 would corrupt that pose.
 						const auto pPlayer = ent->As<C_TFPlayer>();
 						int nRecords = 0;
 
-						if (pPlayer && F::LagRecords->HasRecords(pPlayer, &nRecords) && nRecords > 0)
+						if (pPlayer && !F::LagRecordMatrixHelper->IsActive() && F::LagRecords->HasRecords(pPlayer, &nRecords) && nRecords > 0)
 						{
 							if (const auto pRecord = F::LagRecords->GetRecord(pPlayer, 0, true))
 							{

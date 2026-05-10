@@ -23,6 +23,9 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 			flMaxWindow = flUnlag;
 	}
 
+	if (flCmprSimTime > flCurSimTime)
+		return false;
+
 	return flCurSimTime - flCmprSimTime < flMaxWindow;
 }
 
@@ -104,12 +107,17 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		newRecord.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 
-	m_LagRecords[pPlayer].emplace_front(newRecord);
+	auto& records = m_LagRecords[pPlayer];
+
+	if (!records.empty() && newRecord.SimulationTime <= records.front().SimulationTime)
+		return;
+
+	records.emplace_front(newRecord);
 
 	constexpr size_t MAX_RECORDS = 128;
 
-	if (m_LagRecords[pPlayer].size() > MAX_RECORDS)
-		m_LagRecords[pPlayer].pop_back();
+	if (records.size() > MAX_RECORDS)
+		records.pop_back();
 }
 
 const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord, bool bSafe)
@@ -141,7 +149,7 @@ bool CLagRecords::HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords)
 	{
 		const size_t nSize = m_LagRecords[pPlayer].size();
 
-		if (nSize <= 0)
+		if (nSize == 0)
 			return false;
 
 		if (pTotalRecords)
@@ -224,10 +232,10 @@ bool CLagRecords::DiffersFromCurrent(const LagRecord_t* pRecord)
 	if (!pPlayer)
 		return false;
 
-	if (static_cast<int>((pPlayer->m_vecOrigin() - pRecord->AbsOrigin).Length()) != 0)
+	if ((pPlayer->GetAbsOrigin() - pRecord->AbsOrigin).LengthSqr() > 0.01f)
 		return true;
 
-	if (static_cast<int>((pPlayer->GetEyeAngles() - pRecord->EyeAngles).Length()) != 0)
+	if ((pPlayer->GetEyeAngles() - pRecord->EyeAngles).Length() > 0.1f)
 		return true;
 
 	if (pPlayer->m_fFlags() != pRecord->Flags)
@@ -235,7 +243,7 @@ bool CLagRecords::DiffersFromCurrent(const LagRecord_t* pRecord)
 
 	if (const auto pAnimState = pPlayer->GetAnimState())
 	{
-		if (fabsf(pAnimState->m_flCurrentFeetYaw - pRecord->FeetYaw) > 0.0f)
+		if (fabsf(pAnimState->m_flCurrentFeetYaw - pRecord->FeetYaw) > 0.1f)
 			return true;
 	}
 
@@ -268,6 +276,7 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
 
 	m_bSuccessfullyStored = true;
+	m_bActive = true;
 }
 
 void CLagRecordMatrixHelper::Restore()
@@ -289,4 +298,5 @@ void CLagRecordMatrixHelper::Restore()
 	m_vAbsAngles = {};
 	std::memset(m_BoneMatrix, 0, sizeof(matrix3x4_t) * 128);
 	m_bSuccessfullyStored = false;
+	m_bActive = false;
 }

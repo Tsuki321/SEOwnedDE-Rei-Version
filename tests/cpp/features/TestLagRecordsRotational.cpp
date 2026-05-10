@@ -72,7 +72,7 @@ TEST(LagRecordsRotationalContracts, DiffersFromCurrentChecksOriginAnglesFlagsAnd
     const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
 
     EXPECT_NE(src.find("DiffersFromCurrent"), std::string::npos);
-    EXPECT_NE(src.find("m_vecOrigin() - pRecord->AbsOrigin"), std::string::npos);
+    EXPECT_NE(src.find("GetAbsOrigin() - pRecord->AbsOrigin"), std::string::npos);
     EXPECT_NE(src.find("GetEyeAngles() - pRecord->EyeAngles"), std::string::npos);
     EXPECT_NE(src.find("m_fFlags() != pRecord->Flags"), std::string::npos);
     EXPECT_NE(src.find("m_flCurrentFeetYaw - pRecord->FeetYaw"), std::string::npos);

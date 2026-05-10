@@ -58,10 +58,12 @@ class CLagRecordMatrixHelper
 	matrix3x4_t m_BoneMatrix[128] = {};
 
 	bool m_bSuccessfullyStored = false;
+	bool m_bActive = false;
 
 public:
 	void Set(const LagRecord_t* pRecord);
 	void Restore();
+	bool IsActive() const { return m_bActive; }
 };
 
 MAKE_SINGLETON_SCOPED(CLagRecordMatrixHelper, LagRecordMatrixHelper, F);
