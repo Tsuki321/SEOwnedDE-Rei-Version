@@ -68,8 +68,7 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 	if (CFG::Triggerbot_AutoShoot_Wait_For_Headshot && H::AimUtils->IsWeaponCapableOfHeadshot(pWeapon) && !G::bCanHeadshot)
 		return;
 
-	// Don't interfere if aimbot is already firing
-	if (G::bFiring)
+	if (G::bFiring && G::nTargetIndex > 0)
 		return;
 
 	const Vec3 vLocalPos = pLocal->GetShootPos();
@@ -113,15 +112,24 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 		if (nHitboxGroup < 0)
 			continue;
 
-		// Get the appropriate scale for this hitbox group
 		const float flScale = GetHitboxScale(nHitboxGroup);
 
-		// Now do the scaled OBB check to ensure we're sufficiently inside the hitbox
-		if (!IsHitboxUnderCrosshair(pLocal, pPlayer, nHitHitbox, flScale))
+		if (flScale < 1.0f && !IsHitboxUnderCrosshair(pLocal, pPlayer, nHitHitbox, flScale))
 			continue;
 
-		// All checks passed - fire!
-		pCmd->buttons |= IN_ATTACK;
+		if (pWeapon->GetWeaponID() == TF_WEAPON_SNIPERRIFLE_CLASSIC)
+		{
+			if (G::nOldButtons & IN_ATTACK)
+				pCmd->buttons &= ~IN_ATTACK;
+			else
+				pCmd->buttons |= IN_ATTACK;
+		}
+		else
+		{
+			pCmd->buttons |= IN_ATTACK;
+		}
+
+		G::bFiring = true;
 
 		if (CFG::Misc_Accuracy_Improvements)
 		{

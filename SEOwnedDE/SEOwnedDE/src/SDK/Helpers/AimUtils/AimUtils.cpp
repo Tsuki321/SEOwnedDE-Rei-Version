@@ -23,7 +23,7 @@ bool CAimUtils::TraceEntityBullet(C_BaseEntity *pEntity, const Vec3 &vFrom, cons
 
 	Trace(vFrom, vTo, (MASK_SHOT | CONTENTS_GRATE), &filter, &trace);
 
-	if (trace.m_pEnt == pEntity && !trace.allsolid && !trace.startsolid)
+	if (trace.m_pEnt == pEntity && !trace.allsolid)
 	{
 		if (pHitHitboxOut)
 			*pHitHitboxOut = trace.hitbox;
