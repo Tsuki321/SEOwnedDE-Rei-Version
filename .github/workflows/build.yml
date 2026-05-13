@@ -1,6 +1,7 @@
 name: Build SEOwnedDE DLL
 
 on:
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -16,20 +17,35 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}\SEOwnedDE\packages
-          key: nuget-packages-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/packages.config', 'SEOwnedDE/**/packages.lock.json', '**/nuget.config', '**/NuGet.config') }}
+            ~/.nuget/packages
+            C:\Users\runneradmin\.nuget\packages
+          key: nuget-packages-${{ runner.os }}-${{ hashFiles('**/*.sln') }}
           restore-keys: |
             nuget-packages-${{ runner.os }}-
 
+      - name: Cache MSVC ipdb files
+        uses: actions/cache@v4
+        with:
+          path: |
+            SEOwnedDE/SEOwnedDE/ipdb
+            SEOwnedDE/bin/ReleaseAVX2
+          key: ipdb-x64-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/*.{cpp,h,rc,vcxproj,vcxproj.filters}', 'SEOwnedDE/**/*.sln') }}
+          restore-keys: |
+            ipdb-x64-${{ runner.os }}-
+
       - name: Restore NuGet packages (if any)
-        run: nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
+        run: nuget restore "SEOwnedDE/SEOwnedDE.sln"
         shell: powershell
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v1
 
+      - name: Create ipdb output directory
+        run: New-Item -ItemType Directory -Force -Path "SEOwnedDE/SEOwnedDE/ipdb" | Out-Null
+        shell: powershell
+
       - name: Build solution (ReleaseAVX2 | x64)
-        run: msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
+        run: msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDatabaseFile="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE.pdb" /m
         shell: powershell
 
       - name: Verify DLL exists
@@ -45,4 +61,3 @@ jobs:
           name: SEOwnedDE-SEOwnedDE.dll
           path: SEOwnedDE/bin/ReleaseAVX2/SEOwnedDE.dll
           retention-days: 7
-
