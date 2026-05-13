@@ -36,6 +36,8 @@ namespace CFG
 	CFGVAR(Aimbot_Hitscan_Wait_For_Headshot, true);
 	CFGVAR(Aimbot_Hitscan_Wait_For_Charge, false);
 	CFGVAR(Aimbot_Hitscan_Minigun_TapFire, false);
+	CFGVAR(Aimbot_Hitscan_Delay_Fire, false);
+	CFGVAR(Aimbot_Hitscan_Delay_Fire_Time, 0.5f);
 
 	CFGVAR(Aimbot_Projectile_Active, true);
 	CFGVAR(Aimbot_Projectile_NoSpread, true);

@@ -13,6 +13,7 @@ class CAimbotHitscan
 	};
 
 	std::vector<HitscanTarget_t> m_vecTargets = {};
+	float m_flDelayFireEndTime = 0.0f;
 
 	int GetAimHitbox(C_TFWeaponBase* pWeapon);
 	bool ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target);

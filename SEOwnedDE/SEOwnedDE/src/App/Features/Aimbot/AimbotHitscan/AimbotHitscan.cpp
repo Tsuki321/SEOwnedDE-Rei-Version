@@ -715,6 +715,9 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	if (Shifting::bShifting && !Shifting::bShiftingWarp)
 		return;
 
+	if (CFG::Aimbot_Hitscan_Delay_Fire && I::GlobalVars->curtime < m_flDelayFireEndTime)
+		return;
+
 	const bool isFiring = IsFiring(pCmd, pWeapon);
 
 	HitscanTarget_t target = {};
@@ -757,6 +760,9 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 			const bool bIsFiring = IsFiring(pCmd, pWeapon);
 			G::bFiring = bIsFiring;
+
+			if (CFG::Aimbot_Hitscan_Delay_Fire && bIsFiring)
+				m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
 
 			// Are we ready to aim?
 			if (ShouldAim(pCmd, pLocal, pWeapon) || bIsFiring)

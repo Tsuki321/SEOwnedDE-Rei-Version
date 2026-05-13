@@ -1237,6 +1237,8 @@ void CMenu::MainWindow()
 				CheckBox("Wait For Headshot", CFG::Aimbot_Hitscan_Wait_For_Headshot);
 				CheckBox("Wait For Charge", CFG::Aimbot_Hitscan_Wait_For_Charge);
 				CheckBox("Minigun Tapfire", CFG::Aimbot_Hitscan_Minigun_TapFire);
+				CheckBox("Delay Fire", CFG::Aimbot_Hitscan_Delay_Fire);
+				SliderFloat("Delay Fire Time", CFG::Aimbot_Hitscan_Delay_Fire_Time, 0.1f, 2.0f, 0.05f, "%.2f");
 
 				SelectSingle("Aim Type", CFG::Aimbot_Hitscan_Aim_Type, {
 					{ "Normal", 0 },
