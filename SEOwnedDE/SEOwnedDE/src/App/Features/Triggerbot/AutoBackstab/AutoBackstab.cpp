@@ -182,10 +182,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				pCmd->buttons |= IN_ATTACK;
 
-				if (CFG::Misc_Accuracy_Improvements)
-				{
-					pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
-				}
+				pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
 
 				return;
 			}
@@ -200,7 +197,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 		for (int n = 1; n < numRecords; n++)
 		{
-			const auto record = F::LagRecords->GetRecord(pPlayer, n, true);
+			const auto record = F::LagRecords->GetRecord(pPlayer, n);
 
 			if (!record)
 			{
@@ -215,21 +212,17 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 			if (canKnife || IsBehindAndFacingTarget(pLocal->GetCenter(), angleTo, record->Center, record->EyeAngles))
 			{
-				F::LagRecordMatrixHelper->Set(record);
-
-				Vec3 forward{};
-				Math::AngleVectors(angleTo, &forward);
-
-				auto to = pLocal->GetShootPos() + (forward * 47.0f);
-
-				if (!H::AimUtils->TraceEntityMelee(pPlayer, pLocal->GetShootPos(), to))
 				{
-					F::LagRecordMatrixHelper->Restore();
+					CLagRecordScope scope(record);
 
-					continue;
+					Vec3 forward{};
+					Math::AngleVectors(angleTo, &forward);
+
+					auto to = pLocal->GetShootPos() + (forward * 47.0f);
+
+					if (!H::AimUtils->TraceEntityMelee(pPlayer, pLocal->GetShootPos(), to))
+						continue;
 				}
-
-				F::LagRecordMatrixHelper->Restore();
 
 				if (CFG::Triggerbot_AutoBackstab_Mode == 1)
 				{
@@ -243,14 +236,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				pCmd->buttons |= IN_ATTACK;
 
-				if (CFG::Misc_Accuracy_Improvements)
-				{
-					pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + SDKUtils::GetLerp());
-				}
-				else
-				{
-					pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + GetClientInterpAmount());
-				}
+				pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + SDKUtils::GetLerp());
 
 				return;
 			}

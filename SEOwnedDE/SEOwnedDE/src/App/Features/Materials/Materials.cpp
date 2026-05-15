@@ -305,40 +305,38 @@ void CMaterials::RunLagRecords()
 		{
 			for (int n = 1; n < nRecords; n++)
 			{
-				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n, true);
+				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
 				if (!pRecord || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !F::LagRecords->DiffersFromCurrent(pRecord))
 					continue;
 
 				I::RenderView->SetBlend(Math::RemapValClamped(static_cast<float>(n), 1.0f, static_cast<float>(nRecords), 0.1f, 0.001f));
 
-				F::LagRecordMatrixHelper->Set(pRecord);
+				CLagRecordScope scope(pRecord);
 				m_bRendering = true;
 				const float flOldInvisibility = pPlayer->m_flInvisibility();
 				pPlayer->m_flInvisibility() = 0.0f;
 				pPlayer->DrawModel(STUDIO_RENDER | STUDIO_NOSHADOWS);
 				pPlayer->m_flInvisibility() = flOldInvisibility;
 				m_bRendering = false;
-				F::LagRecordMatrixHelper->Restore();
 			}
 		}
 		else
 		{
-			const auto pRecord = F::LagRecords->GetRecord(pPlayer, nRecords - 1, true);
+			const auto pRecord = F::LagRecords->GetRecord(pPlayer, nRecords - 1);
 
 			if (!pRecord || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !F::LagRecords->DiffersFromCurrent(pRecord))
 				continue;
 
 			I::RenderView->SetBlend(1.0f);
 
-			F::LagRecordMatrixHelper->Set(pRecord);
+			CLagRecordScope scope(pRecord);
 			m_bRendering = true;
 			const float flOldInvisibility = pPlayer->m_flInvisibility();
 			pPlayer->m_flInvisibility() = 0.0f;
 			pPlayer->DrawModel(STUDIO_RENDER | STUDIO_NOSHADOWS);
 			pPlayer->m_flInvisibility() = flOldInvisibility;
 			m_bRendering = false;
-			F::LagRecordMatrixHelper->Restore();
 		}
 	}
 

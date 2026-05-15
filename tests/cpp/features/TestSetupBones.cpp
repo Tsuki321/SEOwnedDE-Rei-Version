@@ -82,7 +82,7 @@ TEST(SetupBonesContracts, BlendsTranslationAcrossTwoRecords) {
     const auto src = testhelpers::ReadTextFile(root / kHookSource);
 
     EXPECT_NE(src.find("nRecords >= 2"), std::string::npos);
-    EXPECT_NE(src.find("F::LagRecords->GetRecord(pPlayer, 1, true)"), std::string::npos);
+    EXPECT_NE(src.find("F::LagRecords->GetRecord(pPlayer, 1)"), std::string::npos);
     EXPECT_NE(src.find("pRecord->SimulationTime - pPrev->SimulationTime"), std::string::npos);
     EXPECT_NE(src.find("std::clamp"), std::string::npos);
     // Only the position columns of each bone are blended; rotation columns keep

@@ -13,11 +13,12 @@ C_BaseEntity* GetRootMoveParent(C_BaseEntity* baseEnt)
 	auto pEntity = baseEnt;
 	auto pParent = baseEnt->GetMoveParent();
 
+	constexpr int MAX_MOVE_PARENT_DEPTH = 32;
 	auto its{ 0 };
 
 	while (pParent)
 	{
-		if (its > 32) //XD
+		if (its > MAX_MOVE_PARENT_DEPTH)
 		{
 			break;
 		}
@@ -113,7 +114,7 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 
 						if (pPlayer && !F::LagRecordMatrixHelper->IsActive() && F::LagRecords->HasRecords(pPlayer, &nRecords) && nRecords > 0)
 						{
-							if (const auto pRecord = F::LagRecords->GetRecord(pPlayer, 0, true))
+							if (const auto pRecord = F::LagRecords->GetRecord(pPlayer, 0))
 							{
 								const Vec3 vLiveOrigin = ent->GetAbsOrigin();
 								const Vec3 vDelta = vLiveOrigin - pRecord->AbsOrigin;
@@ -160,7 +161,7 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 								// (rec0) data which already reflects the live yaw above.
 								if (nRecords >= 2)
 								{
-									if (const auto pPrev = F::LagRecords->GetRecord(pPlayer, 1, true))
+									if (const auto pPrev = F::LagRecords->GetRecord(pPlayer, 1))
 									{
 										const float dt =
 											pRecord->SimulationTime - pPrev->SimulationTime;

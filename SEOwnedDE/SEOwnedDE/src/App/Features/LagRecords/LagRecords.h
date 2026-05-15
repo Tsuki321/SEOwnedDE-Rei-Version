@@ -4,13 +4,15 @@
 
 #include <unordered_set>
 
+inline constexpr int MAX_BONE_COUNT = 128;
+inline constexpr int MAX_LAG_RECORDS = 128;
+
 struct LagRecord_t
 {
 	C_TFPlayer* Player = nullptr;
-	matrix3x4_t BoneMatrix[128] = {};
+	matrix3x4_t BoneMatrix[MAX_BONE_COUNT] = {};
 	float SimulationTime = -1.0f;
 	Vec3 AbsOrigin = {};
-	Vec3 VecOrigin = {};
 	Vec3 AbsAngles = {};
 	Vec3 EyeAngles = {};
 	Vec3 Velocity = {};
@@ -34,7 +36,7 @@ class CLagRecords
 
 public:
 	void AddRecord(C_TFPlayer* pPlayer);
-	const LagRecord_t* GetRecord(C_TFPlayer* pPlayer, int nRecord, bool bSafe = false);
+	const LagRecord_t* GetRecord(C_TFPlayer* pPlayer, int nRecord);
 	bool HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords = nullptr);
 	void UpdateRecords();
 	bool DiffersFromCurrent(const LagRecord_t* pRecord);
@@ -55,7 +57,7 @@ class CLagRecordMatrixHelper
 	C_TFPlayer* m_pPlayer = nullptr;
 	Vec3 m_vAbsOrigin = {};
 	Vec3 m_vAbsAngles = {};
-	matrix3x4_t m_BoneMatrix[128] = {};
+	matrix3x4_t m_BoneMatrix[MAX_BONE_COUNT] = {};
 
 	bool m_bSuccessfullyStored = false;
 	bool m_bActive = false;
@@ -67,3 +69,27 @@ public:
 };
 
 MAKE_SINGLETON_SCOPED(CLagRecordMatrixHelper, LagRecordMatrixHelper, F);
+
+class CLagRecordScope
+{
+	bool m_bActive = false;
+
+public:
+	explicit CLagRecordScope(const LagRecord_t* pRecord)
+	{
+		if (pRecord)
+		{
+			F::LagRecordMatrixHelper->Set(pRecord);
+			m_bActive = F::LagRecordMatrixHelper->IsActive();
+		}
+	}
+
+	~CLagRecordScope()
+	{
+		if (m_bActive)
+			F::LagRecordMatrixHelper->Restore();
+	}
+
+	CLagRecordScope(const CLagRecordScope&) = delete;
+	CLagRecordScope& operator=(const CLagRecordScope&) = delete;
+};

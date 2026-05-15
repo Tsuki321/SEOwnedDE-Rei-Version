@@ -16,8 +16,7 @@ bool CAimbotMelee::CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeTarg
 			return vLocalPos + (vForward * pWeapon->GetSwingRange());
 		}();
 
-		if (target.LagRecord)
-			F::LagRecordMatrixHelper->Set(target.LagRecord);
+		CLagRecordScope scope(target.LagRecord);
 
 		const bool bCanSee = H::AimUtils->TraceEntityMelee(target.Entity, vLocalPos, vToSee);
 
@@ -35,11 +34,6 @@ bool CAimbotMelee::CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeTarg
 		else
 		{
 			target.MeleeTraceHit = bCanSee;
-		}
-
-		if (target.LagRecord)
-		{
-			F::LagRecordMatrixHelper->Restore();
 		}
 
 		return bCanSee;
@@ -136,7 +130,7 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 
 				for (int n = 1; n < nRecords; n++)
 				{
-					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n, true);
+					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 					if (!pRecord || !F::LagRecords->DiffersFromCurrent(pRecord))
 						continue;
 
@@ -332,19 +326,9 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 					Aim(pCmd, pLocal, pWeapon, target.AngleTo);
 				}
 
-				if (CFG::Misc_Accuracy_Improvements)
+				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
-					if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
-					{
-						pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
-					}
-				}
-				else
-				{
-					if (bIsFiring && target.LagRecord)
-					{
-						pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + GetClientInterpAmount());
-					}
+					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
 				}
 			}
 

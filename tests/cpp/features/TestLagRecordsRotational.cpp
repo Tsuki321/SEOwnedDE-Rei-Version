@@ -30,7 +30,7 @@ TEST(LagRecordsRotationalContracts, RecordCapturesAnglesAndFeetYaw) {
     EXPECT_NE(header.find("AbsAngles"), std::string::npos);
     EXPECT_NE(header.find("AbsOrigin"), std::string::npos);
     EXPECT_NE(header.find("FeetYaw"), std::string::npos);
-    EXPECT_NE(header.find("BoneMatrix[128]"), std::string::npos);
+    EXPECT_NE(header.find("BoneMatrix[MAX_BONE_COUNT]"), std::string::npos);
 
     // AddRecord captures live values into the record.
     EXPECT_NE(src.find("newRecord.AbsAngles"), std::string::npos);
@@ -73,7 +73,7 @@ TEST(LagRecordsRotationalContracts, DiffersFromCurrentChecksOriginAnglesFlagsAnd
 
     EXPECT_NE(src.find("DiffersFromCurrent"), std::string::npos);
     EXPECT_NE(src.find("GetAbsOrigin() - pRecord->AbsOrigin"), std::string::npos);
-    EXPECT_NE(src.find("GetEyeAngles() - pRecord->EyeAngles"), std::string::npos);
+    EXPECT_NE(src.find("GetEyeAngles().y - pRecord->EyeAngles.y"), std::string::npos);
     EXPECT_NE(src.find("m_fFlags() != pRecord->Flags"), std::string::npos);
     EXPECT_NE(src.find("m_flCurrentFeetYaw - pRecord->FeetYaw"), std::string::npos);
 }

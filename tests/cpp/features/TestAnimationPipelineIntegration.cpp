@@ -61,7 +61,7 @@ const PipelineFile kPipeline[] = {
             "newRecord.AbsOrigin",
             "newRecord.AbsAngles",
             "newRecord.SimulationTime",
-            "m_LagRecords[pPlayer].emplace_front",
+            "records.emplace_front",
         },
     },
     {
@@ -139,7 +139,7 @@ TEST(AnimationPipelineIntegration, AimbotTickRemapUsesInterpAmount) {
         root / "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp");
 
     // The aimbot must remap tick_count using the client interp amount.
-    EXPECT_NE(hitscan.find("GetClientInterpAmount()"), std::string::npos);
+	EXPECT_NE(hitscan.find("SDKUtils::GetLerp()"), std::string::npos);
     EXPECT_NE(hitscan.find("TIME_TO_TICKS"), std::string::npos);
     EXPECT_NE(hitscan.find("SimulationTime"), std::string::npos);
 }

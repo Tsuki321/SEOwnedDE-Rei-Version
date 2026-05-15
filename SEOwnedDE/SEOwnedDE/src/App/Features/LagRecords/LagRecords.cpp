@@ -31,7 +31,7 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 
 void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 {
-	if (CFG::LagRecords_BacktrackWindow <= 0)
+	if (!pPlayer || CFG::LagRecords_BacktrackWindow <= 0)
 		return;
 
 	LagRecord_t newRecord = {};
@@ -64,7 +64,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		pPlayer->InvalidateBoneCache();
 	}
 
-	const auto result = pPlayer->SetupBones(newRecord.BoneMatrix, 128, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
+	const auto result = pPlayer->SetupBones(newRecord.BoneMatrix, MAX_BONE_COUNT, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
 
 	if (setup_bones_optimization)
 	{
@@ -97,7 +97,6 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	newRecord.Player = pPlayer;
 	newRecord.SimulationTime = pPlayer->m_flSimulationTime();
 	newRecord.AbsOrigin = pPlayer->GetAbsOrigin();
-	newRecord.VecOrigin = pPlayer->m_vecOrigin();
 	newRecord.AbsAngles = pPlayer->GetAbsAngles();
 	newRecord.EyeAngles = pPlayer->GetEyeAngles();
 	newRecord.Velocity = pPlayer->m_vecVelocity();
@@ -114,51 +113,37 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 	records.emplace_front(newRecord);
 
-	constexpr size_t MAX_RECORDS = 128;
-
-	if (records.size() > MAX_RECORDS)
+	if (records.size() > MAX_LAG_RECORDS)
 		records.pop_back();
 }
 
-const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord, bool bSafe)
+const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
 {
-	if (!bSafe)
-	{
-		if (!m_LagRecords.contains(pPlayer))
-			return nullptr;
+	auto it = m_LagRecords.find(pPlayer);
+	if (it == m_LagRecords.end())
+		return nullptr;
 
-		if (nRecord < 0 || nRecord > static_cast<int>(m_LagRecords[pPlayer].size() - 1))
-			return nullptr;
-	}
-	else
-	{
-		if (!m_LagRecords.contains(pPlayer))
-			return nullptr;
+	const auto& records = it->second;
+	if (nRecord < 0 || nRecord >= static_cast<int>(records.size()))
+		return nullptr;
 
-		const auto& records = m_LagRecords[pPlayer];
-		if (nRecord < 0 || nRecord >= static_cast<int>(records.size()))
-			return nullptr;
-	}
-
-	return &m_LagRecords[pPlayer][nRecord];
+	return &records[nRecord];
 }
 
 bool CLagRecords::HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords)
 {
-	if (m_LagRecords.contains(pPlayer))
-	{
-		const size_t nSize = m_LagRecords[pPlayer].size();
+	auto it = m_LagRecords.find(pPlayer);
+	if (it == m_LagRecords.end())
+		return false;
 
-		if (nSize == 0)
-			return false;
+	const size_t nSize = it->second.size();
+	if (nSize == 0)
+		return false;
 
-		if (pTotalRecords)
-			*pTotalRecords = static_cast<int>(nSize);
+	if (pTotalRecords)
+		*pTotalRecords = static_cast<int>(nSize);
 
-		return true;
-	}
-
-	return false;
+	return true;
 }
 
 void CLagRecords::UpdateRecords()
@@ -235,7 +220,8 @@ bool CLagRecords::DiffersFromCurrent(const LagRecord_t* pRecord)
 	if ((pPlayer->GetAbsOrigin() - pRecord->AbsOrigin).LengthSqr() > 0.01f)
 		return true;
 
-	if ((pPlayer->GetEyeAngles() - pRecord->EyeAngles).Length() > 0.1f)
+	const float flYawDelta = std::remainderf(pPlayer->GetEyeAngles().y - pRecord->EyeAngles.y, 360.0f);
+	if (fabsf(flYawDelta) > 0.1f)
 		return true;
 
 	if (pPlayer->m_fFlags() != pRecord->Flags)
@@ -268,9 +254,10 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	m_pPlayer = pPlayer;
 	m_vAbsOrigin = pPlayer->GetAbsOrigin();
 	m_vAbsAngles = pPlayer->GetAbsAngles();
-	memcpy(m_BoneMatrix, pCachedBoneData->Base(), sizeof(matrix3x4_t) * pCachedBoneData->Count());
 
-	memcpy(pCachedBoneData->Base(), pRecord->BoneMatrix, sizeof(matrix3x4_t) * pCachedBoneData->Count());
+	const int nBoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
+	memcpy(m_BoneMatrix, pCachedBoneData->Base(), sizeof(matrix3x4_t) * nBoneCount);
+	memcpy(pCachedBoneData->Base(), pRecord->BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
 
 	pPlayer->SetAbsOrigin(pRecord->AbsOrigin);
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
@@ -291,12 +278,14 @@ void CLagRecordMatrixHelper::Restore()
 
 	m_pPlayer->SetAbsOrigin(m_vAbsOrigin);
 	m_pPlayer->SetAbsAngles(m_vAbsAngles);
-	memcpy(pCachedBoneData->Base(), m_BoneMatrix, sizeof(matrix3x4_t) * pCachedBoneData->Count());
+
+	const int nBoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
+	memcpy(pCachedBoneData->Base(), m_BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
 
 	m_pPlayer = nullptr;
 	m_vAbsOrigin = {};
 	m_vAbsAngles = {};
-	std::memset(m_BoneMatrix, 0, sizeof(matrix3x4_t) * 128);
+	std::memset(m_BoneMatrix, 0, sizeof(matrix3x4_t) * MAX_BONE_COUNT);
 	m_bSuccessfullyStored = false;
 	m_bActive = false;
 }

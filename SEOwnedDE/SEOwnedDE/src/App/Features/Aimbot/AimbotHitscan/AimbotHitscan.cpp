@@ -225,7 +225,7 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 
 				for (int n = 1; n < nRecords; n++)
 				{
-					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n, true);
+					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
 					if (!pRecord || !F::LagRecords->DiffersFromCurrent(pRecord))
 						continue;
@@ -360,11 +360,9 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 
 				else
 				{
-					F::LagRecordMatrixHelper->Set(target.LagRecord);
+					CLagRecordScope scope(target.LagRecord);
 
 					const bool bTraceResult = H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position);
-
-					F::LagRecordMatrixHelper->Restore();
 
 					if (!bTraceResult)
 						continue;
@@ -622,23 +620,17 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 
 			else
 			{
-				F::LagRecordMatrixHelper->Set(target.LagRecord);
+				CLagRecordScope scope(target.LagRecord);
 
 				int nHitHitbox = -1;
 
 				if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd, &nHitHitbox))
-				{
-					F::LagRecordMatrixHelper->Restore();
 					return false;
-				}
 
 				if (target.AimedHitbox == HITBOX_HEAD)
 				{
 					if (nHitHitbox != HITBOX_HEAD)
-					{
-						F::LagRecordMatrixHelper->Restore();
 						return false;
-					}
 
 					Vec3 vMins = {}, vMaxs = {}, vCenter = {};
 					SDKUtils::GetHitboxInfoFromMatrix(pPlayer, nHitHitbox, const_cast<matrix3x4_t*>(target.LagRecord->BoneMatrix), &vCenter, &vMins, &vMaxs);
@@ -647,13 +639,8 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 					vMaxs *= 0.5f;
 
 					if (!Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, *target.LagRecord->BoneMatrix))
-					{
-						F::LagRecordMatrixHelper->Restore();
 						return false;
-					}
 				}
-
-				F::LagRecordMatrixHelper->Restore();
 			}
 		}
 
@@ -772,19 +759,9 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					Aim(pCmd, pLocal, target.AngleTo);
 				}
 
-				if (CFG::Misc_Accuracy_Improvements)
+				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
-					if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
-					{
-						pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
-					}
-				}
-				else
-				{
-					if (bIsFiring && target.LagRecord)
-					{
-						pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + GetClientInterpAmount());
-					}
+					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
 				}
 			}
 		}
