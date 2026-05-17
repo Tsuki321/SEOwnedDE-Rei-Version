@@ -1,4 +1,4 @@
-#include "MovementSimulation.h"
+﻿#include "MovementSimulation.h"
 
 #include "../LagRecords/LagRecords.h"
 
@@ -172,10 +172,14 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 
 			if (rec0 && rec1 && rec2 && rec3)
 			{
-				// compute acceleration between each pair of records
-				const Vec3 accel01 = (rec0->Velocity - rec1->Velocity);
-				const Vec3 accel12 = (rec1->Velocity - rec2->Velocity);
-				const Vec3 accel23 = (rec2->Velocity - rec3->Velocity);
+				// Compute acceleration between each pair of records, scaled to per-tick using actual time deltas
+				const float dt01 = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
+				const float dt12 = std::max(rec1->SimulationTime - rec2->SimulationTime, TICK_INTERVAL);
+				const float dt23 = std::max(rec2->SimulationTime - rec3->SimulationTime, TICK_INTERVAL);
+
+				const Vec3 accel01 = (rec0->Velocity - rec1->Velocity) / dt01 * TICK_INTERVAL;
+				const Vec3 accel12 = (rec1->Velocity - rec2->Velocity) / dt12 * TICK_INTERVAL;
+				const Vec3 accel23 = (rec2->Velocity - rec3->Velocity) / dt23 * TICK_INTERVAL;
 
 				// weighted average: more recent acceleration is more important
 				// weights: 0.5 for most recent, 0.3 for middle, 0.2 for oldest
@@ -197,11 +201,16 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 					vPredictedVelocity.x *= flScale;
 					vPredictedVelocity.y *= flScale;
 				}
+
+				// Store for per-tick application in RunTick
+				m_vMethod2Accel = vAvgAccel;
+				m_vMethod2Velocity = vPredictedVelocity;
 			}
 			else if (rec0 && rec1)
 			{
-				// fallback: only 2 records available, use single acceleration sample
-				const Vec3 vAccel = (rec0->Velocity - rec1->Velocity);
+				// fallback: only 2 records available, scale by actual time delta
+				const float dt = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
+				const Vec3 vAccel = (rec0->Velocity - rec1->Velocity) / dt * TICK_INTERVAL;
 				vPredictedVelocity.x += vAccel.x;
 				vPredictedVelocity.y += vAccel.y;
 
@@ -213,6 +222,10 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 					vPredictedVelocity.x *= flScale;
 					vPredictedVelocity.y *= flScale;
 				}
+
+				// Store fallback accel for per-tick application
+				m_vMethod2Accel = vAccel;
+				m_vMethod2Velocity = vPredictedVelocity;
 			}
 		}
 
@@ -259,25 +272,34 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 			const LagRecord_t* rec3 = F::LagRecords->GetRecord(pPlayer, 3);
 			const LagRecord_t* rec4 = F::LagRecords->GetRecord(pPlayer, 4);
 
-			if (rec0 && rec1 && rec2 && rec3 && rec4)
+	if (rec0 && rec1 && rec2 && rec3 && rec4)
 			{
-				// Linear regression over 5 samples to find per-tick velocity change (acceleration slope).
-				// Sample indices: rec4=oldest (t=0), rec3(t=1), rec2(t=2), rec1(t=3), rec0=newest(t=4).
-				// mean_t = 2; slope = sum((t-2)*v[t]) / sum((t-2)^2)
-				//        = (-2*v[0] - 1*v[1] + 0*v[2] + 1*v[3] + 2*v[4]) / 10
-				// where v[0]=rec4, v[1]=rec3, v[2]=rec2, v[3]=rec1, v[4]=rec0
-				m_vAccelTrend.x = (-2.0f * rec4->Velocity.x - rec3->Velocity.x + rec1->Velocity.x + 2.0f * rec0->Velocity.x) / 10.0f;
-				m_vAccelTrend.y = (-2.0f * rec4->Velocity.y - rec3->Velocity.y + rec1->Velocity.y + 2.0f * rec0->Velocity.y) / 10.0f;
+				const float dt01 = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
+				const float dt12 = std::max(rec1->SimulationTime - rec2->SimulationTime, TICK_INTERVAL);
+				const float dt23 = std::max(rec2->SimulationTime - rec3->SimulationTime, TICK_INTERVAL);
+				const float dt34 = std::max(rec3->SimulationTime - rec4->SimulationTime, TICK_INTERVAL);
+
+				const Vec3 accel01 = (rec0->Velocity - rec1->Velocity) / dt01;
+				const Vec3 accel12 = (rec1->Velocity - rec2->Velocity) / dt12;
+				const Vec3 accel23 = (rec2->Velocity - rec3->Velocity) / dt23;
+				const Vec3 accel34 = (rec3->Velocity - rec4->Velocity) / dt34;
+
+				m_vAccelTrend.x = (accel01.x + accel12.x + accel23.x + accel34.x) * 0.25f * TICK_INTERVAL;
+				m_vAccelTrend.y = (accel01.y + accel12.y + accel23.y + accel34.y) * 0.25f * TICK_INTERVAL;
 				m_vAccelTrend.z = 0.0f;
 				m_vAdaptiveVelocity = rec0->Velocity;
 			}
 			else if (rec0 && rec1)
 			{
-				m_vAccelTrend.x = rec0->Velocity.x - rec1->Velocity.x;
-				m_vAccelTrend.y = rec0->Velocity.y - rec1->Velocity.y;
+				const float dt = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
+				m_vAccelTrend.x = (rec0->Velocity.x - rec1->Velocity.x) / dt * TICK_INTERVAL;
+				m_vAccelTrend.y = (rec0->Velocity.y - rec1->Velocity.y) / dt * TICK_INTERVAL;
 				m_vAccelTrend.z = 0.0f;
 				m_vAdaptiveVelocity = rec0->Velocity;
 			}
+
+			// Store original velocity for drift limiting
+			m_vMethod3OriginalVelocity = m_vAdaptiveVelocity;
 
 			// Clamp accel trend to reasonable range (prevent over-prediction)
 			const float flAccelMag = m_vAccelTrend.Length2D();
@@ -334,6 +356,15 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 
 	m_flYawTurnRate = 0.0f;
 
+	// Wraps a yaw angle difference to [-180, 180] to handle Â±180Â° boundary crossings
+	const auto NormalizeYawDiff = [](float yawNew, float yawOld) -> float
+	{
+		float diff = yawNew - yawOld;
+		while (diff > 180.0f) diff -= 360.0f;
+		while (diff < -180.0f) diff += 360.0f;
+		return diff;
+	};
+
 	if (CFG::Aimbot_Projectile_Ground_Strafe_Prediction && (m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && F::LagRecords->HasRecords(pPlayer))
 	{
 		if (m_MoveData.m_vecVelocity.Length2D() < (m_MoveData.m_flMaxSpeed * 0.85f))
@@ -355,15 +386,22 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 			const float flYaw3 = Math::VelocityToAngles(pRecord3->Velocity).y;
 			const float flYaw4 = Math::VelocityToAngles(pRecord4->Velocity).y;
 
-			const auto inc{flYaw4 > flYaw3 && flYaw3 > flYaw2 && flYaw2 > flYaw1 && flYaw1 > flYaw0};
-			const auto dec{flYaw4 < flYaw3 && flYaw3 < flYaw2 && flYaw2 < flYaw1 && flYaw1 < flYaw0};
+			const float d10 = NormalizeYawDiff(flYaw1, flYaw0);
+			const float d21 = NormalizeYawDiff(flYaw2, flYaw1);
+			const float d32 = NormalizeYawDiff(flYaw3, flYaw2);
+			const float d43 = NormalizeYawDiff(flYaw4, flYaw3);
+
+			const auto inc{d43 > 0.0f && d32 > 0.0f && d21 > 0.0f && d10 > 0.0f};
+			const auto dec{d43 < 0.0f && d32 < 0.0f && d21 < 0.0f && d10 < 0.0f};
 
 			if (!inc && !dec)
 			{
 				return;
 			}
 
-			const float flYawRate = (((flYaw0 - flYaw1) + (flYaw2 - flYaw3) + (flYaw3 - flYaw4)) / 3) / (TICK_INTERVAL * 50.0f);
+			const float flTotalYawChange = (-d10) + (-d21) + (-d32) + (-d43);
+			const float flTimeSpan = std::max(pRecord0->SimulationTime - pRecord4->SimulationTime, TICK_INTERVAL);
+			const float flYawRate = flTotalYawChange / 4.0f / flTimeSpan * TICK_INTERVAL;
 
 			if (fabsf(flYawRate) < 1.0f)
 			{
@@ -380,25 +418,30 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 		const LagRecord_t* rec1{F::LagRecords->GetRecord(pPlayer, 1)};
 		const LagRecord_t* rec2{F::LagRecords->GetRecord(pPlayer, 2)};
 		const LagRecord_t* rec3{F::LagRecords->GetRecord(pPlayer, 3)};
-		//const LagRecord_t* rec4{F::LagRecords->GetRecord(pPlayer, 4)};
+		const LagRecord_t* rec4{F::LagRecords->GetRecord(pPlayer, 4)};
 
-		if (rec0 && rec1 && rec2 && rec3 /*&& rec4*/)
+		if (rec0 && rec1 && rec2 && rec3 && rec4)
 		{
-			const float yaw0{Math::VelocityToAngles(rec0->Velocity).y};
-			const float yaw1{Math::VelocityToAngles(rec1->Velocity).y};
-			const float yaw2{Math::VelocityToAngles(rec2->Velocity).y};
-			const float yaw3{Math::VelocityToAngles(rec3->Velocity).y};
-			//float yaw4{Math::VelocityToAngles(rec4->m_vVelocity).y};
+			const float yaw0 = Math::VelocityToAngles(rec0->Velocity).y;
+			const float yaw1 = Math::VelocityToAngles(rec1->Velocity).y;
+			const float yaw2 = Math::VelocityToAngles(rec2->Velocity).y;
+			const float yaw3 = Math::VelocityToAngles(rec3->Velocity).y;
+			const float yaw4 = Math::VelocityToAngles(rec4->Velocity).y;
 
-			const bool inc{/*yaw4 > yaw3 &&*/ yaw3 > yaw2 && yaw2 > yaw1 && yaw1 > yaw0};
-			const bool dec{/*yaw4 < yaw3 &&*/ yaw3 < yaw2 && yaw2 < yaw1 && yaw1 < yaw0};
+			const float ad10 = NormalizeYawDiff(yaw1, yaw0);
+			const float ad21 = NormalizeYawDiff(yaw2, yaw1);
+			const float ad32 = NormalizeYawDiff(yaw3, yaw2);
+			const float ad43 = NormalizeYawDiff(yaw4, yaw3);
+
+			const bool inc{ad43 > 0.0f && ad32 > 0.0f && ad21 > 0.0f && ad10 > 0.0f};
+			const bool dec{ad43 < 0.0f && ad32 < 0.0f && ad21 < 0.0f && ad10 < 0.0f};
 
 			if (!inc && !dec)
 			{
 				return;
 			}
 
-			const float delta{(((yaw0 - yaw1) + (yaw2 - yaw3) /*+ (yaw3 - yaw4)*/) / 2)};
+			const float delta = ((-ad10) + (-ad21) + (-ad32) + (-ad43)) / 4.0f;
 
 			m_flYawTurnRate = delta;
 
@@ -497,6 +540,9 @@ void CMovementSimulation::Restore()
 	m_flYawTurnRate = 0.0f;
 	m_vAccelTrend = {};
 	m_vAdaptiveVelocity = {};
+	m_vMethod2Accel = {};
+	m_vMethod2Velocity = {};
+	m_vMethod3OriginalVelocity = {};
 
 	std::memset(&m_MoveData, 0, sizeof(CMoveData));
 	std::memset(&m_PlayerDataBackup, 0, sizeof(CPlayerDataBackup));
@@ -529,6 +575,43 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 		m_MoveData.m_vecViewAngles.y += m_flYawTurnRate;
 	}
 
+	// Method 2: per-tick velocity extrapolation â€” advance predicted velocity by
+	// the acceleration trend and recompute movement inputs each tick
+	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 2 && m_vMethod2Velocity.Length2D() > 1.0f)
+	{
+		m_vMethod2Velocity.x += m_vMethod2Accel.x;
+		m_vMethod2Velocity.y += m_vMethod2Accel.y;
+
+		// Clamp to max speed so prediction doesn't diverge
+		const float flPredSpeed = m_vMethod2Velocity.Length2D();
+		if (flPredSpeed > m_MoveData.m_flMaxSpeed * 1.1f && flPredSpeed > 0.001f)
+		{
+			const float flScale = m_MoveData.m_flMaxSpeed * 1.1f / flPredSpeed;
+			m_vMethod2Velocity.x *= flScale;
+			m_vMethod2Velocity.y *= flScale;
+		}
+
+		const Vec3 vNewAngles = { 0.0f, Math::VelocityToAngles(m_vMethod2Velocity).y, 0.0f };
+		Vec3 vForward = {}, vRight = {};
+		Math::AngleVectors(vNewAngles, &vForward, &vRight, nullptr);
+
+		if (fabsf(vRight.x) > 0.001f)
+		{
+			const float flRatio = vRight.y / vRight.x;
+			const float flDenom = vForward.y - flRatio * vForward.x;
+
+			if (fabsf(flDenom) > 0.001f)
+				m_MoveData.m_flForwardMove = (m_vMethod2Velocity.y - flRatio * m_vMethod2Velocity.x) / flDenom;
+			else
+				m_MoveData.m_flForwardMove = 0.0f;
+
+			m_MoveData.m_flSideMove = (m_vMethod2Velocity.x - vForward.x * m_MoveData.m_flForwardMove) / vRight.x;
+		}
+
+		m_MoveData.m_vecViewAngles = vNewAngles;
+		m_MoveData.m_vecAngles = vNewAngles;
+	}
+
 	// Method 3: per-tick adaptive velocity update - advance predicted velocity by
 	// the acceleration trend and recompute movement inputs to match
 	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 3 && m_vAdaptiveVelocity.Length2D() > 1.0f)
@@ -536,13 +619,30 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 		m_vAdaptiveVelocity.x += m_vAccelTrend.x;
 		m_vAdaptiveVelocity.y += m_vAccelTrend.y;
 
-		// Clamp to max speed so prediction doesn't diverge
+	// Clamp to max speed so prediction doesn't diverge
 		const float flPredSpeed = m_vAdaptiveVelocity.Length2D();
 		if (flPredSpeed > m_MoveData.m_flMaxSpeed * 1.1f && flPredSpeed > 0.001f)
 		{
 			const float flScale = m_MoveData.m_flMaxSpeed * 1.1f / flPredSpeed;
 			m_vAdaptiveVelocity.x *= flScale;
 			m_vAdaptiveVelocity.y *= flScale;
+		}
+
+		// Drift limiter: if the velocity direction has accumulated >15Â° from the original,
+		// dampen the accel trend to prevent runaway directional drift from noise
+		if (m_vMethod3OriginalVelocity.Length2D() > 1.0f && flPredSpeed > 0.001f)
+		{
+			const float flDot = (m_vAdaptiveVelocity.x * m_vMethod3OriginalVelocity.x
+								+ m_vAdaptiveVelocity.y * m_vMethod3OriginalVelocity.y)
+								/ (flPredSpeed * m_vMethod3OriginalVelocity.Length2D());
+			const float flAngleDeg = RAD2DEG(acosf(std::clamp(flDot, -1.0f, 1.0f)));
+
+			if (flAngleDeg > 15.0f)
+			{
+				// Freeze further acceleration; velocity direction has drifted too far
+				m_vAccelTrend.x = 0.0f;
+				m_vAccelTrend.y = 0.0f;
+			}
 		}
 
 		const Vec3 vNewAngles = { 0.0f, Math::VelocityToAngles(m_vAdaptiveVelocity).y, 0.0f };

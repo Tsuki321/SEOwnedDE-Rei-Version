@@ -223,12 +223,34 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 				if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
 					continue;
 
+				// Cache current state once per player to avoid redundant engine queries
+				// inside the per-record loop (GetAbsOrigin, GetEyeAngles, m_fFlags, GetAnimState).
+				const Vec3 vCurAbsOrigin = pPlayer->GetAbsOrigin();
+				const Vec3 vCurEyeAngles = pPlayer->GetEyeAngles();
+				const int nCurFlags = pPlayer->m_fFlags();
+				const float flCurFeetYaw = [&]() -> float {
+					if (const auto pAnimState = pPlayer->GetAnimState())
+						return pAnimState->m_flCurrentFeetYaw;
+					return 0.0f;
+				}();
+
 				for (int n = 1; n < nRecords; n++)
 				{
 					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-					if (!pRecord || !F::LagRecords->DiffersFromCurrent(pRecord))
+					if (!pRecord)
 						continue;
+
+					// Inline DiffersFromCurrent check using cached values
+					if ((vCurAbsOrigin - pRecord->AbsOrigin).LengthSqr() <= 0.01f)
+					{
+						const float flYawDelta = std::remainderf(vCurEyeAngles.y - pRecord->EyeAngles.y, 360.0f);
+						if (fabsf(flYawDelta) <= 0.1f && nCurFlags == pRecord->Flags
+							&& fabsf(flCurFeetYaw - pRecord->FeetYaw) <= 0.1f)
+						{
+							continue;
+						}
+					}
 
 					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, nAimHitbox, const_cast<matrix3x4_t*>(pRecord->BoneMatrix));
 					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);

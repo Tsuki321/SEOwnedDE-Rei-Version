@@ -68,6 +68,9 @@ class CMovementSimulation
 	float m_flYawTurnRate = 0.0f;
 	Vec3 m_vAccelTrend = {};
 	Vec3 m_vAdaptiveVelocity = {};
+	Vec3 m_vMethod2Accel = {};
+	Vec3 m_vMethod2Velocity = {};
+	Vec3 m_vMethod3OriginalVelocity = {};
 
 	bool m_bOldInPrediction = false;
 	bool m_bOldFirstTimePredicted = false;
@@ -82,6 +85,29 @@ public:
 
 	const Vec3& GetOrigin() { return m_MoveData.m_vecAbsOrigin; }
 	bool IsRunning() { return m_bRunning; }
+};
+
+// RAII scope guard: ensures Restore() is called on all exit paths.
+// Usage: CMovementSimScope sim(pPlayer); if (!sim) return false;
+class CMovementSimScope
+{
+	bool m_bInitialized = false;
+
+public:
+	explicit CMovementSimScope(C_TFPlayer* pPlayer)
+	{
+		m_bInitialized = F::MovementSimulation->Initialize(pPlayer);
+	}
+
+	~CMovementSimScope()
+	{
+		if (m_bInitialized)
+		{
+			F::MovementSimulation->Restore();
+		}
+	}
+
+	explicit operator bool() const { return m_bInitialized; }
 };
 
 MAKE_SINGLETON_SCOPED(CMovementSimulation, MovementSimulation, F);

@@ -14,6 +14,7 @@ private:
 
 	bool m_bClickConsumed = false;
 	std::map<void *, bool> m_mapStates = {};
+	std::unordered_map<std::string *, std::string> m_mapTempStrings = {};
 
 	//std::string m_strConfigPath = {};
 

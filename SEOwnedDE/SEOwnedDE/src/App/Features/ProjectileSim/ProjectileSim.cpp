@@ -1,7 +1,16 @@
 #include "ProjectileSim.h"
 
-IPhysicsEnvironment *env{};
-IPhysicsObject *obj{};
+CProjectileSim::~CProjectileSim()
+{
+	if (m_pObj)
+	{
+		m_pObj = nullptr;
+	}
+	if (m_pEnv)
+	{
+		m_pEnv = nullptr;
+	}
+}
 
 bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const Vec3 &angles, ProjectileInfo &out)
 {
@@ -123,12 +132,12 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 
 bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 {
-	if (!env)
+	if (!m_pEnv)
 	{
-		env = I::Physics->CreateEnvironment();
+		m_pEnv = I::Physics->CreateEnvironment();
 	}
 
-	if (!obj)
+	if (!m_pObj)
 	{
 		//it doesn't matter what the size is for non drag affected projectiles
 		//pipes use the size below so it works out just fine
@@ -142,12 +151,12 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 		params.rotInertiaLimit = 0.0f;
 		params.enableCollisions = false;
 
-		obj = env->CreatePolyObject(col, 0, info.m_pos, info.m_ang, &params);
+		m_pObj = m_pEnv->CreatePolyObject(col, 0, info.m_pos, info.m_ang, &params);
 
-		obj->Wake();
+		m_pObj->Wake();
 	}
 
-	if (!env || !obj)
+	if (!m_pEnv || !m_pObj)
 	{
 		return false;
 	}
@@ -192,8 +201,8 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 			ang_vel.Zero();
 		}
 
-		obj->SetPosition(info.m_pos, info.m_ang, true);
-		obj->SetVelocity(&vel, &ang_vel);
+		m_pObj->SetPosition(info.m_pos, info.m_ang, true);
+		m_pObj->SetVelocity(&vel, &ang_vel);
 	}
 
 	//set drag
@@ -240,13 +249,13 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 			}
 		}
 
-		obj->SetDragCoefficient(&drag, &drag);
+		m_pObj->SetDragCoefficient(&drag, &drag);
 
-		obj->m_dragBasis = drag_basis;
-		obj->m_angDragBasis = ang_drag_basis;
+		m_pObj->m_dragBasis = drag_basis;
+		m_pObj->m_angDragBasis = ang_drag_basis;
 	}
 
-	//set env params
+	//set m_pEnv params
 	{	
 		auto max_vel{ 1000000.0f };
 		auto max_ang_vel{ 1000000.0f };
@@ -277,11 +286,11 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 		params.maxVelocity = max_vel;
 		params.maxAngularVelocity = max_ang_vel;
 
-		env->SetPerformanceSettings(&params);
-		env->SetAirDensity(2.0f);
-		env->SetGravity({ 0.0f, 0.0f, -(800.0f * info.m_gravity_mod) });
+		m_pEnv->SetPerformanceSettings(&params);
+		m_pEnv->SetAirDensity(2.0f);
+		m_pEnv->SetGravity({ 0.0f, 0.0f, -(800.0f * info.m_gravity_mod) });
 
-		env->ResetSimulationClock(); //not needed?
+		m_pEnv->ResetSimulationClock(); //not needed?
 	}
 
 	return true;
@@ -289,24 +298,24 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 
 void CProjectileSim::RunTick()
 {
-	if (!env)
+	if (!m_pEnv)
 	{
 		return;
 	}
 
-	env->Simulate(TICK_INTERVAL);
+	m_pEnv->Simulate(TICK_INTERVAL);
 }
 
 Vec3 CProjectileSim::GetOrigin()
 {
-	if (!obj)
+	if (!m_pObj)
 	{
 		return {};
 	}
 
 	Vec3 out{};
 
-	obj->GetPosition(&out, nullptr);
+	m_pObj->GetPosition(&out, nullptr);
 
 	return out;
 }

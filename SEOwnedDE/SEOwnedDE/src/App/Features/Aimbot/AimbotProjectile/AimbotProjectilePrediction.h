@@ -61,7 +61,8 @@ namespace ProjectilePredictionMath
 		float t = 1.0f - std::exp(-tickTime * safeDecayRate);
 
 		float startAlpha = 0.85f * safeConfidence;
-		float endAlpha = 0.15f;
+		// endAlpha scales with inverse confidence: low confidence -> higher floor, high confidence -> lower floor
+		float endAlpha = std::clamp(0.15f + (1.0f - safeConfidence) * 0.35f, 0.15f, 0.5f);
 
 		return startAlpha + t * (endAlpha - startAlpha);
 	}

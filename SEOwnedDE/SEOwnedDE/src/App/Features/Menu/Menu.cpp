@@ -449,259 +449,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 		return "VK2STR_FAILED";
 	};
 
-	bool bCallback = false;
-
-	int x = m_nCursorX;
-	int y = m_nCursorY;
-	int w = CFG::Menu_InputKey_Width;
-	int h = CFG::Menu_InputKey_Height;
-
-	int w_with_text = [&]() -> int {
-		int w_out = 0, h_out = 0;
-		I::MatSystemSurface->GetTextSize(H::Fonts->Get(EFonts::Menu).m_dwFont, Utils::ConvertUtf8ToWide(szLabel).c_str(), w_out, h_out);
-		return w + w_out + 1;
-	}();
-
-	bool bHovered = IsHovered(x, y, w_with_text, h, &nKeyOut);
-	bool bActive = m_mapStates[&nKeyOut] || bHovered;
-
-	if (!m_mapStates[&nKeyOut] && bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
-		m_mapStates[&nKeyOut] = m_bClickConsumed = true;
-
-	m_bInKeybind = false;
-	if (m_mapStates[&nKeyOut])
-	{
-		m_bInKeybind = true;
-
-		for (int n = 0; n < 256; n++)
-		{
-			bool bMouse = (n > 0x0 && n < 0x7);
-			bool bLetter = (n > L'A' - 1 && n < L'Z' + 1);
-			bool bAllowed = (n == VK_LSHIFT || n == VK_RSHIFT || n == VK_SHIFT || n == VK_ESCAPE || n == VK_INSERT || n == VK_F3 || n == VK_MENU || n == VK_CAPITAL || n == VK_SPACE || n == VK_CONTROL);
-			bool bNumPad = n > (VK_NUMPAD0 - 1) && n < (VK_NUMPAD9)+1;
-
-			if (bMouse || bLetter || bAllowed || bNumPad)
-			{
-				if (H::Input->IsPressed(n))
-				{
-					if (n == VK_INSERT || n == VK_F3) {
-						m_mapStates[&nKeyOut] = false;
-						break;
-					}
-
-					else if (n == VK_ESCAPE) {
-						nKeyOut = 0x0;
-						m_mapStates[&nKeyOut] = false;
-						break;
-					}
-
-					else
-					{
-						if (n == VK_LBUTTON)
-						{
-							if (m_bClickConsumed)
-								continue;
-
-							m_bClickConsumed = true;
-						}
-
-						nKeyOut = n;
-						m_mapStates[&nKeyOut] = false;
-					}
-
-					break;
-				}
-			}
-		}
-	}
-
-	Color_t clr = CFG::Menu_Accent_Primary;
-
-	if (bActive)
-		H::Draw->Rect(x, y, w, h, { clr.r, clr.g, clr.b, 25 });
-
-	H::Draw->OutlinedRect(x, y, w, h, clr);
-
-	if (m_mapStates[&nKeyOut])
-	{
-		H::Draw->String(
-			H::Fonts->Get(EFonts::Menu),
-			x + (w / 2),
-			y + (h / 2),
-			bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-			POS_CENTERXY,
-			"...");
-	}
-
-	else
-	{
-		H::Draw->String(
-			H::Fonts->Get(EFonts::Menu),
-			x + (w / 2),
-			y + (h / 2),
-			bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-			POS_CENTERXY,
-			VK2STR(nKeyOut).c_str());
-	}
-
-	H::Draw->String(
-		H::Fonts->Get(EFonts::Menu),
-		x + (w + CFG::Menu_Spacing_X),
-		y + (h / 2),
-		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-		POS_CENTERY,
-		szLabel);
-
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
-
-	return bCallback;
-}
-
-bool CMenu::Button(const char *szLabel, bool bActive, int nCustomWidth)
-{
-	bool bCallback = false;
-
-	int x = m_nCursorX;
-	int y = m_nCursorY;
-	int w = 0;
-	int h = 0;
-
-	I::MatSystemSurface->GetTextSize(H::Fonts->Get(EFonts::Menu).m_dwFont, Utils::ConvertUtf8ToWide(szLabel).c_str(), w, h);
-
-	if (!w || !h)
-		return false;
-
-	if (nCustomWidth > 0)
-		w = nCustomWidth;
-
-	w += CFG::Menu_Spacing_X * 2;
-	h += CFG::Menu_Spacing_Y - 1;
-
-	bool bHovered = IsHovered(x, y, w, h, nullptr);
-
-	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
-		bCallback = m_bClickConsumed = true;
-
-	Color_t clr = CFG::Menu_Accent_Primary;
-	Color_t clr_dim = { clr.r, clr.g, clr.b, (bHovered || bActive) ? static_cast<byte>(50) : static_cast<byte>(0) };
-
-	H::Draw->Rect(x, y, w, h, clr_dim);
-	H::Draw->OutlinedRect(x, y, w, h, clr);
-
-	H::Draw->String(
-		H::Fonts->Get(EFonts::Menu),
-		x + (w / 2), y + (h / 2) - 1,
-		(bHovered || bActive) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-		POS_CENTERXY, szLabel
-	);
-
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
-	m_nLastButtonW = w;
-
-	return bCallback;
-}
-
-bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr, bool center_txt)
-{
-	bool bCallback = false;
-
-	int x = m_nCursorX;
-	int y = m_nCursorY;
-	int w = nCustomWidth;
-	int h = H::Fonts->Get(EFonts::Menu).m_nTall;
-
-	w += CFG::Menu_Spacing_X * 2;
-	h += CFG::Menu_Spacing_Y - 1;
-
-	bool bHovered = IsHovered(x, y, w, h, nullptr);
-
-	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
-		bCallback = m_bClickConsumed = true;
-
-	Color_t clrA = CFG::Menu_Accent_Primary;
-	Color_t clr_dim = { clrA.r, clrA.g, clrA.b, bHovered ? static_cast<byte>(50) : static_cast<byte>(0) };
-
-	H::Draw->Rect(x, y, w, h, clr_dim);
-	H::Draw->OutlinedRect(x, y, w, h, clrA);
-
-	H::Draw->StartClipping(x, y, w, h);
-
-	if (center_txt)
-	{
-		H::Draw->String
-		(
-			H::Fonts->Get(EFonts::Menu),
-			x + (w / 2), y + (h / 2) - 1,
-			clr,
-			POS_CENTERXY, label
-		);
-	}
-
-	else
-	{
-		H::Draw->String
-		(
-			H::Fonts->Get(EFonts::Menu),
-			x + CFG::Menu_Spacing_X, y + (h / 2) - 1,
-			clr,
-			POS_CENTERY, label
-		);
-	}
-
-	H::Draw->EndClipping();
-
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
-	m_nLastButtonW = w;
-
-	return bCallback;
-}
-
-bool CMenu::InputText(const char *szLabel, const char *szLabel2, std::string &strOutput)
-{
-	bool bCallback = false;
-
-	int x = m_nCursorX;
-	int y = m_nCursorY;
-	int w = 0;
-	int h = 0;
-
-	I::MatSystemSurface->GetTextSize(H::Fonts->Get(EFonts::Menu).m_dwFont, Utils::ConvertUtf8ToWide(szLabel).c_str(), w, h);
-
-	if (!w || !h)
-		return false;
-
-	w += CFG::Menu_Spacing_X * 2;
-	h += CFG::Menu_Spacing_Y - 1;
-
-	bool bHovered = IsHovered(x, y, w, h, nullptr);
-
-	Color_t clr = CFG::Menu_Accent_Primary;
-	Color_t clr_dim = { clr.r, clr.g, clr.b, bHovered ? static_cast<byte>(50) : static_cast<byte>(0) };
-
-	if (!m_mapStates[&strOutput])
-	{
-		H::Draw->Rect(x, y, w, h, clr_dim);
-		H::Draw->OutlinedRect(x, y, w, h, clr);
-		H::Draw->String(
-			H::Fonts->Get(EFonts::Menu),
-			x + (w / 2), y + (h / 2) - 1,
-			bHovered ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-			POS_CENTERXY, szLabel
-		);
-	}
-
-	bool bCanOpen = [&]() -> bool
-	{
-		for (const auto &State : m_mapStates)
-		{
-			if (State.second && State.first != &strOutput)
-				return false;
-		}
-
-		return true;
-	}();
-
-	static std::string strTemp = {};
+	std::string &strTemp = m_mapTempStrings[&strOutput];
 
 	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && bCanOpen) {
 		m_bClickConsumed = m_mapStates[&strOutput] = true;
@@ -725,6 +473,45 @@ bool CMenu::InputText(const char *szLabel, const char *szLabel2, std::string &st
 
 		H::LateRender->Rect(x, y, w, h, CFG::Menu_Background);
 		H::LateRender->OutlinedRect(x, y, w, h, clr);
+		H::LateRender->String(
+			H::Fonts->Get(EFonts::Menu),
+			x + CFG::Menu_Spacing_X,
+			y + (CFG::Menu_Spacing_Y * 3),
+			CFG::Menu_Text_Inactive,
+			POS_CENTERY, szLabel2, {}
+		);
+
+		if (strTemp.length() < 15)
+		{
+			for (int n = 0; n < 256; n++)
+			{
+				if ((n > 'A' - 1 && n < 'Z' + 1) && H::Input->IsPressedAndHeld(n))
+				{
+					char ch = 0;
+
+					if ((GetKeyState(VK_CAPITAL) & 1) || H::Input->IsHeld(VK_SHIFT))
+						ch = static_cast<char>(n);
+
+					else ch = static_cast<char>(std::tolower(n));
+
+					strTemp += ch;
+				}
+			}
+		}
+
+		if (strTemp.length() > 0)
+		{
+			if (H::Input->IsPressedAndHeld(VK_BACK))
+				strTemp.erase(strTemp.end() - 1);
+		}
+
+		if (H::Input->IsPressed(VK_RETURN)) {
+			bCallback = strTemp.length() > 0;
+			strOutput = std::string(strTemp.begin(), strTemp.end());
+			m_mapStates[&strOutput] = false;
+			strTemp.clear();
+		}
+
 		H::LateRender->String(
 			H::Fonts->Get(EFonts::Menu),
 			x + CFG::Menu_Spacing_X,
@@ -1988,6 +1775,7 @@ void CMenu::MainWindow()
 				});
 
 				SliderFloat("Particles Rainbow Rate", CFG::Visuals_Particles_Rainbow_Rate, 1.0f, 10.0f, 1.0f, "%.0f");
+				InputText("Custom Skybox", "Texture Name:", CFG::Visuals_Custom_Skybox_Texture_Name);
 			}
 			GroupBoxEnd();
 
@@ -2329,11 +2117,11 @@ void CMenu::MainWindow()
 
 			CheckBox("Draw Indicator", CFG::Exploits_Shifting_Draw_Indicator);
 
-			/*SelectSingle("Indicator Style", CFG::Exploits_Shifting_Indicator_Style,
+			SelectSingle("Indicator Style", CFG::Exploits_Shifting_Indicator_Style,
 			{
 				{ "Rectangle", 0 },
 				{ "Circle", 1 },
-			});*/
+			});
 		}
 		GroupBoxEnd();
 

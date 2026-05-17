@@ -17,7 +17,11 @@ struct ProjectileInfo
 
 class CProjectileSim
 {
+	IPhysicsEnvironment* m_pEnv = nullptr;
+	IPhysicsObject* m_pObj = nullptr;
+
 public:
+	~CProjectileSim();
 	bool GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const Vec3 &angles, ProjectileInfo &out);
 	bool Init(const ProjectileInfo &info, bool no_vec_up = false);
 	void RunTick();
