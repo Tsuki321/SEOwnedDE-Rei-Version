@@ -348,6 +348,11 @@
     <ClCompile Include="features\TestTriggerbot.cpp" />
     <ClCompile Include="features\TestVisualUtils.cpp" />
     <ClCompile Include="features\TestWorldModulation.cpp" />
+    <ClCompile Include="utils\TestVector.cpp" />
+    <ClCompile Include="utils\TestMath.cpp" />
+    <ClCompile Include="utils\TestColor.cpp" />
+    <ClCompile Include="utils\TestHash.cpp" />
+    <ClCompile Include="utils\TestConfig.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
