@@ -10,8 +10,8 @@ struct Color_t
 	unsigned char b = 0;
 	unsigned char a = 0;
 
-	std::string toHexStr();
-	std::wstring toHexStrW();
+	std::string toHexStr() const;
+	std::wstring toHexStrW() const;
 };
 
 namespace Colors

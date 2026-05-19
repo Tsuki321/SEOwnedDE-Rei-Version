@@ -10,7 +10,8 @@
 CFGVAR(test_cfg_bool, true);
 CFGVAR(test_cfg_int, 42);
 CFGVAR(test_cfg_float, 3.14f);
-CFGVAR(test_cfg_color, Color_t{ 100, 150, 200, 255 });
+namespace { const Color_t test_cfg_color_init{ 100, 150, 200, 255 }; }
+CFGVAR(test_cfg_color, test_cfg_color_init);
 CFGVAR(test_cfg_string, std::string{ "hello_config" });
 
 CFGVAR_NOSAVE(test_cfg_nosave_bool, false);

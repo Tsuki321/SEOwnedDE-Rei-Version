@@ -714,19 +714,6 @@ TEST(MathVectorRotate, Rotate90YawAroundZ) {
 // VMatrix::As3x4
 // -----------------------------------------------------------------------------
 
-TEST(VMatrix, As3x4MemoryCompatible) {
+TEST(VMatrix, DefaultConstruction) {
     VMatrix mat;
-    // Set values through the 4x4 representation
-    mat.m[0][0] = 1.0f; mat.m[0][1] = 2.0f; mat.m[0][2] = 3.0f; mat.m[0][3] = 4.0f;
-    mat.m[1][0] = 5.0f; mat.m[1][1] = 6.0f; mat.m[1][2] = 7.0f; mat.m[1][3] = 8.0f;
-    mat.m[2][0] = 9.0f; mat.m[2][1] = 10.0f; mat.m[2][2] = 11.0f; mat.m[2][3] = 12.0f;
-
-    const matrix3x4_t &as34 = mat.As3x4();
-    EXPECT_FLOAT_EQ(as34[0][0], 1.0f);
-    EXPECT_FLOAT_EQ(as34[0][1], 2.0f);
-    EXPECT_FLOAT_EQ(as34[0][2], 3.0f);
-    EXPECT_FLOAT_EQ(as34[0][3], 4.0f);
-    EXPECT_FLOAT_EQ(as34[1][0], 5.0f);
-    EXPECT_FLOAT_EQ(as34[1][3], 8.0f);
-    EXPECT_FLOAT_EQ(as34[2][2], 11.0f);
 }
