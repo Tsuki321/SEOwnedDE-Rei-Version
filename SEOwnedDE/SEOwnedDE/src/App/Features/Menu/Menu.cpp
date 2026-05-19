@@ -647,6 +647,102 @@ bool CMenu::InputText(const char *szLabel, const char *szLabel2, std::string &st
 	return bCallback;
 }
 
+bool CMenu::Button(const char *szLabel, bool bActive, int nCustomWidth)
+{
+	bool bCallback = false;
+
+	int x = m_nCursorX;
+	int y = m_nCursorY;
+	int w = 0;
+	int h = 0;
+
+	I::MatSystemSurface->GetTextSize(H::Fonts->Get(EFonts::Menu).m_dwFont, Utils::ConvertUtf8ToWide(szLabel).c_str(), w, h);
+
+	if (!w || !h)
+		return false;
+
+	if (nCustomWidth > 0)
+		w = nCustomWidth;
+
+	w += CFG::Menu_Spacing_X * 2;
+	h += CFG::Menu_Spacing_Y - 1;
+
+	bool bHovered = IsHovered(x, y, w, h, nullptr);
+
+	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
+		bCallback = m_bClickConsumed = true;
+
+	Color_t clr = CFG::Menu_Accent_Primary;
+
+	if (bActive)
+	{
+		H::Draw->Rect(x, y, w, h, { clr.r, clr.g, clr.b, 50 });
+	}
+
+	H::Draw->OutlinedRect(x, y, w, h, clr);
+
+	H::Draw->String(
+		H::Fonts->Get(EFonts::Menu),
+		x + (w / 2), y + (h / 2) - 1,
+		(bHovered || bActive) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		POS_CENTERXY, szLabel
+	);
+
+	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	m_nLastButtonW = w;
+
+	return bCallback;
+}
+
+bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr, bool center_txt)
+{
+	bool bCallback = false;
+
+	int x = m_nCursorX;
+	int y = m_nCursorY;
+	int w = nCustomWidth;
+	int h = H::Fonts->Get(EFonts::Menu).m_nTall;
+
+	w += CFG::Menu_Spacing_X * 2;
+	h += CFG::Menu_Spacing_Y - 1;
+
+	bool bHovered = IsHovered(x, y, w, h, nullptr);
+
+	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
+		bCallback = m_bClickConsumed = true;
+
+	H::Draw->OutlinedRect(x, y, w, h, CFG::Menu_Accent_Primary);
+
+	H::Draw->StartClipping(x, y, w, h);
+
+	if (center_txt)
+	{
+		H::Draw->String(
+			H::Fonts->Get(EFonts::Menu),
+			x + (w / 2), y + (h / 2) - 1,
+			clr,
+			POS_CENTERXY, label
+		);
+	}
+
+	else
+	{
+		H::Draw->String(
+			H::Fonts->Get(EFonts::Menu),
+			x + CFG::Menu_Spacing_X, y + (h / 2) - 1,
+			clr,
+			POS_CENTERY, label
+		);
+	}
+
+	H::Draw->EndClipping();
+
+	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	m_nLastButtonW = w;
+
+	return bCallback;
+}
+
 bool CMenu::SelectSingle(const char *szLabel, int &nVar, const std::vector<std::pair<const char *, int>> &vecSelects)
 {
 	bool bCallback = false;
