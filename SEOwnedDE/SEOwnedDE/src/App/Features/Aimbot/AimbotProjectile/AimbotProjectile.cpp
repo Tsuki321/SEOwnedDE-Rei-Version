@@ -904,6 +904,7 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 	else
 	{
 		float flTimeToTarget = 0.0f;
+		Vec3 vTarget = target.Entity->GetCenter();
 
 		auto runSplash = [&]()
 		{
