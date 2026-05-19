@@ -89,6 +89,8 @@ public:
 
 // RAII scope guard: ensures Restore() is called on all exit paths.
 // Usage: CMovementSimScope sim(pPlayer); if (!sim) return false;
+MAKE_SINGLETON_SCOPED(CMovementSimulation, MovementSimulation, F);
+
 class CMovementSimScope
 {
 	bool m_bInitialized = false;
@@ -109,5 +111,3 @@ public:
 
 	explicit operator bool() const { return m_bInitialized; }
 };
-
-MAKE_SINGLETON_SCOPED(CMovementSimulation, MovementSimulation, F);

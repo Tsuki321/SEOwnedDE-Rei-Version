@@ -202,8 +202,14 @@ public:
 			z > -0.01f && z < 0.01f);
 	}
 
-	Vec3 Scale(float fl) {
+	Vec3 Scale(float fl) const {
 		return Vec3(x * fl, y * fl, z * fl);
+	}
+
+	Vec3 Normalized() const {
+		float len = Length();
+		float inv = 1.f / (1.192092896e-07F + len);
+		return Vec3(x * inv, y * inv, z * inv);
 	}
 
 	void Init(float ix, float iy, float iz)

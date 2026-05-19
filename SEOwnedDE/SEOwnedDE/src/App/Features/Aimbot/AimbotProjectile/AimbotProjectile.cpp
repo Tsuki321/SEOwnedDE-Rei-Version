@@ -713,7 +713,7 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 			return false;
 
 		const float flTimingBias = ProjectilePredictionMath::ComputeTimingBias(SDKUtils::GetLatency(), SDKUtils::GetLerp());
-		constexpr float flTemporalTolerance = TICK_INTERVAL * 2.0f; // ±2 tick convergence window
+		const float flTemporalTolerance = TICK_INTERVAL * 2.0f;
 
 		for (int nTick = 0; nTick < TIME_TO_TICKS(CFG::Aimbot_Projectile_Max_Simulation_Time); nTick++)
 		{
