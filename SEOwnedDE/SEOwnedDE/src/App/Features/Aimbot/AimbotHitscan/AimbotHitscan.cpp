@@ -724,6 +724,15 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	if (Shifting::bShifting && !Shifting::bShiftingWarp)
 		return;
 
+	// When Delay Fire is toggled on mid-game, prime the timer so the first shot is also delayed
+	{
+		static bool bWasDelayEnabled = false;
+		const bool bIsDelayEnabled = CFG::Aimbot_Hitscan_Delay_Fire;
+		if (bIsDelayEnabled && !bWasDelayEnabled)
+			m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
+		bWasDelayEnabled = bIsDelayEnabled;
+	}
+
 	if (CFG::Aimbot_Hitscan_Delay_Fire && I::GlobalVars->curtime < m_flDelayFireEndTime)
 		return;
 

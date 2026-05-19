@@ -1,5 +1,6 @@
 #include "../../SDK/SDK.h"
 
+#include "../Features/Aimbot/AimbotHitscan/AimbotHitscan.h"
 #include "../Features/Crits/Crits.h"
 #include "../Features/Killstreak/Killstreak.h"
 #include "../Features/Players/Players.h"
@@ -11,6 +12,7 @@ MAKE_HOOK(IBaseClientDLL_LevelInitPostEntity, Memory::GetVFunc(I::BaseClientDLL,
 	CALL_ORIGINAL(ecx);
 
 	H::Entities->UpdateModelIndexes();
+	F::AimbotHitscan->Reset();
 	F::Crits->Reset();
 	F::Killstreak->Reset();
 

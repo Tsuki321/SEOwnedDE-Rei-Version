@@ -28,6 +28,7 @@ class CAimbotHitscan
 public:
 	bool IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
 	void Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
+	void Reset() { m_flDelayFireEndTime = 0.0f; }
 };
 
 MAKE_SINGLETON_SCOPED(CAimbotHitscan, AimbotHitscan, F);
