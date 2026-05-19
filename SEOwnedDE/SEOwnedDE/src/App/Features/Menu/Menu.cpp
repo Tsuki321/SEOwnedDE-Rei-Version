@@ -1213,8 +1213,12 @@ void CMenu::MainWindow()
 				SelectSingle("Aim Mode", CFG::Triggerbot_AutoBackstab_Aim_Mode,
 				{
 					{ "Normal", 0 },
-					{ "Silent", 1 }
+					{ "Silent", 1 },
+					{ "Smooth", 2 }
 				});
+
+				CheckBox("Use Lag Records", CFG::Triggerbot_AutoBackstab_Use_LagRecords);
+				SliderFloat("FOV", CFG::Triggerbot_AutoBackstab_FOV, 0.0f, 180.0f, 1.0f, "%.0f");
 
 				multiselect("Ignore", AutoBackstabIgnores,
 				{

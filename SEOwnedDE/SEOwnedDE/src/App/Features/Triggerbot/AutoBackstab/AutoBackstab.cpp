@@ -4,10 +4,6 @@
 
 #include "../../LagRecords/LagRecords.h"
 
-// Returns true if pPlayer has an active (drawn / unbroken) Razorback wearable equipped.
-// Mirrors Unibox's set_blockbackstab_once + ShouldDraw() check, but resolved by walking
-// the entity list since SEOwnedDE's SDKUtils::AttribHookValue does not expose the
-// CUtlVector<C_BaseEntity*> out-list overload.
 static bool HasActiveRazorback(C_TFPlayer* pPlayer)
 {
 	if (!pPlayer)
@@ -36,7 +32,6 @@ static bool HasActiveRazorback(C_TFPlayer* pPlayer)
 			continue;
 		}
 
-		// ShouldDraw() is false once the shield breaks; mirrors Unibox's pShield->ShouldDraw() gate.
 		if (pEntity->ShouldDraw())
 		{
 			return true;
@@ -101,6 +96,40 @@ bool CanKnifeOneShot(C_TFPlayer* target, bool crit, bool miniCrit)
 	return target->m_iHealth() <= 40 * dmgMult;
 }
 
+static void ApplyAimMode(CUserCmd* pCmd, const Vec3& angleTo)
+{
+	switch (CFG::Triggerbot_AutoBackstab_Aim_Mode)
+	{
+		case 0:
+		{
+			pCmd->viewangles = angleTo;
+			break;
+		}
+
+		case 1:
+		{
+			pCmd->viewangles = angleTo;
+			G::bPSilentAngles = true;
+			break;
+		}
+
+		case 2:
+		{
+			Vec3 vDelta = angleTo - pCmd->viewangles;
+			Math::ClampAngles(vDelta);
+
+			if (vDelta.Length() > 0.0f)
+			{
+				pCmd->viewangles += vDelta / 6.0f;
+				Math::ClampAngles(pCmd->viewangles);
+			}
+			break;
+		}
+
+		default: break;
+	}
+}
+
 void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd)
 {
 	if (!CFG::Triggerbot_AutoBackstab_Active)
@@ -112,6 +141,9 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 	{
 		return;
 	}
+
+	const bool bLegitMode = CFG::Triggerbot_AutoBackstab_Mode == 0;
+	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
@@ -147,16 +179,26 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			continue;
 		}
 
-		// Knife if lethal
 		auto canKnife = false;
 		if (CFG::Triggerbot_AutoBackstab_Knife_If_Lethal)
 		{
 			canKnife = CanKnifeOneShot(pPlayer, pLocal->IsCritBoosted(), pLocal->IsMiniCritBoosted());
 		}
 
-		auto angleTo{ I::EngineClient->GetViewAngles() };
+		if (bLegitMode && CFG::Triggerbot_AutoBackstab_FOV > 0.0f)
+		{
+			const Vec3 vAngToTarget = Math::CalcAngle(pLocal->GetShootPos(), pPlayer->GetCenter());
+			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngToTarget);
 
-		if (CFG::Triggerbot_AutoBackstab_Mode == 1)
+			if (flFOVTo > CFG::Triggerbot_AutoBackstab_FOV)
+			{
+				continue;
+			}
+		}
+
+		auto angleTo{ vLocalAngles };
+
+		if (!bLegitMode)
 		{
 			angleTo = Math::CalcAngle(pLocal->GetShootPos(), pPlayer->GetCenter());
 		}
@@ -170,14 +212,9 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 			if (H::AimUtils->TraceEntityMelee(pPlayer, pLocal->GetShootPos(), to))
 			{
-				if (CFG::Triggerbot_AutoBackstab_Mode == 1)
+				if (!bLegitMode)
 				{
-					pCmd->viewangles = angleTo;
-
-					if (CFG::Triggerbot_AutoBackstab_Aim_Mode == 1)
-					{
-						G::bPSilentAngles = true;
-					}
+					ApplyAimMode(pCmd, angleTo);
 				}
 
 				pCmd->buttons |= IN_ATTACK;
@@ -186,6 +223,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				return;
 			}
+		}
+
+		if (!CFG::Triggerbot_AutoBackstab_Use_LagRecords)
+		{
+			continue;
 		}
 
 		int numRecords = 0;
@@ -204,8 +246,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 				continue;
 			}
 
-			// Rage mode
-			if (CFG::Triggerbot_AutoBackstab_Mode == 1)
+			if (!bLegitMode)
 			{
 				angleTo = Math::CalcAngle(pLocal->GetShootPos(), record->Center);
 			}
@@ -224,14 +265,9 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 						continue;
 				}
 
-				if (CFG::Triggerbot_AutoBackstab_Mode == 1)
+				if (!bLegitMode)
 				{
-					pCmd->viewangles = angleTo;
-
-					if (CFG::Triggerbot_AutoBackstab_Aim_Mode == 1)
-					{
-						G::bPSilentAngles = true;
-					}
+					ApplyAimMode(pCmd, angleTo);
 				}
 
 				pCmd->buttons |= IN_ATTACK;
