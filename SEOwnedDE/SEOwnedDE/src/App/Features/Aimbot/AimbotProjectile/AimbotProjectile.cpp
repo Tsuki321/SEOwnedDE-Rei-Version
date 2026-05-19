@@ -897,8 +897,10 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 			{
 				return true;
 			}
+			}
+		}
 	}
-	
+
 	else
 	{
 		float flTimeToTarget = 0.0f;

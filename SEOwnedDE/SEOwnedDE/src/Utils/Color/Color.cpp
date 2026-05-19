@@ -58,7 +58,7 @@ Color_t ColorUtils::Mult(Color_t clr, float mult)
 	return { static_cast<unsigned char>(r),  static_cast<unsigned char>(g),  static_cast<unsigned char>(b), clr.a };
 }
 
-std::string Color_t::toHexStr()
+std::string Color_t::toHexStr() const
 {
 	std::string rs{ r < 16 ? std::format("0{:X}", r) : std::format("{:X}", r) };
 	std::string rg{ g < 16 ? std::format("0{:X}", g) : std::format("{:X}", g) };
@@ -68,7 +68,7 @@ std::string Color_t::toHexStr()
 	return rs + rg + rb + ra;
 }
 
-std::wstring Color_t::toHexStrW()
+std::wstring Color_t::toHexStrW() const
 {
 	std::wstring rs{ r < 16 ? std::format(L"0{:X}", r) : std::format(L"{:X}", r) };
 	std::wstring rg{ g < 16 ? std::format(L"0{:X}", g) : std::format(L"{:X}", g) };
