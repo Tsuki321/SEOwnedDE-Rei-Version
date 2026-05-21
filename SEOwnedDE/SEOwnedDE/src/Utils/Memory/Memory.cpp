@@ -1,9 +1,7 @@
 #include "Memory.h"
+#include <cstdlib>
+#include <cstring>
 #include <format>
-
-#define INRANGE(x, a, b) (x >= a && x <= b) 
-#define GetBits(x) (INRANGE((x & (~0x20)),'A','F') ? ((x & (~0x20)) - 'A' + 0xA) : (INRANGE(x,'0','9') ? x - '0' : 0))
-#define GetBytes(x) (GetBits(x[0]) << 4 | GetBits(x[1]))
 
 typedef void *(*InstantiateInterfaceFn)();
 
@@ -17,36 +15,75 @@ struct InterfaceInit_t
 #include <vector>
 #include <Psapi.h>
 
-std::vector<int> pattern_to_byte(const char *pattern)
+std::vector<int> Memory::PatternToBytes(const char *pattern)
 {
-	/// Prerequisites
-	auto              bytes = std::vector<int>{};
-	const auto        start = const_cast<char *>(pattern);
-	const char *const end = const_cast<char *>(pattern) + strlen(pattern);
+	std::vector<int> bytes{};
+	if (!pattern)
+		return bytes;
 
-	/// Convert signature into corresponding bytes
-	for (char *current = start; current < end; ++current)
+	const auto start = pattern;
+	const char *const end = pattern + strlen(pattern);
+
+	for (const char *current = start; current < end; )
 	{
-		/// Is current byte a wildcard? Simply ignore that that byte later
+		if (*current == ' ')
+		{
+			++current;
+			continue;
+		}
+
 		if (*current == '?')
 		{
 			++current;
-
-			/// Check if following byte is also a wildcard
-			if (*current == '?')
+			if (current < end && *current == '?')
 				++current;
 
-			/// Dummy byte
 			bytes.push_back(-1);
+			continue;
 		}
-		else
+
+		char *next = nullptr;
+		const auto value = std::strtoul(current, &next, 16);
+		if (next == current)
 		{
-			/// Convert character to byte on hexadecimal base
-			bytes.push_back(std::strtoul(current, &current, 16));
+			++current;
+			continue;
 		}
+
+		bytes.push_back(static_cast<int>(value));
+		current = next;
 	}
 
 	return bytes;
+}
+
+std::uintptr_t Memory::FindSignature(const std::byte *image_bytes, size_t image_size, const char *szPattern)
+{
+	const auto pattern_bytes = PatternToBytes(szPattern);
+	const auto signature_size = pattern_bytes.size();
+	const int *signature_bytes = pattern_bytes.data();
+
+	if (!image_bytes || signature_size == 0 || signature_size > image_size)
+		return 0x0;
+
+	for (size_t i = 0; i <= image_size - signature_size; ++i)
+	{
+		bool byte_sequence_found = true;
+
+		for (size_t j = 0; j < signature_size; ++j)
+		{
+			if (image_bytes[i + j] != static_cast<std::byte>(signature_bytes[j]) && signature_bytes[j] != -1)
+			{
+				byte_sequence_found = false;
+				break;
+			}
+		}
+
+		if (byte_sequence_found)
+			return reinterpret_cast<std::uintptr_t>(&image_bytes[i]);
+	}
+
+	return 0x0;
 }
 
 std::uintptr_t Memory::FindSignature(const char *szModule, const char *szPattern)
@@ -74,37 +111,10 @@ std::uintptr_t Memory::FindSignature(const char *szModule, const char *szPattern
 		if (!image_size)
 			return {};
 
-		/// Convert IDA-Style signature to a byte sequence
-		const auto pattern_bytes = pattern_to_byte(szPattern);
-
 		const auto image_bytes = reinterpret_cast<byte *>(hMod);
-
-		const auto signature_size = pattern_bytes.size();
-		const int *signature_bytes = pattern_bytes.data();
-
-		if (signature_size == 0 || signature_size > image_size)
-			return {};
-
-		/// Now loop through all bytes and check if the byte sequence matches
-		for (auto i = 0ul; i < image_size - signature_size; ++i)
-		{
-			auto byte_sequence_found = true;
-
-			/// Go through all bytes from the signature and check if it matches
-			for (auto j = 0ul; j < signature_size; ++j)
-			{
-				if (image_bytes[i + j] != signature_bytes[j] /// Bytes don't match
-					&& signature_bytes[j] != -1)             /// Byte isn't a wildcard either, WHAT THE HECK
-				{
-					byte_sequence_found = false;
-					break;
-				}
-			}
-
-			/// All good, now return the right address
-			if (byte_sequence_found)
-				return { reinterpret_cast<std::uintptr_t>(&image_bytes[i]) };
-		}
+		const auto result = FindSignature(reinterpret_cast<const std::byte *>(image_bytes), image_size, szPattern);
+		if (result)
+			return result;
 
 #if defined DEBUG_SIG
 		//MessageBox(nullptr, std::format("find_ida_sig {} failed\n", szPattern).c_str(), "", 0);

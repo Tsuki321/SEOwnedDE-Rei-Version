@@ -31,7 +31,8 @@ void CInterfaceManager::InitializeAllInterfaces()
 			auto dwDest = Memory::FindSignature(Interface->m_pszDLLName, Interface->m_pszVersion);
 			if (!dwDest)
 			{
-				AssertCustom(dwDest, std::format("CInterfaces::Initialize() failed to find signature:\n  {}\n  {}", Interface->m_pszDLLName, Interface->m_pszVersion).c_str());
+				const auto message = std::format("CInterfaceManager::InitializeAllInterfaces() failed to find signature:\n  {}\n  {}", Interface->m_pszDLLName, Interface->m_pszVersion);
+				AssertFatalCustom(false, message.c_str());
 				continue;
 			}
 
@@ -45,6 +46,10 @@ void CInterfaceManager::InitializeAllInterfaces()
 			}
 		}
 
-		AssertCustom(*Interface->m_pPtr, std::format("CInterfaces::Initialize() failed to initialize:\n  {}\n  {}", Interface->m_pszDLLName, Interface->m_pszVersion).c_str());
+		if (!*Interface->m_pPtr)
+		{
+			const auto message = std::format("CInterfaceManager::InitializeAllInterfaces() failed to initialize:\n  {}\n  {}", Interface->m_pszDLLName, Interface->m_pszVersion);
+			AssertFatalCustom(false, message.c_str());
+		}
 	}
 }
