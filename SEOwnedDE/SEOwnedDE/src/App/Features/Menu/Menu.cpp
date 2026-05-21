@@ -1242,6 +1242,7 @@ void CMenu::MainWindow()
 				CheckBox("Active", CFG::Aimbot_Projectile_Active);
 				CheckBox("No Spread", CFG::Aimbot_Projectile_NoSpread);
 				CheckBox("Auto Double Donk", CFG::Aimbot_Projectile_Auto_Double_Donk);
+				CheckBox("High Arc", CFG::Aimbot_Projectile_High_Arc);
 				CheckBox("Advanced Head Aim", CFG::Aimbot_Projectile_Advanced_Head_Aim);
 				CheckBox("Ground Strafe Prediction", CFG::Aimbot_Projectile_Ground_Strafe_Prediction);
 				CheckBox("Air Strafe Prediction", CFG::Aimbot_Projectile_Air_Strafe_Prediction);
@@ -1274,7 +1275,7 @@ void CMenu::MainWindow()
 					{ "Full Acceleration", 0 },
 					{ "Current Velocity", 1 },
 					{ "Velocity Extrapolation", 2 },
-					{ "Adaptive Tracking", 3 }
+					{ "Adaptive Accel Tracking", 3 }
 				});
 				SliderFloat("FOV", CFG::Aimbot_Projectile_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Max Simulation Time", CFG::Aimbot_Projectile_Max_Simulation_Time, 1.0f, 5.0f, 0.5f, "%.1fs");

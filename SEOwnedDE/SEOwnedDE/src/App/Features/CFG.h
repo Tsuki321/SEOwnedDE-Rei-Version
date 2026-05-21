@@ -42,6 +42,7 @@ namespace CFG
 	CFGVAR(Aimbot_Projectile_Active, true);
 	CFGVAR(Aimbot_Projectile_NoSpread, true);
 	CFGVAR(Aimbot_Projectile_Auto_Double_Donk, true);
+	CFGVAR(Aimbot_Projectile_High_Arc, false);
 	CFGVAR(Aimbot_Projectile_Advanced_Head_Aim, true);
 	CFGVAR(Aimbot_Projectile_Ground_Strafe_Prediction, true);
 	CFGVAR(Aimbot_Projectile_Air_Strafe_Prediction, true);
@@ -50,7 +51,7 @@ namespace CFG
 	CFGVAR(Aimbot_Projectile_Aim_Type, 1); //0 Normal 1 Silent
 	CFGVAR(Aimbot_Projectile_Sort, 0); //0 FOV 1 Distance
 	CFGVAR(Aimbot_Projectile_Aim_Position, 3); //0 Feet 1 Body 2 Head 3 Auto
-	CFGVAR(Aimbot_Projectile_Aim_Prediction_Method, 0); //0 Full Acceleration 1 Current Velocity 2 Velocity Extrapolation 3 Adaptive Velocity Tracking
+	CFGVAR(Aimbot_Projectile_Aim_Prediction_Method, 0); //0 Full Acceleration 1 Current Velocity 2 Velocity Extrapolation 3 Adaptive Accel Tracking
 	CFGVAR(Aimbot_Projectile_FOV, 45.0f);
 	CFGVAR(Aimbot_Projectile_Max_Simulation_Time, 1.5f);
 	CFGVAR(Aimbot_Projectile_Max_Processing_Targets, 1);

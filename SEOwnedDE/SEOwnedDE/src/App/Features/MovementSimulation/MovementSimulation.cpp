@@ -258,9 +258,8 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 
 	else if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 3)
 	{
-		// Adaptive Velocity Tracking: uses linear regression on lag records to compute
-		// per-tick acceleration trend, and updates movement inputs each simulation tick.
-		// This handles strafing, turning, and acceleration changes much more accurately.
+		// Adaptive Accel Tracking: averages recent lag-record acceleration,
+		// then updates movement inputs each simulation tick with drift limiting.
 		m_vAccelTrend = {};
 		m_vAdaptiveVelocity = pMoveData->m_vecVelocity;
 

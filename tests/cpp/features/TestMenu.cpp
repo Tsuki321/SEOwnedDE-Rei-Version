@@ -55,9 +55,10 @@ TEST(MenuContracts, ProjectilePredictionMethodShowsRelevantTuningControlsOnly) {
     ASSERT_TRUE(std::filesystem::exists(mainPath));
 
     const auto mainSource = testhelpers::ReadTextFile(mainPath);
+    EXPECT_NE(mainSource.find("CheckBox(\"High Arc\", CFG::Aimbot_Projectile_High_Arc)"), std::string::npos);
     EXPECT_NE(mainSource.find("SelectSingle(\"Prediction Method\", CFG::Aimbot_Projectile_Aim_Prediction_Method"), std::string::npos);
     EXPECT_NE(mainSource.find("{ \"Full Acceleration\", 0 }"), std::string::npos);
-    EXPECT_NE(mainSource.find("{ \"Adaptive Tracking\", 3 }"), std::string::npos);
+    EXPECT_NE(mainSource.find("{ \"Adaptive Accel Tracking\", 3 }"), std::string::npos);
     EXPECT_EQ(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 4"), std::string::npos);
     EXPECT_EQ(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 5"), std::string::npos);
 }

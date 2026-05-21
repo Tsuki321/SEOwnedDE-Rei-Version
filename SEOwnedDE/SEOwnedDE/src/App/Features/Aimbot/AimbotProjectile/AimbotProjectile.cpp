@@ -312,6 +312,23 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 
 	if (g)
 	{
+		const bool bUseHighArc = CFG::Aimbot_Projectile_High_Arc;
+
+		auto solveBallistic = [&](float flVelocity, const float flRoot, Vec3& vAngle, float& flTime) -> bool
+		{
+			const float flNumerator = bUseHighArc ? flVelocity * flVelocity + sqrtf(flRoot) : flVelocity * flVelocity - sqrtf(flRoot);
+			vAngle = { -RAD2DEG(atanf(flNumerator / (g * dx))), RAD2DEG(atan2f(v.y, v.x)), 0.0f };
+
+			const float flHorizontalSpeed = cosf(-DEG2RAD(vAngle.x)) * flVelocity;
+			if (fabsf(flHorizontalSpeed) < 0.001f)
+			{
+				return false;
+			}
+
+			flTime = dx / flHorizontalSpeed;
+			return flTime > 0.0f;
+		};
+
 		if (dx < 0.001f)
 		{
 			// Target is vertically aligned; use direct-fire angle
@@ -326,8 +343,10 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 			return false;
 		}
 
-		vAngleOut = { -RAD2DEG(atanf((v0 * v0 - sqrtf(root)) / (g * dx))), RAD2DEG(atan2f(v.y, v.x)), 0.0f };
-		flTimeOut = dx / (cosf(-DEG2RAD(vAngleOut.x)) * v0);
+		if (!solveBallistic(v0, root, vAngleOut, flTimeOut))
+		{
+			return false;
+		}
 
 		if (m_CurProjInfo.Pipes)
 		{
@@ -375,8 +394,10 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 					return false;
 				}
 
-				vAngleOut = { -RAD2DEG(atanf((v0 * v0 - sqrtf(rootInner)) / (g * dx))), RAD2DEG(atan2f(v.y, v.x)), 0.0f };
-				flTimeOut = dx / (cosf(-DEG2RAD(vAngleOut.x)) * v0);
+				if (!solveBallistic(v0, rootInner, vAngleOut, flTimeOut))
+				{
+					return false;
+				}
 			}
 		}
 	}
