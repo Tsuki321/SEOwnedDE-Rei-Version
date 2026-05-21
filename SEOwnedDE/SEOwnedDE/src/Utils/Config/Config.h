@@ -30,7 +30,7 @@ namespace Config
 			return;
 		}
 
-		nlohmann::json j{};
+		nlohmann::json j = nlohmann::json::object();
 
 		for (const auto &var : vars)
 		{
