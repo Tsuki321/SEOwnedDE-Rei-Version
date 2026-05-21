@@ -96,21 +96,21 @@ bool CanKnifeOneShot(C_TFPlayer* target, bool crit, bool miniCrit)
 	return target->m_iHealth() <= 40 * dmgMult;
 }
 
-static void ApplyAimMode(CUserCmd* pCmd, const Vec3& angleTo)
+static bool ApplyAimMode(CUserCmd* pCmd, const Vec3& angleTo)
 {
 	switch (CFG::Triggerbot_AutoBackstab_Aim_Mode)
 	{
 		case 0:
 		{
 			pCmd->viewangles = angleTo;
-			break;
+			return true;
 		}
 
 		case 1:
 		{
 			pCmd->viewangles = angleTo;
 			G::bPSilentAngles = true;
-			break;
+			return true;
 		}
 
 		case 2:
@@ -123,11 +123,16 @@ static void ApplyAimMode(CUserCmd* pCmd, const Vec3& angleTo)
 				pCmd->viewangles += vDelta / 6.0f;
 				Math::ClampAngles(pCmd->viewangles);
 			}
-			break;
+
+			Vec3 vRemaining = angleTo - pCmd->viewangles;
+			Math::ClampAngles(vRemaining);
+			return vRemaining.Length() <= 1.0f;
 		}
 
 		default: break;
 	}
+
+	return true;
 }
 
 void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd)
@@ -212,10 +217,14 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 			if (H::AimUtils->TraceEntityMelee(pPlayer, pLocal->GetShootPos(), to))
 			{
+				bool bReadyToAttack = true;
 				if (!bLegitMode)
 				{
-					ApplyAimMode(pCmd, angleTo);
+					bReadyToAttack = ApplyAimMode(pCmd, angleTo);
 				}
+
+				if (!bReadyToAttack)
+					return;
 
 				pCmd->buttons |= IN_ATTACK;
 
@@ -265,10 +274,14 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 						continue;
 				}
 
+				bool bReadyToAttack = true;
 				if (!bLegitMode)
 				{
-					ApplyAimMode(pCmd, angleTo);
+					bReadyToAttack = ApplyAimMode(pCmd, angleTo);
 				}
+
+				if (!bReadyToAttack)
+					return;
 
 				pCmd->buttons |= IN_ATTACK;
 

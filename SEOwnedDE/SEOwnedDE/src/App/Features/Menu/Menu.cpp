@@ -462,7 +462,6 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 	if (!m_mapStates[&nKeyOut] && bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
 		m_mapStates[&nKeyOut] = m_bClickConsumed = true;
 
-	m_bInKeybind = false;
 	if (m_mapStates[&nKeyOut])
 	{
 		m_bInKeybind = true;
@@ -578,7 +577,6 @@ bool CMenu::InputText(const char *szLabel, const char *szLabel2, std::string &st
 		m_mapStates[&strOutput] = false;
 	}
 
-	m_bWantTextInput = false;
 	if (m_mapStates[&strOutput])
 	{
 		m_bWantTextInput = true;
@@ -2664,6 +2662,8 @@ void CMenu::Run()
 	if (m_bOpen)
 	{
 		m_bClickConsumed = false;
+		m_bInKeybind = false;
+		m_bWantTextInput = false;
 
 		H::LateRender->Clear();
 
