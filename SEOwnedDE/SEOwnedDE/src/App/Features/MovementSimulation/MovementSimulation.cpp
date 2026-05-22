@@ -258,43 +258,80 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 
 	else if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 3)
 	{
-		// Adaptive Accel Tracking: averages recent lag-record acceleration,
+		// Adaptive Accel Tracking: regresses recent lag-record velocity over time,
 		// then updates movement inputs each simulation tick with drift limiting.
 		m_vAccelTrend = {};
 		m_vAdaptiveVelocity = pMoveData->m_vecVelocity;
 
 		if (F::LagRecords->HasRecords(pPlayer))
 		{
-			const LagRecord_t* rec0 = F::LagRecords->GetRecord(pPlayer, 0);
-			const LagRecord_t* rec1 = F::LagRecords->GetRecord(pPlayer, 1);
-			const LagRecord_t* rec2 = F::LagRecords->GetRecord(pPlayer, 2);
-			const LagRecord_t* rec3 = F::LagRecords->GetRecord(pPlayer, 3);
-			const LagRecord_t* rec4 = F::LagRecords->GetRecord(pPlayer, 4);
-
-	if (rec0 && rec1 && rec2 && rec3 && rec4)
+			const LagRecord_t* records[] =
 			{
-				const float dt01 = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
-				const float dt12 = std::max(rec1->SimulationTime - rec2->SimulationTime, TICK_INTERVAL);
-				const float dt23 = std::max(rec2->SimulationTime - rec3->SimulationTime, TICK_INTERVAL);
-				const float dt34 = std::max(rec3->SimulationTime - rec4->SimulationTime, TICK_INTERVAL);
+				F::LagRecords->GetRecord(pPlayer, 0),
+				F::LagRecords->GetRecord(pPlayer, 1),
+				F::LagRecords->GetRecord(pPlayer, 2),
+				F::LagRecords->GetRecord(pPlayer, 3),
+				F::LagRecords->GetRecord(pPlayer, 4)
+			};
 
-				const Vec3 accel01 = (rec0->Velocity - rec1->Velocity) / dt01;
-				const Vec3 accel12 = (rec1->Velocity - rec2->Velocity) / dt12;
-				const Vec3 accel23 = (rec2->Velocity - rec3->Velocity) / dt23;
-				const Vec3 accel34 = (rec3->Velocity - rec4->Velocity) / dt34;
-
-				m_vAccelTrend.x = (accel01.x + accel12.x + accel23.x + accel34.x) * 0.25f * TICK_INTERVAL;
-				m_vAccelTrend.y = (accel01.y + accel12.y + accel23.y + accel34.y) * 0.25f * TICK_INTERVAL;
-				m_vAccelTrend.z = 0.0f;
-				m_vAdaptiveVelocity = rec0->Velocity;
-			}
-			else if (rec0 && rec1)
+			const LagRecord_t* rec0 = records[0];
+			const LagRecord_t* rec1 = records[1];
+			if (rec0 && rec1)
 			{
-				const float dt = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
-				m_vAccelTrend.x = (rec0->Velocity.x - rec1->Velocity.x) / dt * TICK_INTERVAL;
-				m_vAccelTrend.y = (rec0->Velocity.y - rec1->Velocity.y) / dt * TICK_INTERVAL;
-				m_vAccelTrend.z = 0.0f;
 				m_vAdaptiveVelocity = rec0->Velocity;
+
+				int nRecords = 0;
+				float flSumTime = 0.0f;
+				float flSumTimeSq = 0.0f;
+				float flSumVelX = 0.0f;
+				float flSumVelY = 0.0f;
+				float flSumTimeVelX = 0.0f;
+				float flSumTimeVelY = 0.0f;
+
+				for (const LagRecord_t* record : records)
+				{
+					if (!record)
+					{
+						continue;
+					}
+
+					const float flAge = rec0->SimulationTime - record->SimulationTime;
+					if (flAge < -TICK_INTERVAL || flAge > TICK_INTERVAL * 8.0f)
+					{
+						continue;
+					}
+
+					const float flTime = -std::max(flAge, 0.0f);
+					flSumTime += flTime;
+					flSumTimeSq += flTime * flTime;
+					flSumVelX += record->Velocity.x;
+					flSumVelY += record->Velocity.y;
+					flSumTimeVelX += flTime * record->Velocity.x;
+					flSumTimeVelY += flTime * record->Velocity.y;
+					nRecords++;
+				}
+
+				if (nRecords >= 3)
+				{
+					const float flDenom = static_cast<float>(nRecords) * flSumTimeSq - flSumTime * flSumTime;
+					if (fabsf(flDenom) > 0.0001f)
+					{
+						const float flAccelX = (static_cast<float>(nRecords) * flSumTimeVelX - flSumTime * flSumVelX) / flDenom;
+						const float flAccelY = (static_cast<float>(nRecords) * flSumTimeVelY - flSumTime * flSumVelY) / flDenom;
+						const float flRecordConfidence = std::clamp(static_cast<float>(nRecords - 2) / 3.0f, 0.35f, 1.0f);
+
+						m_vAccelTrend.x = flAccelX * TICK_INTERVAL * flRecordConfidence;
+						m_vAccelTrend.y = flAccelY * TICK_INTERVAL * flRecordConfidence;
+					}
+				}
+				else
+				{
+					const float dt = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
+					m_vAccelTrend.x = (rec0->Velocity.x - rec1->Velocity.x) / dt * TICK_INTERVAL * 0.35f;
+					m_vAccelTrend.y = (rec0->Velocity.y - rec1->Velocity.y) / dt * TICK_INTERVAL * 0.35f;
+				}
+
+				m_vAccelTrend.z = 0.0f;
 			}
 
 			// Store original velocity for drift limiting

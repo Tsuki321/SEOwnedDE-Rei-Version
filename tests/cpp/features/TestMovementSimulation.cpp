@@ -34,6 +34,8 @@ TEST(MovementSimulationContracts, MainSourceContainsFeatureTokens) {
     EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 3"), std::string::npos);
     EXPECT_NE(mainSource.find("m_vAdaptiveVelocity"), std::string::npos);
     EXPECT_NE(mainSource.find("m_vAccelTrend"), std::string::npos);
+    EXPECT_NE(mainSource.find("flRecordConfidence"), std::string::npos);
+    EXPECT_NE(mainSource.find("flSumTimeVelX"), std::string::npos);
     EXPECT_NE(mainSource.find("m_vAdaptiveVelocity.Length2D() > 1.0f"), std::string::npos);
     EXPECT_NE(mainSource.find("H::Entities"), std::string::npos);
     EXPECT_NE(mainSource.find("CPlayerDataBackup::Store("), std::string::npos);
