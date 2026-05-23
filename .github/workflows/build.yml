@@ -37,15 +37,15 @@ jobs:
         run: nuget restore "SEOwnedDE/SEOwnedDE.sln"
         shell: powershell
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
       - name: Create ipdb output directory
         run: New-Item -ItemType Directory -Force -Path "SEOwnedDE/SEOwnedDE/ipdb" | Out-Null
         shell: powershell
 
       - name: Build solution (ReleaseAVX2 | x64)
-        run: msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDatabaseFile="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE.pdb" /m
+        run: |
+          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) { Write-Error "MSBuild not found"; exit 1 }
+          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDatabaseFile="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE.pdb" /m
         shell: powershell
 
       - name: Verify DLL exists
@@ -56,7 +56,7 @@ jobs:
         shell: powershell
 
       - name: Upload built DLL
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: SEOwnedDE-SEOwnedDE.dll
           path: SEOwnedDE/bin/ReleaseAVX2/SEOwnedDE.dll

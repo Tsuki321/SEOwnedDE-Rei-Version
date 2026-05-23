@@ -25,11 +25,11 @@ jobs:
         run: nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
         shell: powershell
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
       - name: Build Google Test Project
-        run: msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE_Tests /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
+        run: |
+          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $msbuild) { Write-Error "MSBuild not found"; exit 1 }
+          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE_Tests /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
         shell: powershell
 
       - name: Run Features Unit Tests
