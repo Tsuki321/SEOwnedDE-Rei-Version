@@ -7,16 +7,14 @@ on:
 jobs:
   build:
     name: Build (ReleaseAVX2 | x64)
-    runs-on: windows-2025
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    runs-on: windows-2025-vs2026
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.nuget/packages
@@ -26,7 +24,7 @@ jobs:
             nuget-packages-${{ runner.os }}-
 
       - name: Cache MSVC ipdb files
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             SEOwnedDE/SEOwnedDE/ipdb
@@ -40,7 +38,7 @@ jobs:
         shell: powershell
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1
+        uses: microsoft/setup-msbuild@v2
 
       - name: Create ipdb output directory
         run: New-Item -ItemType Directory -Force -Path "SEOwnedDE/SEOwnedDE/ipdb" | Out-Null
@@ -58,7 +56,7 @@ jobs:
         shell: powershell
 
       - name: Upload built DLL
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: SEOwnedDE-SEOwnedDE.dll
           path: SEOwnedDE/bin/ReleaseAVX2/SEOwnedDE.dll

@@ -6,16 +6,14 @@ on:
 jobs:
   test_features:
     name: Run Unit Tests (ReleaseAVX2 | x64)
-    runs-on: windows-2025
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    runs-on: windows-2025-vs2026
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ github.workspace }}\SEOwnedDE\packages
@@ -28,7 +26,7 @@ jobs:
         shell: powershell
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1
+        uses: microsoft/setup-msbuild@v2
 
       - name: Build Google Test Project
         run: msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE_Tests /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
