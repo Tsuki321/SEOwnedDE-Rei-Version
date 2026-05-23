@@ -23,11 +23,13 @@ jobs:
           restore-keys: |
             nuget-packages-${{ runner.os }}-
 
-      - name: Cache MSVC ipdb files
-        uses: actions/cache@v5
+      - name: Restore MSVC incremental build cache
+        id: msvc-cache
+        uses: actions/cache/restore@v5
         with:
           path: |
             SEOwnedDE/SEOwnedDE/ipdb
+            SEOwnedDE/build/ReleaseAVX2
             SEOwnedDE/bin/ReleaseAVX2
           key: ipdb-x64-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/*.{cpp,h,rc,vcxproj,vcxproj.filters}', 'SEOwnedDE/**/*.sln') }}
           restore-keys: |
@@ -45,7 +47,7 @@ jobs:
         run: |
           $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           if (-not $msbuild) { Write-Error "MSBuild not found"; exit 1 }
-          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDatabaseFile="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE.pdb" /m
+          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDataBaseFileName="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE.pdb" /m
         shell: powershell
 
       - name: Verify DLL exists
@@ -61,3 +63,13 @@ jobs:
           name: SEOwnedDE-SEOwnedDE.dll
           path: SEOwnedDE/bin/ReleaseAVX2/SEOwnedDE.dll
           retention-days: 7
+
+      - name: Save MSVC incremental build cache
+        if: success() && steps.msvc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            SEOwnedDE/SEOwnedDE/ipdb
+            SEOwnedDE/build/ReleaseAVX2
+            SEOwnedDE/bin/ReleaseAVX2
+          key: ${{ steps.msvc-cache.outputs.cache-primary-key }}

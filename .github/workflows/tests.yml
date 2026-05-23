@@ -21,6 +21,19 @@ jobs:
           restore-keys: |
             nuget-packages-tests-${{ runner.os }}-
 
+      - name: Restore MSVC test build cache
+        id: msvc-test-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            SEOwnedDE/SEOwnedDE/ipdb
+            SEOwnedDE/build/ReleaseAVX2
+            SEOwnedDE/build/tests/ReleaseAVX2
+            SEOwnedDE/bin/tests/ReleaseAVX2
+          key: ipdb-tests-x64-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/*.{cpp,h,rc,vcxproj,vcxproj.filters}', 'tests/cpp/**/*.{cpp,h,vcxproj,vcxproj.filters}', 'SEOwnedDE/**/*.sln') }}
+          restore-keys: |
+            ipdb-tests-x64-${{ runner.os }}-
+
       - name: Restore NuGet packages
         run: nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
         shell: powershell
@@ -29,7 +42,7 @@ jobs:
         run: |
           $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           if (-not $msbuild) { Write-Error "MSBuild not found"; exit 1 }
-          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE_Tests /p:Configuration=ReleaseAVX2 /p:Platform=x64 /m
+          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE_Tests /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDataBaseFileName="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE_Tests.pdb" /m
         shell: powershell
 
       - name: Run Features Unit Tests
@@ -40,3 +53,14 @@ jobs:
           & $testExe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         shell: powershell
+
+      - name: Save MSVC test build cache
+        if: success() && steps.msvc-test-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            SEOwnedDE/SEOwnedDE/ipdb
+            SEOwnedDE/build/ReleaseAVX2
+            SEOwnedDE/build/tests/ReleaseAVX2
+            SEOwnedDE/bin/tests/ReleaseAVX2
+          key: ${{ steps.msvc-test-cache.outputs.cache-primary-key }}
