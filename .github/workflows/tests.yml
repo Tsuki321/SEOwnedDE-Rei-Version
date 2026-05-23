@@ -30,9 +30,11 @@ jobs:
             SEOwnedDE/build/ReleaseAVX2
             SEOwnedDE/build/tests/ReleaseAVX2
             SEOwnedDE/bin/tests/ReleaseAVX2
-          key: ipdb-tests-x64-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/*.{cpp,h,rc,vcxproj,vcxproj.filters}', 'tests/cpp/**/*.{cpp,h,vcxproj,vcxproj.filters}', 'SEOwnedDE/**/*.sln') }}
+            SEOwnedDE/**/*.ipdb
+            SEOwnedDE/**/*.iobj
+          key: msvc-ipdb-tests-v2-x64-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/*.{cpp,h,rc,vcxproj,vcxproj.filters}', 'tests/cpp/**/*.{cpp,h,vcxproj,vcxproj.filters}', 'SEOwnedDE/**/*.sln') }}
           restore-keys: |
-            ipdb-tests-x64-${{ runner.os }}-
+            msvc-ipdb-tests-v2-x64-${{ runner.os }}-
 
       - name: Restore NuGet packages
         run: nuget restore "SEOwnedDE/SEOwnedDE.sln" -PackagesDirectory "${{ github.workspace }}\SEOwnedDE\packages" -NonInteractive
@@ -43,6 +45,14 @@ jobs:
           $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           if (-not $msbuild) { Write-Error "MSBuild not found"; exit 1 }
           & $msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE_Tests /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDataBaseFileName="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE_Tests.pdb" /m
+        shell: powershell
+
+      - name: List MSVC test incremental artifacts
+        if: always()
+        run: |
+          Get-ChildItem -Path "SEOwnedDE" -Recurse -Include *.ipdb,*.iobj -ErrorAction SilentlyContinue `
+            | Select-Object FullName, Length `
+            | Format-Table -AutoSize
         shell: powershell
 
       - name: Run Features Unit Tests
@@ -63,4 +73,6 @@ jobs:
             SEOwnedDE/build/ReleaseAVX2
             SEOwnedDE/build/tests/ReleaseAVX2
             SEOwnedDE/bin/tests/ReleaseAVX2
+            SEOwnedDE/**/*.ipdb
+            SEOwnedDE/**/*.iobj
           key: ${{ steps.msvc-test-cache.outputs.cache-primary-key }}

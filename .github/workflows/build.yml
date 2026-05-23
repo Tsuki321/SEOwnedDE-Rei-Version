@@ -31,9 +31,11 @@ jobs:
             SEOwnedDE/SEOwnedDE/ipdb
             SEOwnedDE/build/ReleaseAVX2
             SEOwnedDE/bin/ReleaseAVX2
-          key: ipdb-x64-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/*.{cpp,h,rc,vcxproj,vcxproj.filters}', 'SEOwnedDE/**/*.sln') }}
+            SEOwnedDE/**/*.ipdb
+            SEOwnedDE/**/*.iobj
+          key: msvc-ipdb-v2-x64-${{ runner.os }}-${{ hashFiles('SEOwnedDE/**/*.{cpp,h,rc,vcxproj,vcxproj.filters}', 'SEOwnedDE/**/*.sln') }}
           restore-keys: |
-            ipdb-x64-${{ runner.os }}-
+            msvc-ipdb-v2-x64-${{ runner.os }}-
 
       - name: Restore NuGet packages (if any)
         run: nuget restore "SEOwnedDE/SEOwnedDE.sln"
@@ -47,7 +49,15 @@ jobs:
         run: |
           $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           if (-not $msbuild) { Write-Error "MSBuild not found"; exit 1 }
-          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDataBaseFileName="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE.pdb" /m
+          & $msbuild "SEOwnedDE/SEOwnedDE.sln" /t:SEOwnedDE /p:Configuration=ReleaseAVX2 /p:Platform=x64 /p:DebugInformationFormat=ProgramDatabase /p:ProgramDataBaseFileName="$(Get-Location)\SEOwnedDE\SEOwnedDE\ipdb\SEOwnedDE.pdb" /m
+        shell: powershell
+
+      - name: List MSVC incremental artifacts
+        if: always()
+        run: |
+          Get-ChildItem -Path "SEOwnedDE" -Recurse -Include *.ipdb,*.iobj -ErrorAction SilentlyContinue `
+            | Select-Object FullName, Length `
+            | Format-Table -AutoSize
         shell: powershell
 
       - name: Verify DLL exists
@@ -72,4 +82,6 @@ jobs:
             SEOwnedDE/SEOwnedDE/ipdb
             SEOwnedDE/build/ReleaseAVX2
             SEOwnedDE/bin/ReleaseAVX2
+            SEOwnedDE/**/*.ipdb
+            SEOwnedDE/**/*.iobj
           key: ${{ steps.msvc-cache.outputs.cache-primary-key }}
