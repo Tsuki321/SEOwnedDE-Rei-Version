@@ -61,6 +61,19 @@ TEST(SetupBonesContracts, FallsThroughForNonPlayersAndLocal) {
               std::string::npos);
 }
 
+// Move-child entities (wearables, weapons, cosmetics) must not be served the
+// root player's cached body bones. They need the engine path so attachments stay
+// aligned with the rendered player instead of drifting ahead/behind the body.
+TEST(SetupBonesContracts, BypassesMoveChildrenAndWearables) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kHookSource);
+
+    EXPECT_NE(src.find("baseEnt != ent"), std::string::npos);
+    EXPECT_NE(src.find("Move-child entities such as cosmetics and weapons"), std::string::npos);
+    EXPECT_NE(src.find("CALL_ORIGINAL(ecx, pBoneToWorldOut, nMaxBones, boneMask, currentTime)"),
+              std::string::npos);
+}
+
 // Phase 2: yaw rotational delta correction must be present and gated on a
 // non-trivial yaw difference. Without it, the cached pose snaps in translation
 // only, leaving the skeleton mis-aimed during fast spins.
@@ -97,5 +110,6 @@ TEST(SetupBonesContracts, BypassesCacheForFailedChildBones) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kHookSource);
 
+    EXPECT_NE(src.find("F::LagRecords->HasFailedBones(baseEnt)"), std::string::npos);
     EXPECT_NE(src.find("F::LagRecords->HasFailedBones(ent)"), std::string::npos);
 }

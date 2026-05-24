@@ -85,10 +85,17 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 			const auto owner = GetRootMoveParent(baseEnt);
 			const auto ent = owner ? owner : baseEnt;
 
+			// Move-child entities such as cosmetics and weapons have their own model
+			// setup. Do not serve the root player's cached body bones for them.
+			if (baseEnt != ent)
+			{
+				return CALL_ORIGINAL(ecx, pBoneToWorldOut, nMaxBones, boneMask, currentTime);
+			}
+
 			// Phase 2: a wearable whose own SetupBones failed during lag-record
 			// capture must fall through to the engine path so that frame's pose is
 			// rebuilt from scratch instead of using stale cached data.
-			if (F::LagRecords->HasFailedBones(ent))
+			if (F::LagRecords->HasFailedBones(baseEnt) || F::LagRecords->HasFailedBones(ent))
 			{
 				return CALL_ORIGINAL(ecx, pBoneToWorldOut, nMaxBones, boneMask, currentTime);
 			}
