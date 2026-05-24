@@ -2003,7 +2003,6 @@ void CMenu::MainWindow()
 				CheckBox("Disable Ragdolls", CFG::Visuals_Disable_Ragdolls);
 				CheckBox("Disable Wearables", CFG::Visuals_Disable_Wearables);
 				CheckBox("Disable Post Processing", CFG::Visuals_Disable_Post_Processing);
-				CheckBox("Disable Dropped Weapons", CFG::Visuals_Disable_Dropped_Weapons);
 				CheckBox("Killstreak Weapons", CFG::Visuals_Killstreak_Weapons);
 				CheckBox("Use Simple Models", CFG::Visuals_Simple_Models);
 			}

@@ -38,9 +38,6 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 		{
 			const auto nClassId = pClientEntity->GetClassId();
 
-			if (CFG::Visuals_Disable_Dropped_Weapons && nClassId == ETFClassIds::CTFDroppedWeapon)
-				return;
-
 			if (CFG::Materials_ViewModel_Active && !bCleanScreenshot && nClassId == ETFClassIds::CTFViewModel)
 			{
 				if (const auto pLocal = H::Entities->GetLocal())

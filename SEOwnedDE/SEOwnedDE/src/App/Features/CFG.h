@@ -377,7 +377,6 @@ namespace CFG
 	CFGVAR(Visuals_Disable_Ragdolls, false);
 	CFGVAR(Visuals_Disable_Wearables, false);
 	CFGVAR(Visuals_Disable_Post_Processing, true);
-	CFGVAR(Visuals_Disable_Dropped_Weapons, false);
 	CFGVAR(Visuals_Simple_Models, false);
 	CFGVAR(Visuals_Particles_Mode, 0); //0 Original 1 Custom Color 2 Rainbow
 	CFGVAR(Visuals_Particles_Rainbow_Rate, 3.0f);

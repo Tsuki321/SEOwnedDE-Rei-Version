@@ -384,7 +384,6 @@
     <ClCompile Include="src\App\Hooks\CSequenceTransitioner_CheckForSequenceChange.cpp" />
     <ClCompile Include="src\App\Hooks\CSkyboxView_Enable3dSkyboxFog.cpp" />
     <ClCompile Include="src\App\Hooks\CStudioRender_DrawModelStaticProp.cpp" />
-    <ClCompile Include="src\App\Hooks\CTFDroppedWeapon.cpp" />
     <ClCompile Include="src\App\Hooks\CTFPlayerShared_InCond.cpp" />
     <ClCompile Include="src\App\Hooks\CTFPlayerShared_IsPlayerDominated.cpp" />
     <ClCompile Include="src\App\Hooks\CTFPlayer_FireBullet.cpp" />
