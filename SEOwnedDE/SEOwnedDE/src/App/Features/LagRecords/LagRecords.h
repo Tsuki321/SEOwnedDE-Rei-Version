@@ -3,6 +3,7 @@
 #include "../../../SDK/SDK.h"
 
 #include <array>
+#include <unordered_set>
 
 inline constexpr int MAX_BONE_COUNT = 128;
 inline constexpr int MAX_LAG_RECORDS = 32;
@@ -54,9 +55,9 @@ class CLagRecords
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime);
 
 	static int PlayerToIndex(C_TFPlayer* pPlayer);
-	static float GetOutgoingLatency();
 
 public:
+	static float GetOutgoingLatency();
 	void AddRecord(C_TFPlayer* pPlayer);
 	const LagRecord_t* GetRecord(C_TFPlayer* pPlayer, int nRecord);
 	bool HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords = nullptr);
