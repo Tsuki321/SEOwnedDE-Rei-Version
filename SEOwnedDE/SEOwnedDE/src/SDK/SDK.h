@@ -126,15 +126,38 @@ namespace SDKUtils
 		static ConVar *cl_interp = I::CVar->FindVar("cl_interp");
 		static ConVar *cl_interp_ratio = I::CVar->FindVar("cl_interp_ratio");
 		static ConVar *cl_updaterate = I::CVar->FindVar("cl_updaterate");
+		static ConVar *sv_minupdaterate = I::CVar->FindVar("sv_minupdaterate");
+		static ConVar *sv_maxupdaterate = I::CVar->FindVar("sv_maxupdaterate");
+		static ConVar *sv_client_min_interp_ratio = I::CVar->FindVar("sv_client_min_interp_ratio");
+		static ConVar *sv_client_max_interp_ratio = I::CVar->FindVar("sv_client_max_interp_ratio");
 
 		if (!cl_interp || !cl_interp_ratio || !cl_updaterate)
 			return 0.0f;
 
-		const float flUpdateRate = cl_updaterate->GetFloat();
+		float flUpdateRate = cl_updaterate->GetFloat();
+
+		if (sv_minupdaterate && sv_maxupdaterate)
+		{
+			const float flMin = sv_minupdaterate->GetFloat();
+			const float flMax = sv_maxupdaterate->GetFloat();
+			if (flMin > 0.0f && flMax > 0.0f)
+				flUpdateRate = std::clamp(flUpdateRate, flMin, flMax);
+		}
+
 		if (flUpdateRate <= 0.0f)
 			return cl_interp->GetFloat();
 
-		return std::max(cl_interp->GetFloat(), cl_interp_ratio->GetFloat() / flUpdateRate);
+		float flRatio = cl_interp_ratio->GetFloat();
+
+		if (sv_client_min_interp_ratio && sv_client_max_interp_ratio)
+		{
+			const float flMinRatio = sv_client_min_interp_ratio->GetFloat();
+			const float flMaxRatio = sv_client_max_interp_ratio->GetFloat();
+			if (flMinRatio >= 0.0f && flMaxRatio >= 0.0f)
+				flRatio = std::clamp(flRatio, flMinRatio, flMaxRatio);
+		}
+
+		return std::max(cl_interp->GetFloat(), flRatio / flUpdateRate);
 	}
 
 	static Vec3 GetHitboxPosFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, matrix3x4_t *pMatrix)

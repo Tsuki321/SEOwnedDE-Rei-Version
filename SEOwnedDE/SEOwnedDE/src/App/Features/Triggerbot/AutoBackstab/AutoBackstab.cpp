@@ -228,32 +228,40 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				pCmd->buttons |= IN_ATTACK;
 
-				pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
+				pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp() + CLagRecords::GetOutgoingLatency());
 
 				return;
 			}
 		}
 
-		if (!CFG::Triggerbot_AutoBackstab_Use_LagRecords)
+	if (!CFG::Triggerbot_AutoBackstab_Use_LagRecords)
+	{
+		continue;
+	}
+
+	int numRecords = 0;
+
+	if (!F::LagRecords->HasRecords(pPlayer, &numRecords))
+	{
+		continue;
+	}
+
+	const auto cachedState = CLagRecords::CacheCurrentState(pPlayer);
+
+	for (int n = 1; n < numRecords; n++)
+	{
+		const auto record = F::LagRecords->GetRecord(pPlayer, n);
+
+		if (!record)
 		{
 			continue;
 		}
 
-		int numRecords = 0;
+		if (record->bTeleported)
+			break;
 
-		if (!F::LagRecords->HasRecords(pPlayer, &numRecords))
-		{
+		if (!CLagRecords::DiffersFromCurrentCached(record, cachedState))
 			continue;
-		}
-
-		for (int n = 1; n < numRecords; n++)
-		{
-			const auto record = F::LagRecords->GetRecord(pPlayer, n);
-
-			if (!record)
-			{
-				continue;
-			}
 
 			if (!bLegitMode)
 			{
@@ -285,7 +293,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				pCmd->buttons |= IN_ATTACK;
 
-				pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + SDKUtils::GetLerp());
+				pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + SDKUtils::GetLerp() + CLagRecords::GetOutgoingLatency());
 
 				return;
 			}

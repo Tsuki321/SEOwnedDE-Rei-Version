@@ -226,45 +226,27 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
 				continue;
 
-			if (CFG::Aimbot_Hitscan_Target_LagRecords)
-			{
-				int nRecords = 0;
+	if (CFG::Aimbot_Hitscan_Target_LagRecords)
+	{
+		int nRecords = 0;
 
-				if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
-					continue;
+		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+			continue;
 
-				// Cache current state once per player to avoid redundant engine queries
-				// inside the per-record loop (GetAbsOrigin, GetEyeAngles, m_fFlags, GetAnimState).
-				const Vec3 vCurAbsOrigin = pPlayer->GetAbsOrigin();
-				const Vec3 vCurEyeAngles = pPlayer->GetEyeAngles();
-				const int nCurFlags = pPlayer->m_fFlags();
-				const float flCurFeetYaw = [&]() -> float {
-					if (const auto pAnimState = pPlayer->GetAnimState())
-						return pAnimState->m_flCurrentFeetYaw;
-					return 0.0f;
-				}();
+		const auto cachedState = CLagRecords::CacheCurrentState(pPlayer);
 
-				// Start at n = 1: record 0 is the current pose, already targeted below.
-				for (int n = 1; n < nRecords; n++)
-				{
-					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+		for (int n = 1; n < nRecords; n++)
+		{
+			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-					if (!pRecord)
-						continue;
+			if (!pRecord)
+				continue;
 
-					// Inline DiffersFromCurrent check using cached values (pitch + yaw + roll)
-					if ((vCurAbsOrigin - pRecord->AbsOrigin).LengthSqr() <= 0.01f)
-					{
-						const float flYawDelta = std::remainderf(vCurEyeAngles.y - pRecord->EyeAngles.y, 360.0f);
-						const float flPitchDelta = std::remainderf(vCurEyeAngles.x - pRecord->EyeAngles.x, 360.0f);
-						const float flRollDelta = std::remainderf(vCurEyeAngles.z - pRecord->EyeAngles.z, 360.0f);
-						if (fabsf(flYawDelta) <= 0.1f && fabsf(flPitchDelta) <= 0.1f && fabsf(flRollDelta) <= 0.1f
-							&& nCurFlags == pRecord->Flags
-							&& fabsf(flCurFeetYaw - pRecord->FeetYaw) <= 0.1f)
-						{
-							continue;
-						}
-					}
+			if (pRecord->bTeleported)
+				break;
+
+			if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
+				continue;
 
 					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, nAimHitbox, const_cast<matrix3x4_t*>(pRecord->BoneMatrix));
 					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
@@ -825,10 +807,10 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					Aim(pCmd, pLocal, target.AngleTo);
 				}
 
-				if (bIsFiring && target.LagRecord && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
-				{
-					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
-				}
+			if (bIsFiring && target.LagRecord && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
+			{
+				pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp() + CLagRecords::GetOutgoingLatency());
+			}
 			}
 		}
 	}

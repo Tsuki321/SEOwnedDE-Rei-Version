@@ -72,10 +72,12 @@ TEST(LagRecordsRotationalContracts, DiffersFromCurrentChecksOriginAnglesFlagsAnd
     const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
 
     EXPECT_NE(src.find("DiffersFromCurrent"), std::string::npos);
-    EXPECT_NE(src.find("GetAbsOrigin() - pRecord->AbsOrigin"), std::string::npos);
-    EXPECT_NE(src.find("vCurEyeAngles.y - pRecord->EyeAngles.y"), std::string::npos);
-    EXPECT_NE(src.find("m_fFlags() != pRecord->Flags"), std::string::npos);
-    EXPECT_NE(src.find("m_flCurrentFeetYaw - pRecord->FeetYaw"), std::string::npos);
+    EXPECT_NE(src.find("DiffersFromCurrentCached"), std::string::npos);
+    EXPECT_NE(src.find("CacheCurrentState"), std::string::npos);
+    EXPECT_NE(src.find("pRecord->AbsOrigin"), std::string::npos);
+    EXPECT_NE(src.find("pRecord->EyeAngles"), std::string::npos);
+    EXPECT_NE(src.find("pRecord->Flags"), std::string::npos);
+    EXPECT_NE(src.find("pRecord->FeetYaw"), std::string::npos);
 }
 
 // Phase 2: failed wearable-child SetupBones tracking. The set must exist in the

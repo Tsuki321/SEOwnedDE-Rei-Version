@@ -301,38 +301,7 @@ void CMaterials::RunLagRecords()
 		if (nRecords <= 0)
 			continue;
 
-		// Cache current state once per player to avoid redundant engine queries
-		// inside the per-record loop (GetAbsOrigin, GetEyeAngles, m_fFlags, GetAnimState).
-		const Vec3 vCurAbsOrigin = pPlayer->GetAbsOrigin();
-		const Vec3 vCurEyeAngles = pPlayer->GetEyeAngles();
-		const int nCurFlags = pPlayer->m_fFlags();
-		const float flCurFeetYaw = [&]() -> float {
-			if (const auto pAnimState = pPlayer->GetAnimState())
-				return pAnimState->m_flCurrentFeetYaw;
-			return 0.0f;
-		}();
-
-		// Inline lambda matching DiffersFromCurrent logic (pitch + yaw + roll).
-		const auto differsFromCurrent = [&](const LagRecord_t* pRec) -> bool {
-			if (!pRec)
-				return false;
-			if ((vCurAbsOrigin - pRec->AbsOrigin).LengthSqr() > 0.01f)
-				return true;
-			const float flYawDelta = std::remainderf(vCurEyeAngles.y - pRec->EyeAngles.y, 360.0f);
-			if (fabsf(flYawDelta) > 0.1f)
-				return true;
-			const float flPitchDelta = std::remainderf(vCurEyeAngles.x - pRec->EyeAngles.x, 360.0f);
-			if (fabsf(flPitchDelta) > 0.1f)
-				return true;
-			const float flRollDelta = std::remainderf(vCurEyeAngles.z - pRec->EyeAngles.z, 360.0f);
-			if (fabsf(flRollDelta) > 0.1f)
-				return true;
-			if (nCurFlags != pRec->Flags)
-				return true;
-			if (fabsf(flCurFeetYaw - pRec->FeetYaw) > 0.1f)
-				return true;
-			return false;
-		};
+		const auto cachedState = CLagRecords::CacheCurrentState(pPlayer);
 
 		if (CFG::Materials_Players_LagRecords_Style == 0)
 		{
@@ -340,7 +309,7 @@ void CMaterials::RunLagRecords()
 			{
 				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-				if (!pRecord || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !differsFromCurrent(pRecord))
+				if (!pRecord || pRecord->bTeleported || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
 					continue;
 
 				I::RenderView->SetBlend(Math::RemapValClamped(static_cast<float>(n), 1.0f, static_cast<float>(nRecords), 0.1f, 0.001f));
@@ -358,7 +327,7 @@ void CMaterials::RunLagRecords()
 		{
 			const auto pRecord = F::LagRecords->GetRecord(pPlayer, nRecords - 1);
 
-			if (!pRecord || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !differsFromCurrent(pRecord))
+			if (!pRecord || pRecord->bTeleported || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
 				continue;
 
 			I::RenderView->SetBlend(1.0f);

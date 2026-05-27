@@ -1,6 +1,27 @@
-#include "LagRecords.h"
+﻿#include "LagRecords.h"
 
 #include "../CFG.h"
+
+int CLagRecords::PlayerToIndex(C_TFPlayer* pPlayer)
+{
+	if (!pPlayer)
+		return -1;
+
+	const int idx = pPlayer->entindex();
+
+	if (idx < 1 || idx >= MAX_PLAYERS)
+		return -1;
+
+	return idx;
+}
+
+float CLagRecords::GetOutgoingLatency()
+{
+	if (auto pNet = I::EngineClient->GetNetChannelInfo())
+		return pNet->GetLatency(FLOW_OUTGOING);
+
+	return 0.0f;
+}
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 {
@@ -21,6 +42,21 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 			flMaxWindow = flUnlag;
 	}
 
+	static ConVar* sv_clockcorrection_msecs = I::CVar->FindVar("sv_clockcorrection_msecs");
+
+	if (sv_clockcorrection_msecs)
+	{
+		const float flClockCorrection = sv_clockcorrection_msecs->GetFloat() / 1000.0f;
+
+		if (flClockCorrection > 0.0f)
+		{
+			const float flAdjustedWindow = flMaxWindow - flClockCorrection;
+
+			if (flAdjustedWindow > 0.0f)
+				flMaxWindow = flAdjustedWindow;
+		}
+	}
+
 	if (flCmprSimTime > flCurSimTime)
 		return false;
 
@@ -32,20 +68,17 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	if (!pPlayer || CFG::LagRecords_BacktrackWindow <= 0)
 		return;
 
-	// Skip dormant players — they haven't received a network update this frame,
-	// so their simulation time won't advance and we'd capture duplicate records.
 	if (pPlayer->IsDormant())
+		return;
+
+	const int idx = PlayerToIndex(pPlayer);
+	if (idx < 0)
 		return;
 
 	LagRecord_t newRecord = {};
 
 	m_bSettingUpBones = true;
 
-	// Phase 2: scope failed-child tracking per AddRecord call. Any wearable that
-	// successfully refreshes below removes itself from the set; failures stay
-	// tracked until the next AddRecord for this player.
-	// Also purge any child whose root move-parent is no longer valid or no longer
-	// matches the player we're about to process, to prevent stale pointers.
 	{
 		auto it = m_FailedChildBones.begin();
 		while (it != m_FailedChildBones.end())
@@ -81,9 +114,6 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 				attach->InvalidateBoneCache();
 				const auto childResult = attach->SetupBones(nullptr, -1, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
 
-				// Phase 2: track wearables whose SetupBones returned false so the
-				// cached-bone fast path can defer to the engine implementation
-				// next frame and avoid serving a partial pose.
 				if (!childResult)
 				{
 					m_FailedChildBones.insert(attach);
@@ -111,10 +141,21 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		newRecord.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 
-	auto& records = m_LagRecords[pPlayer];
+	newRecord.MasterSequence = pPlayer->m_nSequence();
+	newRecord.MasterCycle = pPlayer->m_flCycle();
 
-	if (!records.empty() && newRecord.SimulationTime <= records.front().SimulationTime)
-		return;
+	auto& records = m_LagRecords[idx];
+
+	if (!records.empty())
+	{
+		const auto& front = records.front();
+
+		if (newRecord.SimulationTime <= front.SimulationTime)
+			return;
+
+		if ((newRecord.AbsOrigin - front.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
+			newRecord.bTeleported = true;
+	}
 
 	records.emplace_front(newRecord);
 
@@ -124,11 +165,11 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
 {
-	auto it = m_LagRecords.find(pPlayer);
-	if (it == m_LagRecords.end())
+	const int idx = PlayerToIndex(pPlayer);
+	if (idx < 0)
 		return nullptr;
 
-	const auto& records = it->second;
+	const auto& records = m_LagRecords[idx];
 	if (nRecord < 0 || nRecord >= static_cast<int>(records.size()))
 		return nullptr;
 
@@ -137,11 +178,11 @@ const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
 
 bool CLagRecords::HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords)
 {
-	auto it = m_LagRecords.find(pPlayer);
-	if (it == m_LagRecords.end())
+	const int idx = PlayerToIndex(pPlayer);
+	if (idx < 0)
 		return false;
 
-	const size_t nSize = it->second.size();
+	const size_t nSize = m_LagRecords[idx].size();
 	if (nSize == 0)
 		return false;
 
@@ -157,14 +198,9 @@ void CLagRecords::UpdateRecords()
 
 	if (!pLocal || pLocal->deadflag() || pLocal->InCond(TF_COND_HALLOWEEN_GHOST_MODE) || pLocal->InCond(TF_COND_HALLOWEEN_KART))
 	{
-		if (!m_LagRecords.empty())
-		{
-			m_LagRecords.clear();
-		}
+		for (auto& records : m_LagRecords)
+			records.clear();
 
-		// Phase 2: drop any tracked failed-child entries when the local player
-		// is no longer in a valid state for record-keeping (map change, ghost,
-		// kart, etc.) to prevent stale pointers persisting across respawn.
 		if (!m_FailedChildBones.empty())
 		{
 			m_FailedChildBones.clear();
@@ -173,7 +209,6 @@ void CLagRecords::UpdateRecords()
 		return;
 	}
 
-	// Remove invalid players
 	for (const auto pEntity : H::Entities->GetGroup(CFG::Misc_SetupBones_Optimization ? EEntGroup::PLAYERS_ALL : EEntGroup::PLAYERS_ENEMIES))
 	{
 		if (!pEntity || pEntity == pLocal)
@@ -185,14 +220,15 @@ void CLagRecords::UpdateRecords()
 
 		if (pPlayer->deadflag())
 		{
-			m_LagRecords.erase(pPlayer);
+			const int idx = PlayerToIndex(pPlayer);
+			if (idx >= 0)
+				m_LagRecords[idx].clear();
 		}
 	}
 
-	// Single-pass: remove invalid records and empty player entries.
-	for (auto it = m_LagRecords.begin(); it != m_LagRecords.end(); )
+	for (int i = 0; i < MAX_PLAYERS; ++i)
 	{
-		auto& records = it->second;
+		auto& records = m_LagRecords[i];
 
 		for (auto recIt = records.begin(); recIt != records.end(); )
 		{
@@ -205,12 +241,46 @@ void CLagRecords::UpdateRecords()
 				++recIt;
 			}
 		}
-
-		if (records.empty())
-			it = m_LagRecords.erase(it);
-		else
-			++it;
 	}
+}
+
+LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
+{
+	LagRecordCachedState_t state = {};
+	state.AbsOrigin = pPlayer->GetAbsOrigin();
+	state.EyeAngles = pPlayer->GetEyeAngles();
+	state.Flags = pPlayer->m_fFlags();
+
+	if (const auto pAnimState = pPlayer->GetAnimState())
+		state.FeetYaw = pAnimState->m_flCurrentFeetYaw;
+
+	return state;
+}
+
+bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
+{
+	if ((cached.AbsOrigin - pRecord->AbsOrigin).LengthSqr() > 0.01f)
+		return true;
+
+	const float flYawDelta = std::remainderf(cached.EyeAngles.y - pRecord->EyeAngles.y, 360.0f);
+	if (fabsf(flYawDelta) > 0.1f)
+		return true;
+
+	const float flPitchDelta = std::remainderf(cached.EyeAngles.x - pRecord->EyeAngles.x, 360.0f);
+	if (fabsf(flPitchDelta) > 0.1f)
+		return true;
+
+	const float flRollDelta = std::remainderf(cached.EyeAngles.z - pRecord->EyeAngles.z, 360.0f);
+	if (fabsf(flRollDelta) > 0.1f)
+		return true;
+
+	if (cached.Flags != pRecord->Flags)
+		return true;
+
+	if (fabsf(cached.FeetYaw - pRecord->FeetYaw) > 0.1f)
+		return true;
+
+	return false;
 }
 
 bool CLagRecords::DiffersFromCurrent(const LagRecord_t* pRecord)
@@ -220,33 +290,70 @@ bool CLagRecords::DiffersFromCurrent(const LagRecord_t* pRecord)
 	if (!pPlayer)
 		return false;
 
-	if ((pPlayer->GetAbsOrigin() - pRecord->AbsOrigin).LengthSqr() > 0.01f)
-		return true;
+	return DiffersFromCurrentCached(pRecord, CacheCurrentState(pPlayer));
+}
 
-	const Vec3 vCurEyeAngles = pPlayer->GetEyeAngles();
+const LagRecord_t* CLagRecords::FindInterpolatedRecord(C_TFPlayer* pPlayer, float flTargetTime, LagRecord_t& outRecord)
+{
+	const int idx = PlayerToIndex(pPlayer);
+	if (idx < 0)
+		return nullptr;
 
-	const float flYawDelta = std::remainderf(vCurEyeAngles.y - pRecord->EyeAngles.y, 360.0f);
-	if (fabsf(flYawDelta) > 0.1f)
-		return true;
+	const auto& records = m_LagRecords[idx];
+	if (records.empty())
+		return nullptr;
 
-	const float flPitchDelta = std::remainderf(vCurEyeAngles.x - pRecord->EyeAngles.x, 360.0f);
-	if (fabsf(flPitchDelta) > 0.1f)
-		return true;
+	const LagRecord_t* prevRecord = nullptr;
+	const LagRecord_t* record = nullptr;
 
-	const float flRollDelta = std::remainderf(vCurEyeAngles.z - pRecord->EyeAngles.z, 360.0f);
-	if (fabsf(flRollDelta) > 0.1f)
-		return true;
-
-	if (pPlayer->m_fFlags() != pRecord->Flags)
-		return true;
-
-	if (const auto pAnimState = pPlayer->GetAnimState())
+	for (int i = 0; i < static_cast<int>(records.size()); ++i)
 	{
-		if (fabsf(pAnimState->m_flCurrentFeetYaw - pRecord->FeetYaw) > 0.1f)
-			return true;
+		const auto& rec = records[i];
+
+		if (rec.bTeleported)
+			break;
+
+		prevRecord = record;
+		record = &rec;
+
+		if (rec.SimulationTime <= flTargetTime)
+			break;
 	}
 
-	return false;
+	if (!record)
+		return nullptr;
+
+	if (prevRecord && record->SimulationTime < flTargetTime && prevRecord->SimulationTime > record->SimulationTime)
+	{
+		const float dt = prevRecord->SimulationTime - record->SimulationTime;
+
+		if (dt > 1e-4f)
+		{
+			const float frac = std::clamp((flTargetTime - record->SimulationTime) / dt, 0.0f, 1.0f);
+
+			outRecord = *record;
+			outRecord.AbsOrigin = record->AbsOrigin + (prevRecord->AbsOrigin - record->AbsOrigin) * frac;
+			outRecord.AbsAngles = record->AbsAngles + (prevRecord->AbsAngles - record->AbsAngles) * frac;
+			outRecord.EyeAngles = record->EyeAngles + (prevRecord->EyeAngles - record->EyeAngles) * frac;
+			outRecord.Center = record->Center + (prevRecord->Center - record->Center) * frac;
+			outRecord.SimulationTime = flTargetTime;
+
+			for (int b = 0; b < MAX_BONE_COUNT; ++b)
+			{
+				for (int col = 0; col < 3; ++col)
+				{
+					for (int row = 0; row < 4; ++row)
+					{
+						outRecord.BoneMatrix[b][col][row] = record->BoneMatrix[b][col][row] + (prevRecord->BoneMatrix[b][col][row] - record->BoneMatrix[b][col][row]) * frac;
+					}
+				}
+			}
+
+			return &outRecord;
+		}
+	}
+
+	return record;
 }
 
 void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
@@ -284,8 +391,6 @@ void CLagRecordMatrixHelper::Restore()
 	if (m_Stack.empty() || m_nActiveDepth <= 0)
 		return;
 
-	// Pop the entry first so the stack stays consistent even if the player
-	// or bone data became invalid between Set() and Restore().
 	const auto entry = m_Stack.back();
 	m_Stack.pop_back();
 	--m_nActiveDepth;
