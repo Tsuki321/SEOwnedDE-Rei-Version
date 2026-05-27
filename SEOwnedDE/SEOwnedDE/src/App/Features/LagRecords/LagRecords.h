@@ -6,7 +6,7 @@
 #include <unordered_set>
 
 inline constexpr int MAX_BONE_COUNT = 128;
-inline constexpr int MAX_LAG_RECORDS = 32;
+inline constexpr int MAX_LAG_RECORDS = 66;
 inline constexpr int MAX_ANIM_OVERLAYS = 15;
 
 inline constexpr float LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR = 64.0f * 64.0f;
