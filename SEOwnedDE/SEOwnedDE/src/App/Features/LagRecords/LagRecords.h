@@ -54,18 +54,25 @@ MAKE_SINGLETON_SCOPED(CLagRecords, LagRecords, F);
 
 class CLagRecordMatrixHelper
 {
-	C_TFPlayer* m_pPlayer = nullptr;
-	Vec3 m_vAbsOrigin = {};
-	Vec3 m_vAbsAngles = {};
-	matrix3x4_t m_BoneMatrix[MAX_BONE_COUNT] = {};
+	// Per-player stack to support nested/overlapping CLagRecordScope usage.
+	// Each entry stores the live bones/origin/angles that were active before
+	// the corresponding Set() call, so Restore() pops the correct state.
+	struct StackEntry_t
+	{
+		C_TFPlayer* Player = nullptr;
+		Vec3 AbsOrigin = {};
+		Vec3 AbsAngles = {};
+		matrix3x4_t BoneMatrix[MAX_BONE_COUNT] = {};
+		int BoneCount = 0;
+	};
 
-	bool m_bSuccessfullyStored = false;
-	bool m_bActive = false;
+	std::vector<StackEntry_t> m_Stack;
+	int m_nActiveDepth = 0;
 
 public:
 	void Set(const LagRecord_t* pRecord);
 	void Restore();
-	bool IsActive() const { return m_bActive; }
+	bool IsActive() const { return m_nActiveDepth > 0; }
 };
 
 MAKE_SINGLETON_SCOPED(CLagRecordMatrixHelper, LagRecordMatrixHelper, F);

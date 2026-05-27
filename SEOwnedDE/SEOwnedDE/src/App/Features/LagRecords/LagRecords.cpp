@@ -29,9 +29,34 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 	return flCurSimTime - flCmprSimTime < flMaxWindow;
 }
 
+// Helper: returns the most authoritative "current" simulation time for a player.
+// m_flOldSimulationTime holds the last server tick time before interpolation,
+// which is more stable for backtrack window checks than the interpolated
+// m_flSimulationTime used for rendering.
+static inline float GetCurrentSimTimeForValidation(C_TFPlayer* pPlayer)
+{
+	if (!pPlayer)
+		return 0.0f;
+
+	const float flOldSimTime = pPlayer->m_flOldSimulationTime();
+	const float flSimTime = pPlayer->m_flSimulationTime();
+
+	// Use old simtime when it is valid and slightly behind the interpolated value.
+	// This avoids jitter from client-side interpolation when deciding record validity.
+	if (flOldSimTime > 0.0f && flOldSimTime <= flSimTime)
+		return flOldSimTime;
+
+	return flSimTime;
+}
+
 void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 {
 	if (!pPlayer || CFG::LagRecords_BacktrackWindow <= 0)
+		return;
+
+	// Skip dormant players — they haven't received a network update this frame,
+	// so their simulation time won't advance and we'd capture duplicate records.
+	if (pPlayer->IsDormant())
 		return;
 
 	LagRecord_t newRecord = {};
@@ -41,12 +66,14 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	// Phase 2: scope failed-child tracking per AddRecord call. Any wearable that
 	// successfully refreshes below removes itself from the set; failures stay
 	// tracked until the next AddRecord for this player.
+	// Also purge any child whose root move-parent is no longer valid or no longer
+	// matches the player we're about to process, to prevent stale pointers.
 	{
 		auto it = m_FailedChildBones.begin();
 		while (it != m_FailedChildBones.end())
 		{
 			auto* child = *it;
-			if (!child || child->GetMoveParent() == pPlayer)
+			if (!child || !child->GetMoveParent() || child->GetMoveParent() != pPlayer)
 			{
 				it = m_FailedChildBones.erase(it);
 			}
@@ -184,26 +211,25 @@ void CLagRecords::UpdateRecords()
 		}
 	}
 
-	// Remove invalid records
-	for (auto& records : m_LagRecords | std::views::values)
+	// Single-pass: remove invalid records and empty player entries.
+	for (auto it = m_LagRecords.begin(); it != m_LagRecords.end(); )
 	{
-		for (auto it = records.begin(); it != records.end(); )
+		auto& records = it->second;
+		const float flCurSimTime = GetCurrentSimTimeForValidation(it->first);
+
+		for (auto recIt = records.begin(); recIt != records.end(); )
 		{
-			const auto& curRecord = *it;
-			if (!curRecord.Player || !IsSimulationTimeValid(curRecord.Player->m_flSimulationTime(), curRecord.SimulationTime))
+			if (!recIt->Player || !IsSimulationTimeValid(flCurSimTime, recIt->SimulationTime))
 			{
-				it = records.erase(it);
+				recIt = records.erase(recIt);
 			}
 			else
 			{
-				++it;
+				++recIt;
 			}
 		}
-	}
 
-	for (auto it = m_LagRecords.begin(); it != m_LagRecords.end(); )
-	{
-		if (it->second.empty())
+		if (records.empty())
 			it = m_LagRecords.erase(it);
 		else
 			++it;
@@ -220,8 +246,18 @@ bool CLagRecords::DiffersFromCurrent(const LagRecord_t* pRecord)
 	if ((pPlayer->GetAbsOrigin() - pRecord->AbsOrigin).LengthSqr() > 0.01f)
 		return true;
 
-	const float flYawDelta = std::remainderf(pPlayer->GetEyeAngles().y - pRecord->EyeAngles.y, 360.0f);
+	const Vec3 vCurEyeAngles = pPlayer->GetEyeAngles();
+
+	const float flYawDelta = std::remainderf(vCurEyeAngles.y - pRecord->EyeAngles.y, 360.0f);
 	if (fabsf(flYawDelta) > 0.1f)
+		return true;
+
+	const float flPitchDelta = std::remainderf(vCurEyeAngles.x - pRecord->EyeAngles.x, 360.0f);
+	if (fabsf(flPitchDelta) > 0.1f)
+		return true;
+
+	const float flRollDelta = std::remainderf(vCurEyeAngles.z - pRecord->EyeAngles.z, 360.0f);
+	if (fabsf(flRollDelta) > 0.1f)
 		return true;
 
 	if (pPlayer->m_fFlags() != pRecord->Flags)
@@ -251,41 +287,41 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	if (!pCachedBoneData)
 		return;
 
-	m_pPlayer = pPlayer;
-	m_vAbsOrigin = pPlayer->GetAbsOrigin();
-	m_vAbsAngles = pPlayer->GetAbsAngles();
+	StackEntry_t entry;
+	entry.Player = pPlayer;
+	entry.AbsOrigin = pPlayer->GetAbsOrigin();
+	entry.AbsAngles = pPlayer->GetAbsAngles();
+	entry.BoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
+	memcpy(entry.BoneMatrix, pCachedBoneData->Base(), sizeof(matrix3x4_t) * entry.BoneCount);
 
-	const int nBoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
-	memcpy(m_BoneMatrix, pCachedBoneData->Base(), sizeof(matrix3x4_t) * nBoneCount);
-	memcpy(pCachedBoneData->Base(), pRecord->BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
-
+	memcpy(pCachedBoneData->Base(), pRecord->BoneMatrix, sizeof(matrix3x4_t) * entry.BoneCount);
 	pPlayer->SetAbsOrigin(pRecord->AbsOrigin);
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
 
-	m_bSuccessfullyStored = true;
-	m_bActive = true;
+	m_Stack.push_back(entry);
+	++m_nActiveDepth;
 }
 
 void CLagRecordMatrixHelper::Restore()
 {
-	if (!m_bSuccessfullyStored || !m_pPlayer)
+	if (m_Stack.empty() || m_nActiveDepth <= 0)
 		return;
 
-	const auto pCachedBoneData = m_pPlayer->GetCachedBoneData();
+	const auto& entry = m_Stack.back();
+	if (!entry.Player)
+		return;
+
+	const auto pCachedBoneData = entry.Player->GetCachedBoneData();
 
 	if (!pCachedBoneData)
 		return;
 
-	m_pPlayer->SetAbsOrigin(m_vAbsOrigin);
-	m_pPlayer->SetAbsAngles(m_vAbsAngles);
+	entry.Player->SetAbsOrigin(entry.AbsOrigin);
+	entry.Player->SetAbsAngles(entry.AbsAngles);
 
-	const int nBoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
-	memcpy(pCachedBoneData->Base(), m_BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
+	const int nBoneCount = std::min(pCachedBoneData->Count(), entry.BoneCount);
+	memcpy(pCachedBoneData->Base(), entry.BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
 
-	m_pPlayer = nullptr;
-	m_vAbsOrigin = {};
-	m_vAbsAngles = {};
-	std::memset(m_BoneMatrix, 0, sizeof(matrix3x4_t) * MAX_BONE_COUNT);
-	m_bSuccessfullyStored = false;
-	m_bActive = false;
+	m_Stack.pop_back();
+	--m_nActiveDepth;
 }
