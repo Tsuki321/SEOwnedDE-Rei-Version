@@ -63,8 +63,8 @@ TEST(LagRecordsRotationalContracts, BoneMatrixHelperPreservesAndRestores) {
     EXPECT_GE(testhelpers::CountOccurrences(src, "SetAbsOrigin("), 2u);
     EXPECT_GE(testhelpers::CountOccurrences(src, "SetAbsAngles("), 2u);
 
-    // Successful-store flag prevents Restore() from running on a failed Set().
-    EXPECT_NE(src.find("m_bSuccessfullyStored"), std::string::npos);
+    // Stack-based helper: depth tracking prevents Restore() from running when empty.
+    EXPECT_NE(src.find("m_nActiveDepth"), std::string::npos);
 }
 
 TEST(LagRecordsRotationalContracts, DiffersFromCurrentChecksOriginAnglesFlagsAndFeetYaw) {
@@ -73,7 +73,7 @@ TEST(LagRecordsRotationalContracts, DiffersFromCurrentChecksOriginAnglesFlagsAnd
 
     EXPECT_NE(src.find("DiffersFromCurrent"), std::string::npos);
     EXPECT_NE(src.find("GetAbsOrigin() - pRecord->AbsOrigin"), std::string::npos);
-    EXPECT_NE(src.find("GetEyeAngles().y - pRecord->EyeAngles.y"), std::string::npos);
+    EXPECT_NE(src.find("vCurEyeAngles.y - pRecord->EyeAngles.y"), std::string::npos);
     EXPECT_NE(src.find("m_fFlags() != pRecord->Flags"), std::string::npos);
     EXPECT_NE(src.find("m_flCurrentFeetYaw - pRecord->FeetYaw"), std::string::npos);
 }

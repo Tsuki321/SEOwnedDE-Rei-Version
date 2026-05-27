@@ -33,8 +33,8 @@ TEST(LagRecordsContracts, MainSourceContainsFeatureTokens) {
     EXPECT_NE(mainSource.find("H::Entities"), std::string::npos);
     EXPECT_NE(mainSource.find("CLagRecords::IsSimulationTimeValid("), std::string::npos);
     EXPECT_NE(mainSource.find("records.emplace_front(newRecord)"), std::string::npos);
-    EXPECT_NE(mainSource.find("for (auto& records : m_LagRecords | std::views::values)"), std::string::npos);
-    EXPECT_NE(mainSource.find("sizeof(matrix3x4_t) * nBoneCount"), std::string::npos);
+    EXPECT_NE(mainSource.find("for (auto it = m_LagRecords.begin(); it != m_LagRecords.end(); )"), std::string::npos);
+    EXPECT_NE(mainSource.find("sizeof(matrix3x4_t) * entry.BoneCount"), std::string::npos);
     EXPECT_GE(testhelpers::CountTokenAcrossFiles(cppFiles, "CFG::"), 1u);
 }
 
