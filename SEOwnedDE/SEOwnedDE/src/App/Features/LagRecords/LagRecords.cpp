@@ -27,26 +27,6 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 	return flCurSimTime - flCmprSimTime < flMaxWindow;
 }
 
-// Helper: returns the most authoritative "current" simulation time for a player.
-// m_flOldSimulationTime holds the last server tick time before interpolation,
-// which is more stable for backtrack window checks than the interpolated
-// m_flSimulationTime used for rendering.
-static inline float GetCurrentSimTimeForValidation(C_TFPlayer* pPlayer)
-{
-	if (!pPlayer)
-		return 0.0f;
-
-	const float flOldSimTime = pPlayer->m_flOldSimulationTime();
-	const float flSimTime = pPlayer->m_flSimulationTime();
-
-	// Use old simtime when it is valid and slightly behind the interpolated value.
-	// This avoids jitter from client-side interpolation when deciding record validity.
-	if (flOldSimTime > 0.0f && flOldSimTime <= flSimTime)
-		return flOldSimTime;
-
-	return flSimTime;
-}
-
 void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 {
 	if (!pPlayer || CFG::LagRecords_BacktrackWindow <= 0)
@@ -213,11 +193,10 @@ void CLagRecords::UpdateRecords()
 	for (auto it = m_LagRecords.begin(); it != m_LagRecords.end(); )
 	{
 		auto& records = it->second;
-		const float flCurSimTime = GetCurrentSimTimeForValidation(it->first);
 
 		for (auto recIt = records.begin(); recIt != records.end(); )
 		{
-			if (!recIt->Player || !IsSimulationTimeValid(flCurSimTime, recIt->SimulationTime))
+			if (!recIt->Player || !IsSimulationTimeValid(recIt->Player->m_flSimulationTime(), recIt->SimulationTime))
 			{
 				recIt = records.erase(recIt);
 			}
