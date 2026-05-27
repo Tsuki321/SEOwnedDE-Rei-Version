@@ -42,25 +42,27 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 			flMaxWindow = flUnlag;
 	}
 
-	static ConVar* sv_clockcorrection_msecs = I::CVar->FindVar("sv_clockcorrection_msecs");
-
-	if (sv_clockcorrection_msecs)
-	{
-		const float flClockCorrection = sv_clockcorrection_msecs->GetFloat() / 1000.0f;
-
-		if (flClockCorrection > 0.0f)
-		{
-			const float flAdjustedWindow = flMaxWindow - flClockCorrection;
-
-			if (flAdjustedWindow > 0.0f)
-				flMaxWindow = flAdjustedWindow;
-		}
-	}
-
 	if (flCmprSimTime > flCurSimTime)
 		return false;
 
-	return flCurSimTime - flCmprSimTime < flMaxWindow;
+	const float flDelta = flCurSimTime - flCmprSimTime;
+
+	if (flDelta >= flMaxWindow)
+	{
+		const float flLatency = GetOutgoingLatency() + SDKUtils::GetLerp();
+
+		if (flLatency > 0.0f)
+		{
+			const float flCorrected = flDelta - flLatency;
+
+			if (flCorrected < flMaxWindow && flCorrected > -0.2f)
+				return true;
+		}
+
+		return false;
+	}
+
+	return true;
 }
 
 void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
@@ -310,8 +312,8 @@ const LagRecord_t* CLagRecords::FindInterpolatedRecord(C_TFPlayer* pPlayer, floa
 	{
 		const auto& rec = records[i];
 
-		if (rec.bTeleported)
-			break;
+	if (rec.bTeleported)
+			continue;
 
 		prevRecord = record;
 		record = &rec;

@@ -242,8 +242,8 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			if (!pRecord)
 				continue;
 
-			if (pRecord->bTeleported)
-				break;
+		if (pRecord->bTeleported)
+			continue;
 
 			if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
 				continue;

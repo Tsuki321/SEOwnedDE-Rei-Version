@@ -137,8 +137,8 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 			if (!pRecord)
 				continue;
 
-			if (pRecord->bTeleported)
-				break;
+		if (pRecord->bTeleported)
+			continue;
 
 			if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
 				continue;

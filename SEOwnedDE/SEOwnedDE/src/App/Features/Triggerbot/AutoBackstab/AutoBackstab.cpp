@@ -258,7 +258,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		}
 
 		if (record->bTeleported)
-			break;
+			continue;
 
 		if (!CLagRecords::DiffersFromCurrentCached(record, cachedState))
 			continue;
