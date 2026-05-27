@@ -1,7 +1,5 @@
 #include "LagRecords.h"
 
-#include <ranges>
-
 #include "../CFG.h"
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
@@ -307,7 +305,12 @@ void CLagRecordMatrixHelper::Restore()
 	if (m_Stack.empty() || m_nActiveDepth <= 0)
 		return;
 
-	const auto& entry = m_Stack.back();
+	// Pop the entry first so the stack stays consistent even if the player
+	// or bone data became invalid between Set() and Restore().
+	const auto entry = m_Stack.back();
+	m_Stack.pop_back();
+	--m_nActiveDepth;
+
 	if (!entry.Player)
 		return;
 
@@ -321,7 +324,4 @@ void CLagRecordMatrixHelper::Restore()
 
 	const int nBoneCount = std::min(pCachedBoneData->Count(), entry.BoneCount);
 	memcpy(pCachedBoneData->Base(), entry.BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
-
-	m_Stack.pop_back();
-	--m_nActiveDepth;
 }

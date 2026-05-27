@@ -145,11 +145,14 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 					if (!pRecord)
 						continue;
 
-					// Inline DiffersFromCurrent check using cached values
+					// Inline DiffersFromCurrent check using cached values (pitch + yaw + roll)
 					if ((vCurAbsOrigin - pRecord->AbsOrigin).LengthSqr() <= 0.01f)
 					{
 						const float flYawDelta = std::remainderf(vCurEyeAngles.y - pRecord->EyeAngles.y, 360.0f);
-						if (fabsf(flYawDelta) <= 0.1f && nCurFlags == pRecord->Flags
+						const float flPitchDelta = std::remainderf(vCurEyeAngles.x - pRecord->EyeAngles.x, 360.0f);
+						const float flRollDelta = std::remainderf(vCurEyeAngles.z - pRecord->EyeAngles.z, 360.0f);
+						if (fabsf(flYawDelta) <= 0.1f && fabsf(flPitchDelta) <= 0.1f && fabsf(flRollDelta) <= 0.1f
+							&& nCurFlags == pRecord->Flags
 							&& fabsf(flCurFeetYaw - pRecord->FeetYaw) <= 0.1f)
 						{
 							continue;
