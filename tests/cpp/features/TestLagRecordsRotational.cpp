@@ -39,13 +39,11 @@ TEST(LagRecordsRotationalContracts, RecordCapturesAnglesAndFeetYaw) {
     EXPECT_NE(src.find("m_flCurrentFeetYaw"), std::string::npos);
 }
 
-TEST(LagRecordsRotationalContracts, SimulationTimeWindowIsConfigurable) {
+TEST(LagRecordsRotationalContracts, SimulationTimeWindowUsesServerConVar) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
 
     EXPECT_NE(src.find("IsSimulationTimeValid"), std::string::npos);
-
-    EXPECT_NE(src.find("LagRecords_BacktrackWindow"), std::string::npos);
 
     EXPECT_NE(src.find("sv_maxunlag"), std::string::npos);
     EXPECT_NE(src.find("GetFloat"), std::string::npos);

@@ -25,12 +25,7 @@ float CLagRecords::GetOutgoingLatency()
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 {
-	const int nWindow = CFG::LagRecords_BacktrackWindow;
-
-	if (nWindow <= 0)
-		return false;
-
-	float flMaxWindow = nWindow / 1000.0f;
+	float flMaxWindow = 1.0f;
 
 	static ConVar* sv_maxunlag = I::CVar->FindVar("sv_maxunlag");
 
@@ -38,7 +33,7 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 	{
 		const float flUnlag = sv_maxunlag->GetFloat();
 
-		if (flUnlag > 0.0f && flMaxWindow > flUnlag)
+		if (flUnlag > 0.0f)
 			flMaxWindow = flUnlag;
 	}
 
@@ -67,7 +62,7 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 
 void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 {
-	if (!pPlayer || CFG::LagRecords_BacktrackWindow <= 0)
+	if (!pPlayer)
 		return;
 
 	if (pPlayer->IsDormant())

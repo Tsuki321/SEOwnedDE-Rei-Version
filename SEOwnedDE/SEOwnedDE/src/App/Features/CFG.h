@@ -443,7 +443,6 @@ namespace CFG
 	CFGVAR(Misc_Ping_Reducer, true);
 	CFGVAR(Misc_Pred_Error_Jitter_Fix, true);
 	CFGVAR(Misc_SetupBones_Optimization, true);
-	CFGVAR(LagRecords_BacktrackWindow, 200);
 	CFGVAR(Misc_ComputeLightingOrigin_Fix, true);
 	CFGVAR(Misc_Equip_Region_Unlock, true);
 	CFGVAR(Misc_Fast_Stop, false);
