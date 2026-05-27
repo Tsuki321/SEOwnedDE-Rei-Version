@@ -15,6 +15,21 @@ int CLagRecords::PlayerToIndex(C_TFPlayer* pPlayer)
 	return idx;
 }
 
+bool CLagRecords::IsRecordPlayerValid(int idx, C_TFPlayer* pStored)
+{
+	if (!pStored)
+		return false;
+
+	if (idx < 1 || idx >= MAX_PLAYERS)
+		return false;
+
+	const auto pClientEntity = I::ClientEntityList->GetClientEntity(idx);
+	if (!pClientEntity)
+		return false;
+
+	return pClientEntity->As<C_TFPlayer>() == pStored;
+}
+
 float CLagRecords::GetOutgoingLatency()
 {
 	if (auto pNet = I::EngineClient->GetNetChannelInfo())
@@ -81,7 +96,27 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		while (it != m_FailedChildBones.end())
 		{
 			auto* child = *it;
-			if (!child || !child->GetMoveParent() || child->GetMoveParent() != pPlayer)
+			if (!child)
+			{
+				it = m_FailedChildBones.erase(it);
+				continue;
+			}
+
+			const int childIdx = child->entindex();
+			if (childIdx <= 0)
+			{
+				it = m_FailedChildBones.erase(it);
+				continue;
+			}
+
+			const auto pVerify = I::ClientEntityList->GetClientEntity(childIdx);
+			if (!pVerify || pVerify->As<C_BaseEntity>() != child)
+			{
+				it = m_FailedChildBones.erase(it);
+				continue;
+			}
+
+			if (!child->GetMoveParent() || child->GetMoveParent() != pPlayer)
 			{
 				it = m_FailedChildBones.erase(it);
 			}
@@ -142,6 +177,16 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	newRecord.MasterCycle = pPlayer->m_flCycle();
 
 	auto& records = m_LagRecords[idx];
+
+	if (!records.empty())
+	{
+		const auto& front = records.front();
+
+		if (front.Player != pPlayer)
+		{
+			records.clear();
+		}
+	}
 
 	if (!records.empty())
 	{
@@ -229,7 +274,7 @@ void CLagRecords::UpdateRecords()
 
 		for (auto recIt = records.begin(); recIt != records.end(); )
 		{
-			if (!recIt->Player || !IsSimulationTimeValid(recIt->Player->m_flSimulationTime(), recIt->SimulationTime))
+			if (!IsRecordPlayerValid(i, recIt->Player) || !IsSimulationTimeValid(recIt->Player->m_flSimulationTime(), recIt->SimulationTime))
 			{
 				recIt = records.erase(recIt);
 			}
@@ -363,6 +408,14 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	if (!pPlayer || pPlayer->deadflag())
 		return;
 
+	const int idx = pPlayer->entindex();
+	if (idx < 1)
+		return;
+
+	const auto pVerify = I::ClientEntityList->GetClientEntity(idx);
+	if (!pVerify || pVerify->As<C_TFPlayer>() != pPlayer)
+		return;
+
 	const auto pCachedBoneData = pPlayer->GetCachedBoneData();
 
 	if (!pCachedBoneData)
@@ -393,6 +446,14 @@ void CLagRecordMatrixHelper::Restore()
 	--m_nActiveDepth;
 
 	if (!entry.Player)
+		return;
+
+	const int idx = entry.Player->entindex();
+	if (idx < 1)
+		return;
+
+	const auto pVerify = I::ClientEntityList->GetClientEntity(idx);
+	if (!pVerify || pVerify->As<C_TFPlayer>() != entry.Player)
 		return;
 
 	const auto pCachedBoneData = entry.Player->GetCachedBoneData();

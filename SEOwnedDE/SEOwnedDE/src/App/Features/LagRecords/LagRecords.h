@@ -54,6 +54,7 @@ class CLagRecords
 
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime);
 
+	static bool IsRecordPlayerValid(int idx, C_TFPlayer* pStored);
 	static int PlayerToIndex(C_TFPlayer* pPlayer);
 
 public:
