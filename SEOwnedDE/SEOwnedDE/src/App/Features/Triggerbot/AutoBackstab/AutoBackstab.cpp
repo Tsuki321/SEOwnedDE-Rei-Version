@@ -228,7 +228,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				pCmd->buttons |= IN_ATTACK;
 
-				pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp() + CLagRecords::GetOutgoingLatency());
+				pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
 
 				return;
 			}
@@ -293,7 +293,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				pCmd->buttons |= IN_ATTACK;
 
-				pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + SDKUtils::GetLerp() + CLagRecords::GetOutgoingLatency());
+				pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + SDKUtils::GetLerp());
 
 				return;
 			}

@@ -209,7 +209,7 @@ void CLagRecords::UpdateRecords()
 		return;
 	}
 
-	for (const auto pEntity : H::Entities->GetGroup(CFG::Misc_SetupBones_Optimization ? EEntGroup::PLAYERS_ALL : EEntGroup::PLAYERS_ENEMIES))
+	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
 	{
 		if (!pEntity || pEntity == pLocal)
 		{

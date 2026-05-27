@@ -337,7 +337,7 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 
 				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
-					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp() + CLagRecords::GetOutgoingLatency());
+					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
 				}
 			}
 

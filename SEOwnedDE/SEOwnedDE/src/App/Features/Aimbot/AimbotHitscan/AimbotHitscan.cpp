@@ -809,7 +809,7 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 			if (bIsFiring && target.LagRecord && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 			{
-				pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp() + CLagRecords::GetOutgoingLatency());
+				pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
 			}
 			}
 		}
