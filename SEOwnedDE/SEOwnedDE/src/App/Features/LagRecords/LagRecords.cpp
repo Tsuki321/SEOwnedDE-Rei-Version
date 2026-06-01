@@ -153,7 +153,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	records[newHead] = std::move(newRecord);
 
 	m_RecordHeads[idx] = newHead;
-	m_RecordCounts[idx] = std::min(m_RecordCounts[idx] + 1, MAX_LAG_RECORDS);
+	m_RecordCounts[idx] = std::min<size_t>(m_RecordCounts[idx] + 1, MAX_LAG_RECORDS);
 }
 
 const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
