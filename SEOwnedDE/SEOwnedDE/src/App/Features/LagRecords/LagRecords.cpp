@@ -89,7 +89,8 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 				{
 					// Insert into the sorted vector at the first position that
 					// is not less than the new handle, skipping duplicates.
-					const CBaseHandle h = attach;
+					CBaseHandle h;
+					h = attach;
 					const auto it = std::lower_bound(m_FailedChildBones.begin(), m_FailedChildBones.end(), h);
 					if (it == m_FailedChildBones.end() || *it != h)
 						m_FailedChildBones.insert(it, h);
@@ -228,7 +229,9 @@ void CLagRecords::UpdateRecords()
 				continue;
 			}
 
-			if (CBaseHandle(pChild) != m_FailedChildBones[i])
+			CBaseHandle currentHandle;
+			currentHandle = pChild;
+			if (currentHandle != m_FailedChildBones[i])
 			{
 				m_FailedChildBones.erase(m_FailedChildBones.begin() + i);
 				continue;

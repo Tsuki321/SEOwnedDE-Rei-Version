@@ -91,7 +91,9 @@ public:
 		if (m_FailedChildBones.empty())
 			return false;
 
-		const CBaseHandle h = pEntity;
+		// CBaseHandle has no converting ctor from IHandleEntity*; assign instead.
+		CBaseHandle h;
+		h = pEntity;
 		return std::binary_search(m_FailedChildBones.begin(), m_FailedChildBones.end(), h);
 	}
 };
