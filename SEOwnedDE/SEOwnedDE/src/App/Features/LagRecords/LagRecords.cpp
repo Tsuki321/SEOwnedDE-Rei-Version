@@ -15,21 +15,6 @@ int CLagRecords::PlayerToIndex(C_TFPlayer* pPlayer)
 	return idx;
 }
 
-bool CLagRecords::IsRecordPlayerValid(int idx, C_TFPlayer* pStored)
-{
-	if (!pStored)
-		return false;
-
-	if (idx < 1 || idx >= MAX_PLAYERS)
-		return false;
-
-	const auto pClientEntity = I::ClientEntityList->GetClientEntity(idx);
-	if (!pClientEntity)
-		return false;
-
-	return pClientEntity->As<C_TFPlayer>() == pStored;
-}
-
 float CLagRecords::GetOutgoingLatency()
 {
 	if (auto pNet = I::EngineClient->GetNetChannelInfo())
@@ -90,42 +75,6 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	LagRecord_t newRecord = {};
 
 	m_bSettingUpBones = true;
-
-	{
-		auto it = m_FailedChildBones.begin();
-		while (it != m_FailedChildBones.end())
-		{
-			auto* child = *it;
-			if (!child)
-			{
-				it = m_FailedChildBones.erase(it);
-				continue;
-			}
-
-			const int childIdx = child->entindex();
-			if (childIdx <= 0)
-			{
-				it = m_FailedChildBones.erase(it);
-				continue;
-			}
-
-			const auto pVerify = I::ClientEntityList->GetClientEntity(childIdx);
-			if (!pVerify || pVerify->As<C_BaseEntity>() != child)
-			{
-				it = m_FailedChildBones.erase(it);
-				continue;
-			}
-
-			if (!child->GetMoveParent() || child->GetMoveParent() != pPlayer)
-			{
-				it = m_FailedChildBones.erase(it);
-			}
-			else
-			{
-				++it;
-			}
-		}
-	}
 
 	const auto setup_bones_optimization{ CFG::Misc_SetupBones_Optimization };
 
@@ -244,11 +193,45 @@ void CLagRecords::UpdateRecords()
 			records.clear();
 
 		if (!m_FailedChildBones.empty())
-		{
 			m_FailedChildBones.clear();
-		}
 
 		return;
+	}
+
+	{
+		auto it = m_FailedChildBones.begin();
+		while (it != m_FailedChildBones.end())
+		{
+			auto* child = *it;
+			if (!child)
+			{
+				it = m_FailedChildBones.erase(it);
+				continue;
+			}
+
+			const int childIdx = child->entindex();
+			if (childIdx <= 0)
+			{
+				it = m_FailedChildBones.erase(it);
+				continue;
+			}
+
+			const auto pVerify = I::ClientEntityList->GetClientEntity(childIdx);
+			if (!pVerify || pVerify->As<C_BaseEntity>() != child)
+			{
+				it = m_FailedChildBones.erase(it);
+				continue;
+			}
+
+			if (!child->GetMoveParent())
+			{
+				it = m_FailedChildBones.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
 	}
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
@@ -274,7 +257,7 @@ void CLagRecords::UpdateRecords()
 
 		for (auto recIt = records.begin(); recIt != records.end(); )
 		{
-			if (!IsRecordPlayerValid(i, recIt->Player) || !IsSimulationTimeValid(recIt->Player->m_flSimulationTime(), recIt->SimulationTime))
+			if (!recIt->Player || recIt->Player->IsDormant() || !IsSimulationTimeValid(recIt->Player->m_flSimulationTime(), recIt->SimulationTime))
 			{
 				recIt = records.erase(recIt);
 			}
@@ -380,15 +363,13 @@ const LagRecord_t* CLagRecords::FindInterpolatedRecord(C_TFPlayer* pPlayer, floa
 			outRecord.Center = record->Center + (prevRecord->Center - record->Center) * frac;
 			outRecord.SimulationTime = flTargetTime;
 
-			for (int b = 0; b < MAX_BONE_COUNT; ++b)
+			auto* dst = &outRecord.BoneMatrix[0][0][0];
+			const auto* src0 = &record->BoneMatrix[0][0][0];
+			const auto* src1 = &prevRecord->BoneMatrix[0][0][0];
+			constexpr int nFloats = MAX_BONE_COUNT * 3 * 4;
+			for (int f = 0; f < nFloats; ++f)
 			{
-				for (int col = 0; col < 3; ++col)
-				{
-					for (int row = 0; row < 4; ++row)
-					{
-						outRecord.BoneMatrix[b][col][row] = record->BoneMatrix[b][col][row] + (prevRecord->BoneMatrix[b][col][row] - record->BoneMatrix[b][col][row]) * frac;
-					}
-				}
+				dst[f] = src0[f] + (src1[f] - src0[f]) * frac;
 			}
 
 			return &outRecord;
@@ -408,61 +389,44 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	if (!pPlayer || pPlayer->deadflag())
 		return;
 
-	const int idx = pPlayer->entindex();
-	if (idx < 1)
-		return;
-
-	const auto pVerify = I::ClientEntityList->GetClientEntity(idx);
-	if (!pVerify || pVerify->As<C_TFPlayer>() != pPlayer)
-		return;
-
 	const auto pCachedBoneData = pPlayer->GetCachedBoneData();
 
 	if (!pCachedBoneData)
 		return;
 
-	StackEntry_t entry;
+	auto& entry = m_Stack[m_nActiveDepth];
 	entry.Player = pPlayer;
 	entry.AbsOrigin = pPlayer->GetAbsOrigin();
 	entry.AbsAngles = pPlayer->GetAbsAngles();
 	entry.BoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
+	entry.CachedBoneData = pCachedBoneData;
 	memcpy(entry.BoneMatrix, pCachedBoneData->Base(), sizeof(matrix3x4_t) * entry.BoneCount);
 
 	memcpy(pCachedBoneData->Base(), pRecord->BoneMatrix, sizeof(matrix3x4_t) * entry.BoneCount);
 	pPlayer->SetAbsOrigin(pRecord->AbsOrigin);
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
 
-	m_Stack.push_back(entry);
 	++m_nActiveDepth;
 }
 
 void CLagRecordMatrixHelper::Restore()
 {
-	if (m_Stack.empty() || m_nActiveDepth <= 0)
+	if (m_nActiveDepth <= 0)
 		return;
 
-	const auto entry = m_Stack.back();
-	m_Stack.pop_back();
 	--m_nActiveDepth;
+	const auto& entry = m_Stack[m_nActiveDepth];
 
 	if (!entry.Player)
 		return;
 
-	const int idx = entry.Player->entindex();
-	if (idx < 1)
-		return;
+	entry.Player->SetAbsOrigin(entry.AbsOrigin);
+	entry.Player->SetAbsAngles(entry.AbsAngles);
 
-	const auto pVerify = I::ClientEntityList->GetClientEntity(idx);
-	if (!pVerify || pVerify->As<C_TFPlayer>() != entry.Player)
-		return;
-
-	const auto pCachedBoneData = entry.Player->GetCachedBoneData();
+	const auto pCachedBoneData = entry.CachedBoneData;
 
 	if (!pCachedBoneData)
 		return;
-
-	entry.Player->SetAbsOrigin(entry.AbsOrigin);
-	entry.Player->SetAbsAngles(entry.AbsAngles);
 
 	const int nBoneCount = std::min(pCachedBoneData->Count(), entry.BoneCount);
 	memcpy(pCachedBoneData->Base(), entry.BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);

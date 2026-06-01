@@ -54,7 +54,6 @@ class CLagRecords
 
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime);
 
-	static bool IsRecordPlayerValid(int idx, C_TFPlayer* pStored);
 	static int PlayerToIndex(C_TFPlayer* pPlayer);
 
 public:
@@ -86,9 +85,10 @@ class CLagRecordMatrixHelper
 		Vec3 AbsAngles = {};
 		matrix3x4_t BoneMatrix[MAX_BONE_COUNT] = {};
 		int BoneCount = 0;
+		CUtlVector<matrix3x4_t>* CachedBoneData = nullptr;
 	};
 
-	std::vector<StackEntry_t> m_Stack;
+	std::array<StackEntry_t, MAX_PLAYERS> m_Stack = {};
 	int m_nActiveDepth = 0;
 
 public:

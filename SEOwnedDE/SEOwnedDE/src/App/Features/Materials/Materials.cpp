@@ -305,14 +305,22 @@ void CMaterials::RunLagRecords()
 
 		if (CFG::Materials_Players_LagRecords_Style == 0)
 		{
-			for (int n = 1; n < nRecords; n++)
+			constexpr int MAX_RENDERED_RECORDS = 12;
+			const int nRenderEnd = std::min(nRecords, MAX_RENDERED_RECORDS + 1);
+
+			for (int n = 1; n < nRenderEnd; n++)
 			{
 				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
 				if (!pRecord || pRecord->bTeleported || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
 					continue;
 
-				I::RenderView->SetBlend(Math::RemapValClamped(static_cast<float>(n), 1.0f, static_cast<float>(nRecords), 0.1f, 0.001f));
+				const float flBlend = Math::RemapValClamped(static_cast<float>(n), 1.0f, static_cast<float>(nRecords), 0.1f, 0.001f);
+
+				if (flBlend < 0.005f)
+					continue;
+
+				I::RenderView->SetBlend(flBlend);
 
 				CLagRecordScope scope(pRecord);
 				m_bRendering = true;
