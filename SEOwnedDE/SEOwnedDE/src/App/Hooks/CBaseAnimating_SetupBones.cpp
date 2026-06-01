@@ -94,8 +94,10 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 
 			// Phase 2: a wearable whose own SetupBones failed during lag-record
 			// capture must fall through to the engine path so that frame's pose is
-			// rebuilt from scratch instead of using stale cached data.
-			if (F::LagRecords->HasFailedBones(baseEnt) || F::LagRecords->HasFailedBones(ent))
+			// rebuilt from scratch instead of using stale cached data. By this
+			// point baseEnt == ent (the move-child early-return above guarantees
+			// it), so a single lookup covers both keys.
+			if (F::LagRecords->HasFailedBones(baseEnt))
 			{
 				return CALL_ORIGINAL(ecx, pBoneToWorldOut, nMaxBones, boneMask, currentTime);
 			}

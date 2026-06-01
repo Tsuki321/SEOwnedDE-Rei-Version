@@ -23,20 +23,8 @@ float CLagRecords::GetOutgoingLatency()
 	return 0.0f;
 }
 
-bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
+bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency)
 {
-	float flMaxWindow = 1.0f;
-
-	static ConVar* sv_maxunlag = I::CVar->FindVar("sv_maxunlag");
-
-	if (sv_maxunlag)
-	{
-		const float flUnlag = sv_maxunlag->GetFloat();
-
-		if (flUnlag > 0.0f)
-			flMaxWindow = flUnlag;
-	}
-
 	if (flCmprSimTime > flCurSimTime)
 		return false;
 
@@ -44,8 +32,6 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime)
 
 	if (flDelta >= flMaxWindow)
 	{
-		const float flLatency = GetOutgoingLatency() + SDKUtils::GetLerp();
-
 		if (flLatency > 0.0f)
 		{
 			const float flCorrected = flDelta - flLatency;
@@ -135,17 +121,14 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		{
 			records.clear();
 		}
-	}
+		else
+		{
+			if (newRecord.SimulationTime <= front.SimulationTime)
+				return;
 
-	if (!records.empty())
-	{
-		const auto& front = records.front();
-
-		if (newRecord.SimulationTime <= front.SimulationTime)
-			return;
-
-		if ((newRecord.AbsOrigin - front.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
-			newRecord.bTeleported = true;
+			if ((newRecord.AbsOrigin - front.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
+				newRecord.bTeleported = true;
+		}
 	}
 
 	records.emplace_front(newRecord);
@@ -251,21 +234,47 @@ void CLagRecords::UpdateRecords()
 		}
 	}
 
+	// Compute the lag-compensation window once per frame: the net channel
+	// snapshot and the sv_maxunlag convar cannot change during this pass.
+	float flMaxWindow = 1.0f;
+	static ConVar* sv_maxunlag = I::CVar->FindVar("sv_maxunlag");
+	if (sv_maxunlag)
+	{
+		const float flUnlag = sv_maxunlag->GetFloat();
+		if (flUnlag > 0.0f)
+			flMaxWindow = flUnlag;
+	}
+	const float flLatency = GetOutgoingLatency() + SDKUtils::GetLerp();
+
 	for (int i = 0; i < MAX_PLAYERS; ++i)
 	{
 		auto& records = m_LagRecords[i];
+		if (records.empty())
+			continue;
 
-		for (auto recIt = records.begin(); recIt != records.end(); )
+		// All records in this deque belong to the same player (AddRecord
+		// invariant), so the live simtime / dormancy status are constant.
+		C_TFPlayer* pFirstPlayer = records.front().Player;
+		if (!pFirstPlayer || pFirstPlayer->IsDormant())
 		{
-			if (!recIt->Player || recIt->Player->IsDormant() || !IsSimulationTimeValid(recIt->Player->m_flSimulationTime(), recIt->SimulationTime))
-			{
-				recIt = records.erase(recIt);
-			}
-			else
-			{
-				++recIt;
-			}
+			records.clear();
+			continue;
 		}
+
+		const float flCurSimTime = pFirstPlayer->m_flSimulationTime();
+
+		// Records are stored newest-first; SimulationTime strictly decreases
+		// toward the back, and validity is monotonic w.r.t. age. Walk forward
+		// to the first invalid record, then bulk-erase the tail.
+		auto it = records.begin();
+		while (it != records.end() &&
+			   IsSimulationTimeValid(flCurSimTime, it->SimulationTime, flMaxWindow, flLatency))
+		{
+			++it;
+		}
+
+		if (it != records.end())
+			records.erase(it, records.end());
 	}
 }
 
@@ -284,6 +293,15 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 
 bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
 {
+	// Cheapest predicates first: int compare and a single fabsf short-circuit
+	// before the more expensive vector / remainderf checks. Flag and feet-yaw
+	// are the most common trip conditions on a freshly-ticked target.
+	if (cached.Flags != pRecord->Flags)
+		return true;
+
+	if (fabsf(cached.FeetYaw - pRecord->FeetYaw) > 0.1f)
+		return true;
+
 	if ((cached.AbsOrigin - pRecord->AbsOrigin).LengthSqr() > 0.01f)
 		return true;
 
@@ -296,16 +314,7 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 		return true;
 
 	const float flRollDelta = std::remainderf(cached.EyeAngles.z - pRecord->EyeAngles.z, 360.0f);
-	if (fabsf(flRollDelta) > 0.1f)
-		return true;
-
-	if (cached.Flags != pRecord->Flags)
-		return true;
-
-	if (fabsf(cached.FeetYaw - pRecord->FeetYaw) > 0.1f)
-		return true;
-
-	return false;
+	return fabsf(flRollDelta) <= 0.1f;
 }
 
 bool CLagRecords::DiffersFromCurrent(const LagRecord_t* pRecord)

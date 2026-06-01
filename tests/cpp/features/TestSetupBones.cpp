@@ -105,11 +105,16 @@ TEST(SetupBonesContracts, BlendsTranslationAcrossTwoRecords) {
 }
 
 // Phase 2: failed-wearable bypass. If a child SetupBones failed during
-// LagRecord capture, the cache short-circuit must defer to engine.
+// LagRecord capture, the cache short-circuit must defer to engine. Because
+// the move-child early-return at the top of the hook guarantees baseEnt ==
+// ent by the time we reach this check, a single HasFailedBones call covers
+// both keys.
 TEST(SetupBonesContracts, BypassesCacheForFailedChildBones) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kHookSource);
 
     EXPECT_NE(src.find("F::LagRecords->HasFailedBones(baseEnt)"), std::string::npos);
-    EXPECT_NE(src.find("F::LagRecords->HasFailedBones(ent)"), std::string::npos);
+    EXPECT_EQ(src.find("F::LagRecords->HasFailedBones(ent)"), std::string::npos)
+        << "baseEnt == ent at this point; a second HasFailedBones(ent) call "
+           "is a redundant hash query.";
 }

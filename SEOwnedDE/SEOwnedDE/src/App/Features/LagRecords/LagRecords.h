@@ -52,7 +52,7 @@ class CLagRecords
 
 	std::unordered_set<C_BaseEntity*> m_FailedChildBones = {};
 
-	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime);
+	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency);
 
 	static int PlayerToIndex(C_TFPlayer* pPlayer);
 
