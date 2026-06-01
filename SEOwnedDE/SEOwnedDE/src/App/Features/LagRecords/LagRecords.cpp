@@ -87,7 +87,12 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 				if (!childResult)
 				{
-					m_FailedChildBones.insert(attach);
+					// Insert into the sorted vector at the first position that
+					// is not less than the new handle, skipping duplicates.
+					const CBaseHandle h = attach;
+					const auto it = std::lower_bound(m_FailedChildBones.begin(), m_FailedChildBones.end(), h);
+					if (it == m_FailedChildBones.end() || *it != h)
+						m_FailedChildBones.insert(it, h);
 				}
 			}
 
@@ -207,38 +212,35 @@ void CLagRecords::UpdateRecords()
 	}
 
 	{
-		auto it = m_FailedChildBones.begin();
-		while (it != m_FailedChildBones.end())
+		// Per-entry EHANDLE checks replace the original GetClientEntity +
+		// cast-back round-trip. Get() returning nullptr means the entity is
+		// gone; a handle value mismatch means the slot was recycled to a
+		// different entity; missing move parent means the wearable is no
+		// longer attached to the player.
+		size_t i = 0;
+		while (i < m_FailedChildBones.size())
 		{
-			auto* child = *it;
-			if (!child)
+			C_BaseEntity* pChild = m_FailedChildBones[i].Get();
+
+			if (!pChild)
 			{
-				it = m_FailedChildBones.erase(it);
+				m_FailedChildBones.erase(m_FailedChildBones.begin() + i);
 				continue;
 			}
 
-			const int childIdx = child->entindex();
-			if (childIdx <= 0)
+			if (CBaseHandle(pChild) != m_FailedChildBones[i])
 			{
-				it = m_FailedChildBones.erase(it);
+				m_FailedChildBones.erase(m_FailedChildBones.begin() + i);
 				continue;
 			}
 
-			const auto pVerify = I::ClientEntityList->GetClientEntity(childIdx);
-			if (!pVerify || pVerify->As<C_BaseEntity>() != child)
+			if (!pChild->GetMoveParent())
 			{
-				it = m_FailedChildBones.erase(it);
+				m_FailedChildBones.erase(m_FailedChildBones.begin() + i);
 				continue;
 			}
 
-			if (!child->GetMoveParent())
-			{
-				it = m_FailedChildBones.erase(it);
-			}
-			else
-			{
-				++it;
-			}
+			++i;
 		}
 	}
 

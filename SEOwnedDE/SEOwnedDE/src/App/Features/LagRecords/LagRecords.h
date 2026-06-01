@@ -4,7 +4,7 @@
 
 #include <array>
 #include <memory>
-#include <unordered_set>
+#include <vector>
 
 inline constexpr int MAX_BONE_COUNT = 128;
 inline constexpr int MAX_LAG_RECORDS = 66;
@@ -66,7 +66,11 @@ class CLagRecords
 	std::array<size_t, MAX_PLAYERS> m_RecordCounts = {};
 	bool m_bSettingUpBones = false;
 
-	std::unordered_set<C_BaseEntity*> m_FailedChildBones = {};
+	// Sorted by CBaseHandle (operator<) for O(log N) lookup via binary search.
+	// EHANDLE makes staleness detection cheap: Get() returns nullptr when the
+	// entity is destroyed, and a handle value mismatch catches entity recycling
+	// without a separate GetClientEntity round-trip.
+	std::vector<CBaseHandle> m_FailedChildBones = {};
 
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency);
 
@@ -84,7 +88,11 @@ public:
 
 	bool HasFailedBones(C_BaseEntity* pEntity) const
 	{
-		return m_FailedChildBones.contains(pEntity);
+		if (m_FailedChildBones.empty())
+			return false;
+
+		const CBaseHandle h = pEntity;
+		return std::binary_search(m_FailedChildBones.begin(), m_FailedChildBones.end(), h);
 	}
 };
 
