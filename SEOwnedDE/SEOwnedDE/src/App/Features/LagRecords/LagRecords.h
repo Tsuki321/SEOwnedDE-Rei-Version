@@ -62,10 +62,8 @@ public:
 	const LagRecord_t* GetRecord(C_TFPlayer* pPlayer, int nRecord);
 	bool HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords = nullptr);
 	void UpdateRecords();
-	bool DiffersFromCurrent(const LagRecord_t* pRecord);
 	static bool DiffersFromCurrentCached(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
 	static LagRecordCachedState_t CacheCurrentState(C_TFPlayer* pPlayer);
-	const LagRecord_t* FindInterpolatedRecord(C_TFPlayer* pPlayer, float flTargetTime, LagRecord_t& outRecord);
 	bool IsSettingUpBones() { return m_bSettingUpBones; }
 
 	bool HasFailedBones(C_BaseEntity* pEntity) const
