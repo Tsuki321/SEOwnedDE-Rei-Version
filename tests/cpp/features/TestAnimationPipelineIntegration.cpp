@@ -61,7 +61,7 @@ const PipelineFile kPipeline[] = {
             "newRecord.AbsOrigin",
             "newRecord.AbsAngles",
             "newRecord.SimulationTime",
-            "records.emplace_front",
+            "records[newHead]",
         },
     },
     {

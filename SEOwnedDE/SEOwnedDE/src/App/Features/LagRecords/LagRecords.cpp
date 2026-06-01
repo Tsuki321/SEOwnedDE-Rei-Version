@@ -121,31 +121,39 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		newRecord.BoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
 
 	auto& records = m_LagRecords[idx];
+	const size_t oldCount = m_RecordCounts[idx];
 
-	if (!records.empty())
+	// Validate against the head record (newest in the ring) when one exists.
+	if (oldCount > 0)
 	{
-		const auto& front = records.front();
+		const auto& head = records[m_RecordHeads[idx]];
 
-		if (front.Player != pPlayer)
+		if (head.Player != pPlayer)
 		{
-			records.clear();
+			// Stale player identity: drop every record for this slot so the
+			// per-record BoneData allocations are released before reuse.
+			for (auto& slot : records)
+				slot = LagRecord_t{};
+			m_RecordCounts[idx] = 0;
 		}
 		else
 		{
-			if (newRecord.SimulationTime <= front.SimulationTime)
+			if (newRecord.SimulationTime <= head.SimulationTime)
 				return;
 
-			if ((newRecord.AbsOrigin - front.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
+			if ((newRecord.AbsOrigin - head.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
 				newRecord.bTeleported = true;
 		}
 	}
 
-	// Move-construct in the deque node so the unique_ptr ownership transfers
-	// without an extra heap allocation + memcpy on every record.
-	records.emplace_front(std::move(newRecord));
+	// Move-construct into the ring slot one past the current head. The
+	// unique_ptr ownership transfers, freeing the displaced record's
+	// BoneData (if any) on overflow.
+	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
+	records[newHead] = std::move(newRecord);
 
-	if (records.size() > MAX_LAG_RECORDS)
-		records.pop_back();
+	m_RecordHeads[idx] = newHead;
+	m_RecordCounts[idx] = std::min(m_RecordCounts[idx] + 1, MAX_LAG_RECORDS);
 }
 
 const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
@@ -154,11 +162,13 @@ const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
 	if (idx < 0)
 		return nullptr;
 
-	const auto& records = m_LagRecords[idx];
-	if (nRecord < 0 || nRecord >= static_cast<int>(records.size()))
+	const size_t count = m_RecordCounts[idx];
+	if (nRecord < 0 || nRecord >= static_cast<int>(count))
 		return nullptr;
 
-	return &records[nRecord];
+	// Translate logical index (0 = newest) into the physical ring slot.
+	const size_t phys = (m_RecordHeads[idx] + MAX_LAG_RECORDS - nRecord) % MAX_LAG_RECORDS;
+	return &m_LagRecords[idx][phys];
 }
 
 bool CLagRecords::HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords)
@@ -167,12 +177,12 @@ bool CLagRecords::HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords)
 	if (idx < 0)
 		return false;
 
-	const size_t nSize = m_LagRecords[idx].size();
-	if (nSize == 0)
+	const size_t count = m_RecordCounts[idx];
+	if (count == 0)
 		return false;
 
 	if (pTotalRecords)
-		*pTotalRecords = static_cast<int>(nSize);
+		*pTotalRecords = static_cast<int>(count);
 
 	return true;
 }
@@ -183,8 +193,12 @@ void CLagRecords::UpdateRecords()
 
 	if (!pLocal || pLocal->deadflag() || pLocal->InCond(TF_COND_HALLOWEEN_GHOST_MODE) || pLocal->InCond(TF_COND_HALLOWEEN_KART))
 	{
-		for (auto& records : m_LagRecords)
-			records.clear();
+		for (int i = 0; i < MAX_PLAYERS; ++i)
+		{
+			for (auto& slot : m_LagRecords[i])
+				slot = LagRecord_t{};
+			m_RecordCounts[i] = 0;
+		}
 
 		if (!m_FailedChildBones.empty())
 			m_FailedChildBones.clear();
@@ -241,7 +255,11 @@ void CLagRecords::UpdateRecords()
 		{
 			const int idx = PlayerToIndex(pPlayer);
 			if (idx >= 0)
-				m_LagRecords[idx].clear();
+			{
+				for (auto& slot : m_LagRecords[idx])
+					slot = LagRecord_t{};
+				m_RecordCounts[idx] = 0;
+			}
 		}
 	}
 
@@ -259,16 +277,20 @@ void CLagRecords::UpdateRecords()
 
 	for (int i = 0; i < MAX_PLAYERS; ++i)
 	{
-		auto& records = m_LagRecords[i];
-		if (records.empty())
+		if (m_RecordCounts[i] == 0)
 			continue;
 
-		// All records in this deque belong to the same player (AddRecord
+		auto& records = m_LagRecords[i];
+		const size_t head = m_RecordHeads[i];
+
+		// All records in this ring belong to the same player (AddRecord
 		// invariant), so the live simtime / dormancy status are constant.
-		C_TFPlayer* pFirstPlayer = records.front().Player;
+		C_TFPlayer* pFirstPlayer = records[head].Player;
 		if (!pFirstPlayer || pFirstPlayer->IsDormant())
 		{
-			records.clear();
+			for (auto& slot : records)
+				slot = LagRecord_t{};
+			m_RecordCounts[i] = 0;
 			continue;
 		}
 
@@ -276,16 +298,29 @@ void CLagRecords::UpdateRecords()
 
 		// Records are stored newest-first; SimulationTime strictly decreases
 		// toward the back, and validity is monotonic w.r.t. age. Walk forward
-		// to the first invalid record, then bulk-erase the tail.
-		auto it = records.begin();
-		while (it != records.end() &&
-			   IsSimulationTimeValid(flCurSimTime, it->SimulationTime, flMaxWindow, flLatency))
+		// to the first invalid record, then bulk-truncate the tail.
+		size_t firstInvalid = m_RecordCounts[i];
+		for (size_t n = 0; n < m_RecordCounts[i]; ++n)
 		{
-			++it;
+			const size_t phys = (head + MAX_LAG_RECORDS - n) % MAX_LAG_RECORDS;
+			if (!IsSimulationTimeValid(flCurSimTime, records[phys].SimulationTime, flMaxWindow, flLatency))
+			{
+				firstInvalid = n;
+				break;
+			}
 		}
 
-		if (it != records.end())
-			records.erase(it, records.end());
+		if (firstInvalid < m_RecordCounts[i])
+		{
+			// Release the BoneData allocations of the truncated records so
+			// they don't linger in the ring slots until the next overwrite.
+			for (size_t n = firstInvalid; n < m_RecordCounts[i]; ++n)
+			{
+				const size_t phys = (head + MAX_LAG_RECORDS - n) % MAX_LAG_RECORDS;
+				records[phys] = LagRecord_t{};
+			}
+			m_RecordCounts[i] = firstInvalid;
+		}
 	}
 }
 

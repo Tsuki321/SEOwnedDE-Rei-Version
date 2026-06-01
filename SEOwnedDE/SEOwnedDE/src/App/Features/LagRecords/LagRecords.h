@@ -55,7 +55,14 @@ struct LagRecordCachedState_t
 
 class CLagRecords
 {
-	std::array<std::deque<LagRecord_t>, MAX_PLAYERS> m_LagRecords = {};
+	// Per-player fixed-capacity ring buffer. Logical index 0 is the newest
+	// record; head points to the newest physical slot and the count clamps
+	// at MAX_LAG_RECORDS, so the oldest record is silently overwritten on
+	// overflow. Eliminates per-record heap allocations from std::deque and
+	// keeps each player's history contiguous for cache-friendly iteration.
+	std::array<std::array<LagRecord_t, MAX_LAG_RECORDS>, MAX_PLAYERS> m_LagRecords = {};
+	std::array<size_t, MAX_PLAYERS> m_RecordHeads = {};
+	std::array<size_t, MAX_PLAYERS> m_RecordCounts = {};
 	bool m_bSettingUpBones = false;
 
 	std::unordered_set<C_BaseEntity*> m_FailedChildBones = {};
