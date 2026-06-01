@@ -221,7 +221,7 @@ void CLagRecords::UpdateRecords()
 		size_t i = 0;
 		while (i < m_FailedChildBones.size())
 		{
-			C_BaseEntity* pChild = m_FailedChildBones[i].Get();
+			C_BaseEntity* pChild = static_cast<C_BaseEntity*>(m_FailedChildBones[i].Get());
 
 			if (!pChild)
 			{
