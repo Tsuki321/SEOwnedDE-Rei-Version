@@ -3,6 +3,7 @@
 #include "../../../SDK/SDK.h"
 
 #include <array>
+#include <memory>
 #include <unordered_set>
 
 inline constexpr int MAX_BONE_COUNT = 128;
@@ -22,7 +23,8 @@ struct LayerRecord_t
 struct LagRecord_t
 {
 	C_TFPlayer* Player = nullptr;
-	matrix3x4_t BoneMatrix[MAX_BONE_COUNT] = {};
+	int BoneCount = 0;
+	std::unique_ptr<matrix3x4_t[]> BoneData;
 	float SimulationTime = -1.0f;
 	Vec3 AbsOrigin = {};
 	Vec3 AbsAngles = {};
@@ -35,6 +37,12 @@ struct LagRecord_t
 	float MasterCycle = 0.0f;
 	LayerRecord_t LayerRecords[MAX_ANIM_OVERLAYS] = {};
 	bool bTeleported = false;
+
+	LagRecord_t() = default;
+	LagRecord_t(LagRecord_t&&) noexcept = default;
+	LagRecord_t& operator=(LagRecord_t&&) noexcept = default;
+	LagRecord_t(const LagRecord_t&) = delete;
+	LagRecord_t& operator=(const LagRecord_t&) = delete;
 };
 
 struct LagRecordCachedState_t

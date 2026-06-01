@@ -248,7 +248,7 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
 				continue;
 
-					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, nAimHitbox, const_cast<matrix3x4_t*>(pRecord->BoneMatrix));
+					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, nAimHitbox, pRecord->BoneData.get());
 					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
 					const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
 					const float flDistTo = vLocalPos.DistTo(vPos);
@@ -672,12 +672,12 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 						return false;
 
 					Vec3 vMins = {}, vMaxs = {}, vCenter = {};
-					SDKUtils::GetHitboxInfoFromMatrix(pPlayer, nHitHitbox, const_cast<matrix3x4_t*>(target.LagRecord->BoneMatrix), &vCenter, &vMins, &vMaxs);
+					SDKUtils::GetHitboxInfoFromMatrix(pPlayer, nHitHitbox, target.LagRecord->BoneData.get(), &vCenter, &vMins, &vMaxs);
 
 					vMins *= 0.5f;
 					vMaxs *= 0.5f;
 
-					if (!Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, *target.LagRecord->BoneMatrix))
+					if (!Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, *target.LagRecord->BoneData.get()))
 						return false;
 				}
 			}

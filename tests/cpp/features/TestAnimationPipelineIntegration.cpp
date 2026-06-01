@@ -11,7 +11,7 @@
 //   FRAME_NET_UPDATE_END (FrameStageNotify)
 //     -> per remote player: UpdateClientSideAnimation x N (tick-locked)
 //     -> per remote player: LagRecords::AddRecord
-//       -> SetupBones writes into LagRecord_t::BoneMatrix
+//       -> SetupBones writes into LagRecord_t::BoneData
 //     -> mapVelFixRecords refreshed
 //   FRAME_RENDER_START
 //     -> CBaseAnimating::SetupBones consumes cached bones + delta correction
@@ -57,7 +57,7 @@ const PipelineFile kPipeline[] = {
     {
         "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.cpp",
         {
-            "newRecord.BoneMatrix",
+            "newRecord.BoneData",
             "newRecord.AbsOrigin",
             "newRecord.AbsAngles",
             "newRecord.SimulationTime",

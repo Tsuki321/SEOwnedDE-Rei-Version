@@ -69,7 +69,11 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		pPlayer->InvalidateBoneCache();
 	}
 
-	const auto result = pPlayer->SetupBones(newRecord.BoneMatrix, MAX_BONE_COUNT, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
+	// Allocate the bone buffer once at MAX_BONE_COUNT; we narrow the
+	// authoritative BoneCount after SetupBones succeeds based on the
+	// model's actual skeleton size.
+	newRecord.BoneData = std::make_unique<matrix3x4_t[]>(MAX_BONE_COUNT);
+	const auto result = pPlayer->SetupBones(newRecord.BoneData.get(), MAX_BONE_COUNT, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
 
 	if (setup_bones_optimization)
 	{
@@ -111,6 +115,11 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	newRecord.MasterSequence = pPlayer->m_nSequence();
 	newRecord.MasterCycle = pPlayer->m_flCycle();
 
+	// Authoritative bone count: bound by both the engine's cached count and
+	// MAX_BONE_COUNT (the size we actually allocated).
+	if (const auto pCachedBoneData = pPlayer->GetCachedBoneData())
+		newRecord.BoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
+
 	auto& records = m_LagRecords[idx];
 
 	if (!records.empty())
@@ -131,7 +140,9 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		}
 	}
 
-	records.emplace_front(newRecord);
+	// Move-construct in the deque node so the unique_ptr ownership transfers
+	// without an extra heap allocation + memcpy on every record.
+	records.emplace_front(std::move(newRecord));
 
 	if (records.size() > MAX_LAG_RECORDS)
 		records.pop_back();
@@ -340,7 +351,12 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	entry.CachedBoneData = pCachedBoneData;
 	memcpy(entry.BoneMatrix, pCachedBoneData->Base(), sizeof(matrix3x4_t) * entry.BoneCount);
 
-	memcpy(pCachedBoneData->Base(), pRecord->BoneMatrix, sizeof(matrix3x4_t) * entry.BoneCount);
+	// Apply the record's bones up to the min of (cached count, record count)
+	// so we never read past the end of either buffer.
+	const int nApplyCount = std::min(entry.BoneCount, pRecord->BoneCount);
+	if (nApplyCount > 0 && pRecord->BoneData)
+		memcpy(pCachedBoneData->Base(), pRecord->BoneData.get(), sizeof(matrix3x4_t) * nApplyCount);
+
 	pPlayer->SetAbsOrigin(pRecord->AbsOrigin);
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
 

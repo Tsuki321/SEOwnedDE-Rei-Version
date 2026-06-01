@@ -188,14 +188,19 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 
 											if (oneMinusT > 0.001f)
 											{
-												for (int i = 0; i < nCopyCount; ++i)
+												// Bound the blend by the min of the two records'
+												// authoritative BoneCount to avoid reading past
+												// the end of either BoneData buffer.
+												const int nBlendCount = std::min({ nCopyCount, pRecord->BoneCount, pPrev->BoneCount });
+
+												for (int i = 0; i < nBlendCount; ++i)
 												{
-													const float dx = pPrev->BoneMatrix[i][0][3] -
-														pRecord->BoneMatrix[i][0][3];
-													const float dy = pPrev->BoneMatrix[i][1][3] -
-														pRecord->BoneMatrix[i][1][3];
-													const float dz = pPrev->BoneMatrix[i][2][3] -
-														pRecord->BoneMatrix[i][2][3];
+													const float dx = pPrev->BoneData[i][0][3] -
+														pRecord->BoneData[i][0][3];
+													const float dy = pPrev->BoneData[i][1][3] -
+														pRecord->BoneData[i][1][3];
+													const float dz = pPrev->BoneData[i][2][3] -
+														pRecord->BoneData[i][2][3];
 
 													pBoneToWorldOut[i][0][3] += dx * oneMinusT;
 													pBoneToWorldOut[i][1][3] += dy * oneMinusT;
