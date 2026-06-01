@@ -368,6 +368,9 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	if (!pRecord)
 		return;
 
+	if (m_nActiveDepth >= MAX_MATRIX_HELPER_DEPTH)
+		return; // Nested scope depth exceeded; bail out rather than overflow m_Stack.
+
 	const auto pPlayer = pRecord->Player;
 
 	if (!pPlayer || pPlayer->deadflag())

@@ -9,6 +9,7 @@
 inline constexpr int MAX_BONE_COUNT = 128;
 inline constexpr int MAX_LAG_RECORDS = 66;
 inline constexpr int MAX_ANIM_OVERLAYS = 15;
+inline constexpr int MAX_MATRIX_HELPER_DEPTH = 8;
 
 inline constexpr float LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR = 64.0f * 64.0f;
 
@@ -101,7 +102,7 @@ class CLagRecordMatrixHelper
 		CUtlVector<matrix3x4_t>* CachedBoneData = nullptr;
 	};
 
-	std::array<StackEntry_t, MAX_PLAYERS> m_Stack = {};
+	std::array<StackEntry_t, MAX_MATRIX_HELPER_DEPTH> m_Stack = {};
 	int m_nActiveDepth = 0;
 
 public:
