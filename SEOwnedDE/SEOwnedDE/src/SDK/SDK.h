@@ -160,7 +160,7 @@ namespace SDKUtils
 		return std::max(cl_interp->GetFloat(), flRatio / flUpdateRate);
 	}
 
-	static Vec3 GetHitboxPosFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, matrix3x4_t *pMatrix)
+	static Vec3 GetHitboxPosFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, const matrix3x4_t *pMatrix)
 	{
 		auto pModel = pAnimating->GetModel();
 
@@ -187,7 +187,7 @@ namespace SDKUtils
 		return vOut;
 	}
 
-	static void GetHitboxInfoFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, matrix3x4_t *pMatrix, Vec3 *pCenter, Vec3 *pMins, Vec3 *pMaxs)
+	static void GetHitboxInfoFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, const matrix3x4_t *pMatrix, Vec3 *pCenter, Vec3 *pMins, Vec3 *pMaxs)
 	{
 		auto pModel = pAnimating->GetModel();
 
