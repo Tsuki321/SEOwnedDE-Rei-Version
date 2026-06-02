@@ -7,7 +7,7 @@
 // use 0 for the yaw here to keep the sim self-consistent. The 600/0/0 form is
 // deterministic across calls; the actual game's random yaw doesn't significantly
 // affect the linear trajectory through the engine's drag model.
-static constexpr Vec3 kPipeAngularVelocity{ 600.0f, 0.0f, 0.0f };
+static const Vec3 kPipeAngularVelocity{ 600.0f, 0.0f, 0.0f };
 
 CProjectileSim::~CProjectileSim()
 {
