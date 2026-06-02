@@ -143,7 +143,7 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 			if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
 				continue;
 
-					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, HITBOX_BODY, pRecord->BoneData.get());
+					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, HITBOX_BODY, pRecord->BoneData.data());
 					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
 					const float flFOVTo = CFG::Aimbot_Melee_Sort == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
 					const float flDistTo = vLocalPos.DistTo(vPos);

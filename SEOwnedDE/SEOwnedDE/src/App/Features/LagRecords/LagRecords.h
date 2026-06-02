@@ -4,7 +4,6 @@
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 // MAX_LAG_RECORDS: 36 ticks ~= 545 ms at 66 tick. Comfortably above typical
@@ -24,7 +23,7 @@ struct LagRecord_t
 {
 	C_TFPlayer* Player = nullptr;
 	int BoneCount = 0;
-	std::unique_ptr<matrix3x4_t[]> BoneData;
+	std::array<matrix3x4_t, MAX_BONE_COUNT> BoneData{};
 	float SimulationTime = -1.0f;
 	Vec3 AbsOrigin = {};
 	Vec3 AbsAngles = {};
@@ -55,8 +54,10 @@ class CLagRecords
 	// Per-player fixed-capacity ring buffer. Logical index 0 is the newest
 	// record; head points to the newest physical slot and the count clamps
 	// at MAX_LAG_RECORDS, so the oldest record is silently overwritten on
-	// overflow. Eliminates per-record heap allocations from std::deque and
-	// keeps each player's history contiguous for cache-friendly iteration.
+	// overflow. With BoneData inlined into LagRecord_t, the entire history
+	// is a single contiguous block per player - zero heap allocations, cache-
+	// friendly iteration, and the SetupBones hot loop dereferences bones via
+	// a direct pointer instead of unique_ptr::get().
 	// Heads/counts use uint8_t since MAX_LAG_RECORDS=36 fits trivially; cuts
 	// per-player ring state from 16 B to 2 B and improves cache locality when
 	// walking all MAX_PLAYERS rings in UpdateRecords.

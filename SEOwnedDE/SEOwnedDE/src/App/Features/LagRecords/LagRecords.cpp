@@ -69,11 +69,12 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		pPlayer->InvalidateBoneCache();
 	}
 
-	// Allocate the bone buffer once at MAX_BONE_COUNT; we narrow the
-	// authoritative BoneCount after SetupBones succeeds based on the
-	// model's actual skeleton size.
-	newRecord.BoneData = std::make_unique<matrix3x4_t[]>(MAX_BONE_COUNT);
-	const auto result = pPlayer->SetupBones(newRecord.BoneData.get(), MAX_BONE_COUNT, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
+	// BoneData is now an inline std::array<matrix3x4_t, MAX_BONE_COUNT>
+	// inside LagRecord_t, so the buffer is already allocated and zero-
+	// initialized by the default constructor. We narrow the authoritative
+	// BoneCount after SetupBones succeeds based on the model's actual
+	// skeleton size.
+	const auto result = pPlayer->SetupBones(newRecord.BoneData.data(), MAX_BONE_COUNT, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
 
 	if (setup_bones_optimization)
 	{
@@ -133,8 +134,8 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 		if (head.Player != pPlayer)
 		{
-			// Stale player identity: drop every record for this slot so the
-			// per-record BoneData allocations are released before reuse.
+			// Stale player identity: drop every record for this slot so
+			// the displaced record data is overwritten on next reuse.
 			for (auto& slot : records)
 				slot = LagRecord_t{};
 			m_RecordCounts[idx] = 0u;
@@ -149,9 +150,10 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		}
 	}
 
-	// Move-construct into the ring slot one past the current head. The
-	// unique_ptr ownership transfers, freeing the displaced record's
-	// BoneData (if any) on overflow.
+	// Move-construct into the ring slot one past the current head. With
+	// BoneData now an inline std::array, the move-assign is a memcpy of
+	// the 128 * 48-byte matrix block (the displaced slot is overwritten in
+	// place on ring overflow).
 	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
 	records[newHead] = std::move(newRecord);
 
@@ -314,8 +316,8 @@ void CLagRecords::UpdateRecords()
 
 		if (firstInvalid < m_RecordCounts[i])
 		{
-			// Release the BoneData allocations of the truncated records so
-			// they don't linger in the ring slots until the next overwrite.
+			// Reset the truncated records so stale bone data doesn't linger
+			// in the ring slots until the next overwrite.
 			for (size_t n = firstInvalid; n < m_RecordCounts[i]; ++n)
 			{
 				const size_t phys = (head + MAX_LAG_RECORDS - n) % MAX_LAG_RECORDS;
@@ -397,8 +399,8 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	// Apply the record's bones up to the min of (cached count, record count)
 	// so we never read past the end of either buffer.
 	const int nApplyCount = std::min(entry.BoneCount, pRecord->BoneCount);
-	if (nApplyCount > 0 && pRecord->BoneData)
-		memcpy(pCachedBoneData->Base(), pRecord->BoneData.get(), sizeof(matrix3x4_t) * nApplyCount);
+	if (nApplyCount > 0)
+		memcpy(pCachedBoneData->Base(), pRecord->BoneData.data(), sizeof(matrix3x4_t) * nApplyCount);
 
 	pPlayer->SetAbsOrigin(pRecord->AbsOrigin);
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
