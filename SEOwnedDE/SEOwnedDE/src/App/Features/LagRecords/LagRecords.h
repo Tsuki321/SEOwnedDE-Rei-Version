@@ -66,6 +66,13 @@ class CLagRecords
 	std::array<uint8_t, MAX_PLAYERS> m_RecordCounts = {};
 	bool m_bSettingUpBones = false;
 
+	// Per-player snapshot of the live (current-frame) state used by
+	// DiffersFromCurrentCached. Built once per frame inside UpdateRecords so
+	// that all consumers (AimbotHitscan, AimbotMelee, AutoBackstab, Materials)
+	// share the same GetAbsOrigin / GetEyeAngles / m_fFlags / GetAnimState
+	// results instead of redundantly re-fetching them per pass.
+	std::array<LagRecordCachedState_t, MAX_PLAYERS> m_CachedStates = {};
+
 	// Sorted by CBaseHandle (operator<) for O(log N) lookup via binary search.
 	// EHANDLE makes staleness detection cheap: Get() returns nullptr when the
 	// entity is destroyed, and a handle value mismatch catches entity recycling
@@ -83,6 +90,12 @@ public:
 	bool HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords = nullptr);
 	void UpdateRecords();
 	static bool DiffersFromCurrentCached(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
+
+	// Returns the per-frame snapshot of the player's live state, populated
+	// by UpdateRecords and reused by all consumers. Use this instead of
+	// calling CacheCurrentState() per consumer pass.
+	const LagRecordCachedState_t& GetCachedState(int nPlayerIndex) const { return m_CachedStates[nPlayerIndex]; }
+
 	static LagRecordCachedState_t CacheCurrentState(C_TFPlayer* pPlayer);
 	bool IsSettingUpBones() { return m_bSettingUpBones; }
 

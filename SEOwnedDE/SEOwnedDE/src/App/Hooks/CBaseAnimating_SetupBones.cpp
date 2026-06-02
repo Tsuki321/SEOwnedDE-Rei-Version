@@ -193,14 +193,19 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 												// the end of either BoneData buffer.
 												const int nBlendCount = std::min({ nCopyCount, pRecord->BoneCount, pPrev->BoneCount });
 
+												// Hoist the two BoneData base pointers out of the
+												// per-iter dereference chain. With the inline
+												// std::array BoneData the compiler folds the
+												// indexing, but the explicit hoist guarantees it
+												// even under -O0 builds and across MSVC upgrades.
+												const auto* pPrevBones = pPrev->BoneData.data();
+												const auto* pRecBones = pRecord->BoneData.data();
+
 												for (int i = 0; i < nBlendCount; ++i)
 												{
-													const float dx = pPrev->BoneData[i][0][3] -
-														pRecord->BoneData[i][0][3];
-													const float dy = pPrev->BoneData[i][1][3] -
-														pRecord->BoneData[i][1][3];
-													const float dz = pPrev->BoneData[i][2][3] -
-														pRecord->BoneData[i][2][3];
+													const float dx = pPrevBones[i][0][3] - pRecBones[i][0][3];
+													const float dy = pPrevBones[i][1][3] - pRecBones[i][1][3];
+													const float dz = pPrevBones[i][2][3] - pRecBones[i][2][3];
 
 													pBoneToWorldOut[i][0][3] += dx * oneMinusT;
 													pBoneToWorldOut[i][1][3] += dy * oneMinusT;

@@ -205,6 +205,8 @@ void CLagRecords::UpdateRecords()
 			m_RecordCounts[i] = 0u;
 		}
 
+		m_CachedStates = {};
+
 		if (!m_FailedChildBones.empty())
 			m_FailedChildBones.clear();
 
@@ -254,16 +256,34 @@ void CLagRecords::UpdateRecords()
 		}
 
 		const auto pPlayer = pEntity->As<C_TFPlayer>();
+		const int idx = PlayerToIndex(pPlayer);
 
 		if (pPlayer->deadflag())
 		{
-			const int idx = PlayerToIndex(pPlayer);
 			if (idx >= 0)
 			{
 				for (auto& slot : m_LagRecords[idx])
 					slot = LagRecord_t{};
 				m_RecordCounts[idx] = 0u;
 			}
+			continue;
+		}
+
+		// Build the per-frame live-state snapshot once for all consumers
+		// (AimbotHitscan, AimbotMelee, AutoBackstab, Materials) to share.
+		// Safe because consumer passes run between this point and the next
+		// FRAME_NET_UPDATE_START, during which the player's network-tracked
+		// fields (AbsOrigin, EyeAngles, Flags) and animation-derived
+		// FeetYaw do not change.
+		if (idx >= 0)
+		{
+			auto& state = m_CachedStates[idx];
+			state.AbsOrigin = pPlayer->GetAbsOrigin();
+			state.EyeAngles = pPlayer->GetEyeAngles();
+			state.Flags = pPlayer->m_fFlags();
+
+			if (const auto pAnimState = pPlayer->GetAnimState())
+				state.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 		}
 	}
 

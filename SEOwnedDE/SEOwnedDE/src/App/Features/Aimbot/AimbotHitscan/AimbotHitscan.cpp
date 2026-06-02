@@ -233,7 +233,7 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
 			continue;
 
-		const auto cachedState = CLagRecords::CacheCurrentState(pPlayer);
+		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
 		for (int n = 1; n < nRecords; n++)
 		{

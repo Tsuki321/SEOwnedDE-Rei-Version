@@ -246,7 +246,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		continue;
 	}
 
-	const auto cachedState = CLagRecords::CacheCurrentState(pPlayer);
+	const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
 	for (int n = 1; n < numRecords; n++)
 	{
