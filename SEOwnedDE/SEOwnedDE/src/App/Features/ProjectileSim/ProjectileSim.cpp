@@ -1,5 +1,14 @@
 #include "ProjectileSim.h"
 
+// Leaked CTFWeaponBaseGun::FirePipeBomb sets the angular impulse to
+// AngularImpulse(600, random->RandomInt(-1200, 1200), 0) - pitch is fixed at 600,
+// yaw is uniform in [-1200, 1200], roll is 0. The drag basis values used by this
+// sim were dumped from a server firing with 0 0 0 angles (i.e. zero spin), so we
+// use 0 for the yaw here to keep the sim self-consistent. The 600/0/0 form is
+// deterministic across calls; the actual game's random yaw doesn't significantly
+// affect the linear trajectory through the engine's drag model.
+static constexpr Vec3 kPipeAngularVelocity{ 600.0f, 0.0f, 0.0f };
+
 CProjectileSim::~CProjectileSim()
 {
 	if (m_pObj)
@@ -86,7 +95,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 
 		case TF_WEAPON_COMPOUND_BOW:
 		{
-			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, 8.0f, -3.0f }, angles, pos, ang, false);
+			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, -8.0f, -3.0f }, angles, pos, ang, false);
 
 			auto charge_begin_time{ weapon->As<C_TFPipebombLauncher>()->m_flChargeBeginTime() };
 			auto charge{ cur_time - charge_begin_time };
@@ -107,7 +116,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 		case TF_WEAPON_CROSSBOW:
 		case TF_WEAPON_SHOTGUN_BUILDING_RESCUE:
 		{
-			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, 8.0f, -3.0f }, angles, pos, ang, false);
+			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, -8.0f, -3.0f }, angles, pos, ang, false);
 
 			out = { TF_PROJECTILE_ARROW, pos, ang, 2400.0f, 0.2f, true };
 
@@ -132,37 +141,37 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 
 bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 {
-	if (!m_pEnv)
+	m_bUseVPhysics = IsVPhysicsProjectile(info.m_type);
+
+	if (m_bUseVPhysics)
 	{
-		m_pEnv = I::Physics->CreateEnvironment();
-	}
+		if (!m_pEnv)
+		{
+			m_pEnv = I::Physics->CreateEnvironment();
+		}
 
-	if (!m_pObj)
-	{
-		//it doesn't matter what the size is for non drag affected projectiles
-		//pipes use the size below so it works out just fine
-		auto col{ I::PhysicsCollision->BBoxToCollide({ -2.0f, -2.0f, -2.0f }, { 2.0f, 2.0f, 2.0f }) };
+		if (!m_pObj)
+		{
+			auto col{ I::PhysicsCollision->BBoxToCollide({ -2.0f, -2.0f, -2.0f }, { 2.0f, 2.0f, 2.0f }) };
 
-		auto params{ g_PhysDefaultObjectParams };
+			auto params{ g_PhysDefaultObjectParams };
 
-		params.damping = 0.0f;
-		params.rotdamping = 0.0f;
-		params.inertia = 0.0f;
-		params.rotInertiaLimit = 0.0f;
-		params.enableCollisions = false;
+			params.damping = 0.0f;
+			params.rotdamping = 0.0f;
+			params.inertia = 0.0f;
+			params.rotInertiaLimit = 0.0f;
+			params.enableCollisions = false;
 
-		m_pObj = m_pEnv->CreatePolyObject(col, 0, info.m_pos, info.m_ang, &params);
+			m_pObj = m_pEnv->CreatePolyObject(col, 0, info.m_pos, info.m_ang, &params);
 
-		m_pObj->Wake();
-	}
+			m_pObj->Wake();
+		}
 
-	if (!m_pEnv || !m_pObj)
-	{
-		return false;
-	}
+		if (!m_pEnv || !m_pObj)
+		{
+			return false;
+		}
 
-	//set position and velocity
-	{
 		Vec3 forward{}, up{};
 
 		Math::AngleVectors(info.m_ang, &forward, nullptr, &up);
@@ -170,31 +179,12 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 		Vec3 vel{ forward * info.m_speed };
 		Vec3 ang_vel{};
 
-		switch (info.m_type)
+		if (!no_vec_up)
 		{
-			case TF_PROJECTILE_PIPEBOMB:
-			case TF_PROJECTILE_PIPEBOMB_REMOTE:
-			case TF_PROJECTILE_PIPEBOMB_PRACTICE:
-			case TF_PROJECTILE_CANNONBALL:
-			{
-				//CTFWeaponBaseGun::FirePipeBomb
-				//pick your poison
-
-				if (!no_vec_up)
-				{
-					vel += up * 200.0f;
-				}
-
-				ang_vel = { 600.0f, -1200.0f, 0.0f};
-
-				break;
-			}
-
-			default:
-			{
-				break;
-			}
+			vel += up * 200.0f;
 		}
+
+		ang_vel = kPipeAngularVelocity;
 
 		if (info.no_spin)
 		{
@@ -203,94 +193,61 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 
 		m_pObj->SetPosition(info.m_pos, info.m_ang, true);
 		m_pObj->SetVelocity(&vel, &ang_vel);
-	}
 
-	//set drag
-	{
-		float drag{};
+		float drag{ 1.0f };
 		Vec3 drag_basis{};
 		Vec3 ang_drag_basis{};
 
-		//these values were dumped from the server by firing the projectiles with 0 0 0 angles
-		//they are calculated in CPhysicsObject::RecomputeDragBases
 		switch (info.m_type)
 		{
 			case TF_PROJECTILE_PIPEBOMB:
 			{
-				drag = 1.0f;
 				drag_basis = { 0.003902f, 0.009962f, 0.009962f };
 				ang_drag_basis = { 0.003618f, 0.001514f, 0.001514f };
-
 				break;
 			}
 
 			case TF_PROJECTILE_PIPEBOMB_REMOTE:
 			case TF_PROJECTILE_PIPEBOMB_PRACTICE:
 			{
-				drag = 1.0f;
 				drag_basis = { 0.007491f, 0.007491f, 0.007306f };
 				ang_drag_basis = { 0.002777f, 0.002842f, 0.002812f };
-
 				break;
 			}
 
 			case TF_PROJECTILE_CANNONBALL:
 			{
-				drag = 1.0f;
 				drag_basis = { 0.020971f, 0.019420f, 0.020971f };
 				ang_drag_basis = { 0.012997f, 0.013496f, 0.013714f };
-
 				break;
 			}
 
-			default:
-			{
-				break;
-			}
+			default: break;
 		}
 
 		m_pObj->SetDragCoefficient(&drag, &drag);
-
 		m_pObj->m_dragBasis = drag_basis;
 		m_pObj->m_angDragBasis = ang_drag_basis;
-	}
-
-	//set m_pEnv params
-	{	
-		auto max_vel{ 1000000.0f };
-		auto max_ang_vel{ 1000000.0f };
-
-		//only pipes need k_flMaxVelocity and k_flMaxAngularVelocity
-		switch (info.m_type)
-		{
-			case TF_PROJECTILE_PIPEBOMB:
-			case TF_PROJECTILE_PIPEBOMB_REMOTE:
-			case TF_PROJECTILE_PIPEBOMB_PRACTICE:
-			case TF_PROJECTILE_CANNONBALL:
-			{
-				max_vel = k_flMaxVelocity;
-				max_ang_vel = k_flMaxAngularVelocity;
-
-				break;
-			}
-
-			default:
-			{
-				break;
-			}
-		}
 
 		physics_performanceparams_t params{};
 		params.Defaults();
-
-		params.maxVelocity = max_vel;
-		params.maxAngularVelocity = max_ang_vel;
+		params.maxVelocity = k_flMaxVelocity;
+		params.maxAngularVelocity = k_flMaxAngularVelocity;
 
 		m_pEnv->SetPerformanceSettings(&params);
 		m_pEnv->SetAirDensity(2.0f);
 		m_pEnv->SetGravity({ 0.0f, 0.0f, -(800.0f * info.m_gravity_mod) });
+		m_pEnv->ResetSimulationClock();
+	}
+	else
+	{
+		Vec3 forward{};
 
-		m_pEnv->ResetSimulationClock(); //not needed?
+		Math::AngleVectors(info.m_ang, &forward, nullptr, nullptr);
+
+		m_Analytical.m_vecOrigin = info.m_pos;
+		m_Analytical.m_vecVelocity = forward * info.m_speed;
+		m_Analytical.m_flGravity = SDKUtils::GetGravity() * info.m_gravity_mod;
 	}
 
 	return true;
@@ -298,24 +255,52 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 
 void CProjectileSim::RunTick()
 {
-	if (!m_pEnv)
+	if (m_bUseVPhysics)
 	{
-		return;
-	}
+		if (!m_pEnv)
+		{
+			return;
+		}
 
-	m_pEnv->Simulate(TICK_INTERVAL);
+		m_pEnv->Simulate(TICK_INTERVAL);
+	}
+	else
+	{
+		const float dt = TICK_INTERVAL;
+		const float grav = m_Analytical.m_flGravity;
+
+		if (grav > 0.0f)
+		{
+			float newZVel = m_Analytical.m_vecVelocity.z - grav * dt;
+
+			m_Analytical.m_vecOrigin.x += m_Analytical.m_vecVelocity.x * dt;
+			m_Analytical.m_vecOrigin.y += m_Analytical.m_vecVelocity.y * dt;
+			m_Analytical.m_vecOrigin.z += ((m_Analytical.m_vecVelocity.z + newZVel) * 0.5f) * dt;
+
+			m_Analytical.m_vecVelocity.z = newZVel;
+		}
+		else
+		{
+			m_Analytical.m_vecOrigin += m_Analytical.m_vecVelocity * dt;
+		}
+	}
 }
 
 Vec3 CProjectileSim::GetOrigin()
 {
-	if (!m_pObj)
+	if (m_bUseVPhysics)
 	{
-		return {};
+		if (!m_pObj)
+		{
+			return {};
+		}
+
+		Vec3 out{};
+
+		m_pObj->GetPosition(&out, nullptr);
+
+		return out;
 	}
 
-	Vec3 out{};
-
-	m_pObj->GetPosition(&out, nullptr);
-
-	return out;
+	return m_Analytical.m_vecOrigin;
 }

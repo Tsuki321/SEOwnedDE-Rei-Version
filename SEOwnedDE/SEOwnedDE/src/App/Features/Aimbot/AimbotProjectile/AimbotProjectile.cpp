@@ -5,6 +5,45 @@
 #include "../../MovementSimulation/MovementSimulation.h"
 #include "../../ProjectileSim/ProjectileSim.h"
 
+namespace
+{
+	// Empirical drag correction rates for the parabolic solver in CalcProjAngle.
+	// The solver is drag-free by construction; these rates are applied as a linear
+	// velocity decay (v0 -= v0 * t * rate) and iterated to convergence. The values
+	// are NOT derived from the vPhysics drag basis in ProjectileSim.cpp - they were
+	// tuned to match observed projectile flight paths. For reference, the basis means
+	// in ProjectileSim.cpp are:
+	//   Pipe drag basis:    0.003902, 0.009962, 0.009962   (mean ~0.00794)
+	//   Sticky drag basis:  0.007491, 0.007491, 0.007306   (mean ~0.00743)
+	//   Cannon drag basis:  0.020971, 0.019420, 0.020971   (mean ~0.02045)
+	// These are 10-50x smaller than the rates below; a "pure derivation" from the
+	// basis values undercorrects by an order of magnitude. Re-derive these if the
+	// drag basis values in ProjectileSim.cpp change.
+	namespace DragCorrection
+	{
+		constexpr float GrenadeLauncher = 0.11f;
+		constexpr float LochnLoad       = 0.07f;
+		constexpr float Stickybomb      = 0.16f;
+		constexpr float Cannonball      = 0.35f;
+	}
+
+	// Drag-correction fixed-point iteration
+	constexpr int   kDragSolverMaxIterations        = 5;
+	constexpr float kDragSolverConvergenceEpsilon  = 1e-3f;
+
+	// Per-weapon maximum simulation time (seconds). These are gameplay-driven caps
+	// on how far ahead the aimbot is willing to lead a target, not physics-derived.
+	constexpr float kMaxSimTimeCannon        = 0.95f;  // Loose Cannon: short self-detonate window
+	constexpr float kMaxSimTimeIronBomber    = 1.4f;   // Iron Bomber: faster fuse
+	constexpr float kMaxSimTimePipe          = 2.0f;   // stock/LochnLoad pipes
+	constexpr float kMaxSimTimeFlame         = 0.18f;  // flame particles: very short range
+
+	// Rocket-splash ray-march density. The full circle of 80 was the original count;
+	// the player path uses a reduced count for performance when splash mode is 2.
+	constexpr int kRocketSplashPointsDefault = 50;
+	constexpr int kRocketSplashPointsReduced = 30;
+}
+
 void DrawProjPath(const CUserCmd* pCmd, float time)
 {
 	if (!pCmd || !G::bFiring)
@@ -353,39 +392,42 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 			// Fixed-point iteration for drag correction
 			// Each pass: apply drag reduction to v0 proportional to current flight time,
 			// then re-solve the parabola. Converges when v0 change is negligible.
+			// See DragCorrection namespace above for rate values and their empirical basis.
 
-			auto magic{ 0.0f };
+			float magic = 0.0f;
 
-			if (pWeapon->GetWeaponID() == TF_WEAPON_GRENADELAUNCHER)
+			switch (pWeapon->GetWeaponID())
 			{
-				if (pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheLochnLoad)
+				case TF_WEAPON_GRENADELAUNCHER:
 				{
-					magic = 0.07f;
+					magic = (pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheLochnLoad)
+						? DragCorrection::LochnLoad
+						: DragCorrection::GrenadeLauncher;
+					break;
 				}
-				else
+
+				case TF_WEAPON_PIPEBOMBLAUNCHER:
 				{
-					magic = 0.11f;
+					magic = DragCorrection::Stickybomb;
+					break;
 				}
+
+				case TF_WEAPON_CANNON:
+				{
+					magic = DragCorrection::Cannonball;
+					break;
+				}
+
+				default: break;
 			}
 
-			if (pWeapon->GetWeaponID() == TF_WEAPON_PIPEBOMBLAUNCHER)
-			{
-				magic = 0.16f;
-			}
-
-			if (pWeapon->GetWeaponID() == TF_WEAPON_CANNON)
-			{
-				magic = 0.35f;
-			}
-
-			constexpr int kMaxIterations = 5;
-			for (int nIter = 0; nIter < kMaxIterations; nIter++)
+			for (int nIter = 0; nIter < kDragSolverMaxIterations; nIter++)
 			{
 				const float vPrev = v0;
 				v0 -= (v0 * flTimeOut) * magic;
 
 				const float flDelta = vPrev - v0;
-				if (flDelta < 1e-3f) // Converged
+				if (flDelta < kDragSolverConvergenceEpsilon)
 					break;
 
 				const auto rootInner{ v0 * v0 * v0 * v0 - g * (g * dx * dx + 2.0f * dy * v0 * v0) };
@@ -412,7 +454,7 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 	{
 		if (pWeapon->GetWeaponID() == TF_WEAPON_CANNON)
 		{
-			if (flTimeOut > 0.95f)
+			if (flTimeOut > kMaxSimTimeCannon)
 			{
 				return false;
 			}
@@ -421,7 +463,7 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 		{
 			if (pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheIronBomber)
 			{
-				if (flTimeOut > 1.4f)
+				if (flTimeOut > kMaxSimTimeIronBomber)
 				{
 					return false;
 				}
@@ -429,7 +471,7 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 
 			else
 			{
-				if (flTimeOut > 2.0f)
+				if (flTimeOut > kMaxSimTimePipe)
 				{
 					return false;
 				}
@@ -437,7 +479,7 @@ bool CAimbotProjectile::CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& 
 		}
 	}
 
-	if ((pWeapon->GetWeaponID() == TF_WEAPON_FLAME_BALL || pWeapon->GetWeaponID() == TF_WEAPON_FLAMETHROWER) && flTimeOut > 0.18f)
+	if ((pWeapon->GetWeaponID() == TF_WEAPON_FLAME_BALL || pWeapon->GetWeaponID() == TF_WEAPON_FLAMETHROWER) && flTimeOut > kMaxSimTimeFlame)
 	{
 		return false;
 	}
@@ -563,11 +605,6 @@ bool CAimbotProjectile::CanArcReach(const Vec3& vFrom, const Vec3& vTo, const Ve
 	if (!F::ProjectileSim->GetInfo(pLocal, pWeapon, vAngleTo, info))
 	{
 		return false;
-	}
-
-	if (pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheLochnLoad)
-	{
-		info.m_speed += 45.0f; //need to do this for some reason
 	}
 
 	if (!F::ProjectileSim->Init(info, true))
@@ -800,7 +837,7 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 					auto center{ F::MovementSimulation->GetOrigin() + Vec3(0.0f, 0.0f, (mins.z + maxs.z) * 0.5f) };
 					const Vec3 vShooterDir = (vLocalPos - center).Normalized();
 
-					auto numPoints{ CFG::Aimbot_Projectile_Rocket_Splash == 2 ? 30 : 50 };  // reduced from 80 for performance
+					auto numPoints{ CFG::Aimbot_Projectile_Rocket_Splash == 2 ? kRocketSplashPointsReduced : kRocketSplashPointsDefault };
 					auto radius{ isRocketLauncher ? 180.0f : 80.0f };
 
 					if (isAirStrike)
@@ -941,7 +978,7 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 			const auto center{ target.Entity->GetCenter() };
 			const Vec3 vShooterDirBld = (vLocalPos - center).Normalized();
 
-			constexpr auto numPoints{ 50 };
+			constexpr auto numPoints{ kRocketSplashPointsDefault };
 			auto radius{ isRocketLauncher ? 180.0f : 80.0f };
 
 			if (isAirStrike)

@@ -15,10 +15,33 @@ struct ProjectileInfo
 	bool no_spin{};
 };
 
+inline bool IsVPhysicsProjectile(ProjectileType_t type)
+{
+	switch (type)
+	{
+		case TF_PROJECTILE_PIPEBOMB:
+		case TF_PROJECTILE_PIPEBOMB_REMOTE:
+		case TF_PROJECTILE_PIPEBOMB_PRACTICE:
+		case TF_PROJECTILE_CANNONBALL:
+			return true;
+		default:
+			return false;
+	}
+}
+
+struct AnalyticalState
+{
+	Vec3 m_vecOrigin{};
+	Vec3 m_vecVelocity{};
+	float m_flGravity{};
+};
+
 class CProjectileSim
 {
 	IPhysicsEnvironment* m_pEnv = nullptr;
 	IPhysicsObject* m_pObj = nullptr;
+	AnalyticalState m_Analytical{};
+	bool m_bUseVPhysics = true;
 
 public:
 	~CProjectileSim();
