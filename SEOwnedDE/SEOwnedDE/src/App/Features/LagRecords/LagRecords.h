@@ -3,23 +3,22 @@
 #include "../../../SDK/SDK.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+// MAX_LAG_RECORDS: 36 ticks ~= 545 ms at 66 tick. Comfortably above typical
+// player ping and sv_maxunlag for most configs. Trimming from 66 cuts
+// per-player storage by ~45% with no practical impact on lag-comp history.
 inline constexpr int MAX_BONE_COUNT = 128;
-inline constexpr int MAX_LAG_RECORDS = 66;
-inline constexpr int MAX_ANIM_OVERLAYS = 15;
-inline constexpr int MAX_MATRIX_HELPER_DEPTH = 8;
+inline constexpr int MAX_LAG_RECORDS = 36;
+// MAX_MATRIX_HELPER_DEPTH: measured max nesting is 1 across all consumers
+// (AimbotHitscan / AimbotMelee / AutoBackstab / Materials). 2 is one above
+// the measured depth as a safety margin; cuts the matrix helper's static
+// footprint from ~50 KB to ~12.5 KB.
+inline constexpr int MAX_MATRIX_HELPER_DEPTH = 2;
 
 inline constexpr float LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR = 64.0f * 64.0f;
-
-struct LayerRecord_t
-{
-	int m_nSequence = 0;
-	float m_flCycle = 0.0f;
-	float m_flWeight = 0.0f;
-	int m_nOrder = 0;
-};
 
 struct LagRecord_t
 {
@@ -34,9 +33,6 @@ struct LagRecord_t
 	Vec3 Center = {};
 	int Flags = 0;
 	float FeetYaw = 0.0f;
-	int MasterSequence = 0;
-	float MasterCycle = 0.0f;
-	LayerRecord_t LayerRecords[MAX_ANIM_OVERLAYS] = {};
 	bool bTeleported = false;
 
 	LagRecord_t() = default;
@@ -61,9 +57,12 @@ class CLagRecords
 	// at MAX_LAG_RECORDS, so the oldest record is silently overwritten on
 	// overflow. Eliminates per-record heap allocations from std::deque and
 	// keeps each player's history contiguous for cache-friendly iteration.
+	// Heads/counts use uint8_t since MAX_LAG_RECORDS=36 fits trivially; cuts
+	// per-player ring state from 16 B to 2 B and improves cache locality when
+	// walking all MAX_PLAYERS rings in UpdateRecords.
 	std::array<std::array<LagRecord_t, MAX_LAG_RECORDS>, MAX_PLAYERS> m_LagRecords = {};
-	std::array<size_t, MAX_PLAYERS> m_RecordHeads = {};
-	std::array<size_t, MAX_PLAYERS> m_RecordCounts = {};
+	std::array<uint8_t, MAX_PLAYERS> m_RecordHeads = {};
+	std::array<uint8_t, MAX_PLAYERS> m_RecordCounts = {};
 	bool m_bSettingUpBones = false;
 
 	// Sorted by CBaseHandle (operator<) for O(log N) lookup via binary search.

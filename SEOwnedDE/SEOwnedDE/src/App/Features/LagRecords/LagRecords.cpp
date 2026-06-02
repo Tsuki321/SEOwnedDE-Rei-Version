@@ -118,9 +118,6 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		newRecord.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 
-	newRecord.MasterSequence = pPlayer->m_nSequence();
-	newRecord.MasterCycle = pPlayer->m_flCycle();
-
 	// Authoritative bone count: bound by both the engine's cached count and
 	// MAX_BONE_COUNT (the size we actually allocated).
 	if (const auto pCachedBoneData = pPlayer->GetCachedBoneData())
@@ -140,7 +137,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 			// per-record BoneData allocations are released before reuse.
 			for (auto& slot : records)
 				slot = LagRecord_t{};
-			m_RecordCounts[idx] = 0;
+			m_RecordCounts[idx] = 0u;
 		}
 		else
 		{
@@ -158,8 +155,8 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
 	records[newHead] = std::move(newRecord);
 
-	m_RecordHeads[idx] = newHead;
-	m_RecordCounts[idx] = std::min(m_RecordCounts[idx] + 1, static_cast<size_t>(MAX_LAG_RECORDS));
+	m_RecordHeads[idx] = static_cast<uint8_t>(newHead);
+	m_RecordCounts[idx] = static_cast<uint8_t>(std::min<size_t>(m_RecordCounts[idx] + 1, MAX_LAG_RECORDS));
 }
 
 const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
@@ -203,7 +200,7 @@ void CLagRecords::UpdateRecords()
 		{
 			for (auto& slot : m_LagRecords[i])
 				slot = LagRecord_t{};
-			m_RecordCounts[i] = 0;
+			m_RecordCounts[i] = 0u;
 		}
 
 		if (!m_FailedChildBones.empty())
@@ -263,7 +260,7 @@ void CLagRecords::UpdateRecords()
 			{
 				for (auto& slot : m_LagRecords[idx])
 					slot = LagRecord_t{};
-				m_RecordCounts[idx] = 0;
+				m_RecordCounts[idx] = 0u;
 			}
 		}
 	}
@@ -295,7 +292,7 @@ void CLagRecords::UpdateRecords()
 		{
 			for (auto& slot : records)
 				slot = LagRecord_t{};
-			m_RecordCounts[i] = 0;
+			m_RecordCounts[i] = 0u;
 			continue;
 		}
 
@@ -324,7 +321,7 @@ void CLagRecords::UpdateRecords()
 				const size_t phys = (head + MAX_LAG_RECORDS - n) % MAX_LAG_RECORDS;
 				records[phys] = LagRecord_t{};
 			}
-			m_RecordCounts[i] = firstInvalid;
+			m_RecordCounts[i] = static_cast<uint8_t>(firstInvalid);
 		}
 	}
 }
@@ -345,7 +342,7 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
 {
 	// Cheapest predicates first: int compare and a single fabsf short-circuit
-	// before the more expensive vector / remainderf checks. Flag and feet-yaw
+	// before the more expensive vector / angle checks. Flag and feet-yaw
 	// are the most common trip conditions on a freshly-ticked target.
 	if (cached.Flags != pRecord->Flags)
 		return true;
@@ -356,15 +353,18 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 	if ((cached.AbsOrigin - pRecord->AbsOrigin).LengthSqr() > 0.01f)
 		return true;
 
-	const float flYawDelta = std::remainderf(cached.EyeAngles.y - pRecord->EyeAngles.y, 360.0f);
+	// fmodf-based wrap into [-180, 180] (matches NormalizeYawDelta in
+	// CBaseAnimating_SetupBones.cpp). std::remainderf respects the IEEE
+	// rounding mode and is several times slower than fmodf on MSVC.
+	const float flYawDelta = std::fmodf(cached.EyeAngles.y - pRecord->EyeAngles.y + 540.0f, 360.0f) - 180.0f;
 	if (fabsf(flYawDelta) > 0.1f)
 		return true;
 
-	const float flPitchDelta = std::remainderf(cached.EyeAngles.x - pRecord->EyeAngles.x, 360.0f);
+	const float flPitchDelta = std::fmodf(cached.EyeAngles.x - pRecord->EyeAngles.x + 540.0f, 360.0f) - 180.0f;
 	if (fabsf(flPitchDelta) > 0.1f)
 		return true;
 
-	const float flRollDelta = std::remainderf(cached.EyeAngles.z - pRecord->EyeAngles.z, 360.0f);
+	const float flRollDelta = std::fmodf(cached.EyeAngles.z - pRecord->EyeAngles.z + 540.0f, 360.0f) - 180.0f;
 	return fabsf(flRollDelta) <= 0.1f;
 }
 
