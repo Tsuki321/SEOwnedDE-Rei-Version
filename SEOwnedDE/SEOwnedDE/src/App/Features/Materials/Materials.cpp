@@ -301,7 +301,7 @@ void CMaterials::RunLagRecords()
 		if (nRecords <= 0)
 			continue;
 
-		const auto cachedState = CLagRecords::CacheCurrentState(pPlayer);
+		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
 		if (CFG::Materials_Players_LagRecords_Style == 0)
 		{
@@ -312,7 +312,7 @@ void CMaterials::RunLagRecords()
 			{
 				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-				if (!pRecord || pRecord->bTeleported || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
+				if (!pRecord || pRecord->bTeleported || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState) || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
 					continue;
 
 				const float flBlend = Math::RemapValClamped(static_cast<float>(n), 1.0f, static_cast<float>(nRecords), 0.1f, 0.001f);
@@ -335,7 +335,7 @@ void CMaterials::RunLagRecords()
 		{
 			const auto pRecord = F::LagRecords->GetRecord(pPlayer, nRecords - 1);
 
-			if (!pRecord || pRecord->bTeleported || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin) || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
+			if (!pRecord || pRecord->bTeleported || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState) || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
 				continue;
 
 			I::RenderView->SetBlend(1.0f);

@@ -73,9 +73,12 @@ class CLagRecords
 	// results instead of redundantly re-fetching them per pass.
 	std::array<LagRecordCachedState_t, MAX_PLAYERS> m_CachedStates = {};
 
-	// Sorted by CBaseHandle (operator<) for O(log N) lookup via binary search.
-	// EHANDLE makes staleness detection cheap: Get() returns nullptr when the
-	// entity is destroyed, and a handle value mismatch catches entity recycling
+	// Failed-child wearable handles. Compacted in-place via swap-and-pop,
+	// so the list is unsorted; consumer lookup is linear. Typical N is a
+	// handful (cosmetic / weapon wearables that fail SetupBones capture),
+	// so linear beats binary search here on cache locality alone. EHANDLE
+	// staleness detection is cheap: Get() returns nullptr when the entity
+	// is destroyed, and a handle value mismatch catches entity recycling
 	// without a separate GetClientEntity round-trip.
 	std::vector<CBaseHandle> m_FailedChildBones = {};
 
@@ -107,7 +110,7 @@ public:
 		// CBaseHandle has no converting ctor from IHandleEntity*; assign instead.
 		CBaseHandle h;
 		h = pEntity;
-		return std::binary_search(m_FailedChildBones.begin(), m_FailedChildBones.end(), h);
+		return std::find(m_FailedChildBones.begin(), m_FailedChildBones.end(), h) != m_FailedChildBones.end();
 	}
 };
 

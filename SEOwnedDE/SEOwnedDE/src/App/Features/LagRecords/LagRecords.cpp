@@ -88,13 +88,14 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 				if (!childResult)
 				{
-					// Insert into the sorted vector at the first position that
-					// is not less than the new handle, skipping duplicates.
+					// Insert if not already present. Lookup is linear because
+					// the list is unsorted (swap-and-pop compact above) and
+					// small in practice (typically a handful of failed
+					// wearables).
 					CBaseHandle h;
 					h = attach;
-					const auto it = std::lower_bound(m_FailedChildBones.begin(), m_FailedChildBones.end(), h);
-					if (it == m_FailedChildBones.end() || *it != h)
-						m_FailedChildBones.insert(it, h);
+					if (std::find(m_FailedChildBones.begin(), m_FailedChildBones.end(), h) == m_FailedChildBones.end())
+						m_FailedChildBones.push_back(h);
 				}
 			}
 
@@ -134,10 +135,9 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 		if (head.Player != pPlayer)
 		{
-			// Stale player identity: drop every record for this slot so
-			// the displaced record data is overwritten on next reuse.
-			for (auto& slot : records)
-				slot = LagRecord_t{};
+			// Stale player identity: the displaced record data will be
+			// overwritten on next reuse; just reset the head so we start
+			// writing from a clean slot.
 			m_RecordCounts[idx] = 0u;
 		}
 		else
@@ -199,11 +199,7 @@ void CLagRecords::UpdateRecords()
 	if (!pLocal || pLocal->deadflag() || pLocal->InCond(TF_COND_HALLOWEEN_GHOST_MODE) || pLocal->InCond(TF_COND_HALLOWEEN_KART))
 	{
 		for (int i = 0; i < MAX_PLAYERS; ++i)
-		{
-			for (auto& slot : m_LagRecords[i])
-				slot = LagRecord_t{};
 			m_RecordCounts[i] = 0u;
-		}
 
 		m_CachedStates = {};
 
@@ -218,15 +214,18 @@ void CLagRecords::UpdateRecords()
 		// cast-back round-trip. Get() returning nullptr means the entity is
 		// gone; a handle value mismatch means the slot was recycled to a
 		// different entity; missing move parent means the wearable is no
-		// longer attached to the player.
+		// longer attached to the player. Compact via swap-and-pop since
+		// the list is short and consumer lookup is linear (HasFailedBones
+		// below) — O(1) per removal instead of the O(N) shift erase.
 		size_t i = 0;
 		while (i < m_FailedChildBones.size())
 		{
 			C_BaseEntity* pChild = static_cast<C_BaseEntity*>(m_FailedChildBones[i].Get());
 
-			if (!pChild)
+			if (!pChild || !pChild->GetMoveParent())
 			{
-				m_FailedChildBones.erase(m_FailedChildBones.begin() + i);
+				m_FailedChildBones[i] = m_FailedChildBones.back();
+				m_FailedChildBones.pop_back();
 				continue;
 			}
 
@@ -234,13 +233,8 @@ void CLagRecords::UpdateRecords()
 			currentHandle = pChild;
 			if (currentHandle != m_FailedChildBones[i])
 			{
-				m_FailedChildBones.erase(m_FailedChildBones.begin() + i);
-				continue;
-			}
-
-			if (!pChild->GetMoveParent())
-			{
-				m_FailedChildBones.erase(m_FailedChildBones.begin() + i);
+				m_FailedChildBones[i] = m_FailedChildBones.back();
+				m_FailedChildBones.pop_back();
 				continue;
 			}
 
@@ -261,11 +255,7 @@ void CLagRecords::UpdateRecords()
 		if (pPlayer->deadflag())
 		{
 			if (idx >= 0)
-			{
-				for (auto& slot : m_LagRecords[idx])
-					slot = LagRecord_t{};
 				m_RecordCounts[idx] = 0u;
-			}
 			continue;
 		}
 
@@ -312,8 +302,6 @@ void CLagRecords::UpdateRecords()
 		C_TFPlayer* pFirstPlayer = records[head].Player;
 		if (!pFirstPlayer || pFirstPlayer->IsDormant())
 		{
-			for (auto& slot : records)
-				slot = LagRecord_t{};
 			m_RecordCounts[i] = 0u;
 			continue;
 		}
@@ -336,13 +324,6 @@ void CLagRecords::UpdateRecords()
 
 		if (firstInvalid < m_RecordCounts[i])
 		{
-			// Reset the truncated records so stale bone data doesn't linger
-			// in the ring slots until the next overwrite.
-			for (size_t n = firstInvalid; n < m_RecordCounts[i]; ++n)
-			{
-				const size_t phys = (head + MAX_LAG_RECORDS - n) % MAX_LAG_RECORDS;
-				records[phys] = LagRecord_t{};
-			}
 			m_RecordCounts[i] = static_cast<uint8_t>(firstInvalid);
 		}
 	}
