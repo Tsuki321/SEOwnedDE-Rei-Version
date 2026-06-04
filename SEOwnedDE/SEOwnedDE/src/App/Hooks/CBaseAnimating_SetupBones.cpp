@@ -163,14 +163,25 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 									}
 								}
 
-								// Phase 2: when two consecutive lag records exist within
-								// the validity window, lerp the cached bone translation
-								// component toward the previous record's pose to soften
-								// per-tick snaps. Rotational components keep the freshest
-								// (rec0) data which already reflects the live yaw above.
-								if (nRecords >= 2)
+							// Phase 2: when two consecutive lag records exist within
+							// the validity window, lerp the cached bone translation
+							// component toward the previous record's pose to soften
+							// per-tick snaps. Rotational components keep the freshest
+							// (rec0) data which already reflects the live yaw above.
+							if (nRecords >= 2)
+							{
+								if (const auto pPrev = F::LagRecords->GetRecord(pPlayer, 1))
 								{
-									if (const auto pPrev = F::LagRecords->GetRecord(pPlayer, 1))
+									// Origin-distance early-out: bones are stored in world
+									// space and are anchored to the player's origin, so a
+									// near-zero origin delta implies near-identical bone
+									// translations (sub-pixel at typical aim distances) and
+									// the per-bone blend would be wasted work. Skipping it
+									// costs nothing visually for stationary or slow-walking
+									// players but saves a 128-bone loop per visible-enemy
+									// DrawModel call - the dominant per-frame cost when
+									// multiple enemies are bunched together.
+									if ((pRecord->AbsOrigin - pPrev->AbsOrigin).LengthSqr() >= 0.01f)
 									{
 										const float dt =
 											pRecord->SimulationTime - pPrev->SimulationTime;
@@ -215,6 +226,7 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 										}
 									}
 								}
+							}
 							}
 						}
 					}
