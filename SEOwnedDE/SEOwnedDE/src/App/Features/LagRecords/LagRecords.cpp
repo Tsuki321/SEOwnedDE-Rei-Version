@@ -1,6 +1,7 @@
 ﻿#include "LagRecords.h"
 
 #include "../CFG.h"
+#include "../VisualUtils/VisualUtils.h"
 
 int CLagRecords::PlayerToIndex(C_TFPlayer* pPlayer)
 {
@@ -78,28 +79,41 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 
 	if (setup_bones_optimization)
 	{
-		auto attach = pPlayer->FirstMoveChild();
-		while (attach)
+		// Visibility gate: when the player is fully off-screen, the
+		// cosmetics' SetupBones output will be invisible until the
+		// player comes back into view, at which point the next
+		// AddRecord re-runs the loop. Skipping it here saves a
+		// SetupBones call per move-child per off-screen player per
+		// net tick. The player's own SetupBones above still runs
+		// because lag records for off-screen players are still useful
+		// when the player pops into view (Aimbot/Materials ghosts
+		// need fresh bones).
+		const auto pLocal = H::Entities->GetLocal();
+		if (pLocal && F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin()))
 		{
-			if (attach->ShouldDraw())
+			auto attach = pPlayer->FirstMoveChild();
+			while (attach)
 			{
-				attach->InvalidateBoneCache();
-				const auto childResult = attach->SetupBones(nullptr, -1, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
-
-				if (!childResult)
+				if (attach->ShouldDraw())
 				{
-					// Insert if not already present. Lookup is linear because
-					// the list is unsorted (swap-and-pop compact above) and
-					// small in practice (typically a handful of failed
-					// wearables).
-					CBaseHandle h;
-					h = attach;
-					if (std::find(m_FailedChildBones.begin(), m_FailedChildBones.end(), h) == m_FailedChildBones.end())
-						m_FailedChildBones.push_back(h);
-				}
-			}
+					attach->InvalidateBoneCache();
+					const auto childResult = attach->SetupBones(nullptr, -1, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
 
-			attach = attach->NextMovePeer();
+					if (!childResult)
+					{
+						// Insert if not already present. Lookup is linear because
+						// the list is unsorted (swap-and-pop compact above) and
+						// small in practice (typically a handful of failed
+						// wearables).
+						CBaseHandle h;
+						h = attach;
+						if (std::find(m_FailedChildBones.begin(), m_FailedChildBones.end(), h) == m_FailedChildBones.end())
+							m_FailedChildBones.push_back(h);
+					}
+				}
+
+				attach = attach->NextMovePeer();
+			}
 		}
 	}
 
