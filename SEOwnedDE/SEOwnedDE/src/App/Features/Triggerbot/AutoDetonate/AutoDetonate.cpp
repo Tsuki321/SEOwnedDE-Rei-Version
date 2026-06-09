@@ -10,6 +10,10 @@ void CAutoDetonate::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 	if (pLocal->m_iClass() != TF_CLASS_DEMOMAN)
 		return;
 
+	// pLocal->GetShootPos() is used by the defensive-bomb CalcAngle. Hoist
+	// so it isn't fetched multiple times when multiple stickies hit.
+	const Vec3 vShootPos = pLocal->GetShootPos();
+
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PROJECTILES_LOCAL_STICKIES))
 	{
 		if (!pEntity)
@@ -24,6 +28,13 @@ void CAutoDetonate::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			continue;
 
 		const float flRadius = pSticky->m_bTouched() ? 150.0f : 100.0f;
+
+		// Hoist pSticky->GetCenter() out of the inner player+building loops. The
+		// vfunc was being called 4 times per sticky (2 in player loop, 2 in
+		// building loop). Also re-reads on line 56/83 of the defensive
+		// branch - those are single-shot after the per-target trace succeeds,
+		// so the hoisted vStickyCenter is fine there too.
+		const Vec3 vStickyCenter = pSticky->GetCenter();
 
 		// Auto detonate players
 		if (CFG::Triggerbot_AutoDetonate_Target_Players)
@@ -47,13 +58,15 @@ void CAutoDetonate::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 				if (CFG::Triggerbot_AutoDetonate_Ignore_Invulnerable && pPlayer->IsInvulnerable())
 					continue;
 
-				if (pSticky->GetCenter().DistTo(pPlayer->GetCenter()) < flRadius)
+				const Vec3 vPlayerCenter = pPlayer->GetCenter();
+
+				if (vStickyCenter.DistTo(vPlayerCenter) < flRadius)
 				{
-					if (H::AimUtils->TraceEntityAutoDet(pPlayer, pSticky->GetCenter(), pPlayer->GetCenter()))
+					if (H::AimUtils->TraceEntityAutoDet(pPlayer, vStickyCenter, vPlayerCenter))
 					{
 						if (pSticky->m_bDefensiveBomb())
 						{
-							const Vec3 vAngle = Math::CalcAngle(pLocal->GetShootPos(), pSticky->GetCenter());
+							const Vec3 vAngle = Math::CalcAngle(vShootPos, vStickyCenter);
 							H::AimUtils->FixMovement(pCmd, vAngle);
 							pCmd->viewangles = vAngle;
 							G::bSilentAngles = true;
@@ -74,13 +87,15 @@ void CAutoDetonate::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 				if (!pBuildingEntity)
 					continue;
 
-				if (pSticky->GetCenter().DistTo(pBuildingEntity->GetCenter()) < flRadius)
+				const Vec3 vBuildingCenter = pBuildingEntity->GetCenter();
+
+				if (vStickyCenter.DistTo(vBuildingCenter) < flRadius)
 				{
-					if (H::AimUtils->TraceEntityAutoDet(pBuildingEntity, pSticky->GetCenter(), pBuildingEntity->GetCenter()))
+					if (H::AimUtils->TraceEntityAutoDet(pBuildingEntity, vStickyCenter, vBuildingCenter))
 					{
 						if (pSticky->m_bDefensiveBomb())
 						{
-							const Vec3 vAngle = Math::CalcAngle(pLocal->GetShootPos(), pSticky->GetCenter());
+							const Vec3 vAngle = Math::CalcAngle(vShootPos, vStickyCenter);
 							H::AimUtils->FixMovement(pCmd, vAngle);
 							pCmd->viewangles = vAngle;
 							G::bSilentAngles = true;
