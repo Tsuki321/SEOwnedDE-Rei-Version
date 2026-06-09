@@ -9,9 +9,13 @@ MAKE_HOOK(CBaseEntity_SetAbsVelocity, Signatures::CBaseEntity_SetAbsVelocity.Get
 	{
 		if (const auto pBasePlayer = ecx->As<C_TFPlayer>())
 		{
-			if (G::mapVelFixRecords.contains(pBasePlayer))
+			// Single O(log N) lookup instead of contains() + operator[] which
+			// walks the red-black tree twice.
+			const auto it = G::mapVelFixRecords.find(pBasePlayer);
+
+			if (it != G::mapVelFixRecords.end())
 			{
-				const auto& record = G::mapVelFixRecords[pBasePlayer];
+				const auto& record = it->second;
 				const float flSimTimeDelta = pBasePlayer->m_flSimulationTime() - record.m_flSimulationTime;
 
 				if (flSimTimeDelta > 0.0f)

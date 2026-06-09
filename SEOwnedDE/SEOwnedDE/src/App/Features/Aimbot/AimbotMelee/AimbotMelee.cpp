@@ -4,7 +4,12 @@
 
 bool CAimbotMelee::CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeTarget_t& target)
 {
-	if (pLocal->GetShootPos().DistTo(target.Position) > 600.0f)
+	// Hoist GetShootPos out of the distance check + immediate trace + prediction
+	// loop. The vfunc was being called twice before the loop and once per
+	// prediction tick (typically 10-15 iterations).
+	const Vec3 vShootPos = pLocal->GetShootPos();
+
+	if (vShootPos.DistTo(target.Position) > 600.0f)
 		return false;
 
 	auto checkPos = [&](const Vec3& vLocalPos) -> bool
@@ -39,7 +44,7 @@ bool CAimbotMelee::CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeTarg
 		return bCanSee;
 	};
 
-	if (checkPos(pLocal->GetShootPos()))
+	if (checkPos(vShootPos))
 	{
 		return true;
 	}
@@ -60,18 +65,26 @@ bool CAimbotMelee::CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeTarg
 
 	const bool bDoGravity = !(pLocal->m_fFlags() & FL_ONGROUND) && pLocal->GetMoveType() == MOVETYPE_WALK;
 	const auto predictAmount = CFG::Aimbot_Melee_Predict_Swing_Amount;
+	const auto tickInterval = I::GlobalVars->interval_per_tick;
 
-	for (float flTime = 0.0f; flTime < predictAmount; flTime += I::GlobalVars->interval_per_tick)
+	// Hoist invariant reads out of the per-tick prediction loop. m_vecVelocity
+	// and GetClassId are repeated for every tick of the prediction window
+	// (typically 10-15 iterations per CanSee call). vShootPos was hoisted
+	// to the top of the function so the loop copies from a register.
+	const Vec3 vLocalVelocity = pLocal->m_vecVelocity();
+	const ETFClassIds nTargetClass = target.Entity->GetClassId();
+
+	for (float flTime = 0.0f; flTime < predictAmount; flTime += tickInterval)
 	{
-		Vec3 vLocalPos = pLocal->GetShootPos();
+		Vec3 vLocalPos = vShootPos;
 
-		if (target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
-			extrapolate(vLocalPos, pLocal->m_vecVelocity() + (target.Entity->As<C_TFPlayer>()->m_vecVelocity() * -1.0f), flTime, bDoGravity);
+		if (nTargetClass == ETFClassIds::CTFPlayer)
+			extrapolate(vLocalPos, vLocalVelocity + (target.Entity->As<C_TFPlayer>()->m_vecVelocity() * -1.0f), flTime, bDoGravity);
 
 		else if (target.LagRecord)
-			extrapolate(vLocalPos, pLocal->m_vecVelocity() + (target.LagRecord->Velocity * -1.0f), flTime, bDoGravity);
+			extrapolate(vLocalPos, vLocalVelocity + (target.LagRecord->Velocity * -1.0f), flTime, bDoGravity);
 
-		else extrapolate(vLocalPos, pLocal->m_vecVelocity(), flTime, bDoGravity);
+		else extrapolate(vLocalPos, vLocalVelocity, flTime, bDoGravity);
 
 		if (checkPos(vLocalPos))
 			return true;
