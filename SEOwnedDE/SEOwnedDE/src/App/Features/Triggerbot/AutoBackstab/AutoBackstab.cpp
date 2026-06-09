@@ -150,6 +150,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 	const bool bLegitMode = CFG::Triggerbot_AutoBackstab_Mode == 0;
 	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
+	// Hoist invariant reads. pLocal->GetShootPos() was being called 3x per
+	// target (FOV check, angle calc, trace) and pLocal->GetCenter() once.
+	const Vec3 vShootPos = pLocal->GetShootPos();
+	const Vec3 vLocalCenter = pLocal->GetCenter();
+
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
 		if (!pEntity)
@@ -184,6 +189,9 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			continue;
 		}
 
+		// GetCenter is a vfunc too; hoist the per-target read once.
+		const Vec3 vTargetCenter = pPlayer->GetCenter();
+
 		auto canKnife = false;
 		if (CFG::Triggerbot_AutoBackstab_Knife_If_Lethal)
 		{
@@ -192,7 +200,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 		if (bLegitMode && CFG::Triggerbot_AutoBackstab_FOV > 0.0f)
 		{
-			const Vec3 vAngToTarget = Math::CalcAngle(pLocal->GetShootPos(), pPlayer->GetCenter());
+			const Vec3 vAngToTarget = Math::CalcAngle(vShootPos, vTargetCenter);
 			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngToTarget);
 
 			if (flFOVTo > CFG::Triggerbot_AutoBackstab_FOV)
@@ -205,17 +213,17 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 		if (!bLegitMode)
 		{
-			angleTo = Math::CalcAngle(pLocal->GetShootPos(), pPlayer->GetCenter());
+			angleTo = Math::CalcAngle(vShootPos, vTargetCenter);
 		}
 
-		if (canKnife || IsBehindAndFacingTarget(pLocal->GetCenter(), angleTo, pPlayer->GetCenter(), pPlayer->GetEyeAngles()))
+		if (canKnife || IsBehindAndFacingTarget(vLocalCenter, angleTo, vTargetCenter, pPlayer->GetEyeAngles()))
 		{
 			Vec3 forward{};
 			Math::AngleVectors(angleTo, &forward);
 
-			auto to = pLocal->GetShootPos() + (forward * 47.0f);
+			auto to = vShootPos + (forward * 47.0f);
 
-			if (H::AimUtils->TraceEntityMelee(pPlayer, pLocal->GetShootPos(), to))
+			if (H::AimUtils->TraceEntityMelee(pPlayer, vShootPos, to))
 			{
 				bool bReadyToAttack = true;
 				if (!bLegitMode)
