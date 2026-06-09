@@ -98,12 +98,21 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 	const Vec3 vLocalPos = pLocal->GetShootPos();
 	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
+	// Hoist invariant reads out of the per-target loops. The player + building
+	// loops walk all entities in the group; pLocal->m_iTeamNum(), the sort
+	// mode, the FOV cap, and pWeapon->m_iItemDefinitionIndex() were being
+	// fetched per iteration.
+	const int nLocalTeam = pLocal->m_iTeamNum();
+	const int nItemDefIndex = pWeapon->m_iItemDefinitionIndex();
+	const int nSortMode = CFG::Aimbot_Melee_Sort;
+	const float flFOVLimit = CFG::Aimbot_Melee_FOV;
+
 	m_vecTargets.clear();
 
 	// Find player targets
 	if (CFG::Aimbot_Target_Players)
 	{
-		auto group{ pWeapon->m_iItemDefinitionIndex() == Soldier_t_TheDisciplinaryAction ? EEntGroup::PLAYERS_ALL : EEntGroup::PLAYERS_ENEMIES };
+		auto group{ nItemDefIndex == Soldier_t_TheDisciplinaryAction ? EEntGroup::PLAYERS_ALL : EEntGroup::PLAYERS_ENEMIES };
 
 		if (!CFG::Aimbot_Melee_Whip_Teammates)
 		{
@@ -119,7 +128,7 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 			if (pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
 				continue;
 
-			if (pPlayer->m_iTeamNum() != pLocal->m_iTeamNum())
+			if (pPlayer->m_iTeamNum() != nLocalTeam)
 			{
 				if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
 					continue;
@@ -127,41 +136,41 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 				if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
 					continue;
 
-				if (pWeapon->m_iItemDefinitionIndex() != Heavy_t_TheHolidayPunch && CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+				if (nItemDefIndex != Heavy_t_TheHolidayPunch && CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
 					continue;
 
 				if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
 					continue;
 			}
 
-	if (pPlayer->m_iTeamNum() != pLocal->m_iTeamNum() && CFG::Aimbot_Melee_Target_LagRecords)
-	{
-		int nRecords = 0;
+			if (pPlayer->m_iTeamNum() != nLocalTeam && CFG::Aimbot_Melee_Target_LagRecords)
+			{
+				int nRecords = 0;
 
-		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
-			continue;
+				if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+					continue;
 
-		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
+				const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-		for (int n = 1; n < nRecords; n++)
-		{
-			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+				for (int n = 1; n < nRecords; n++)
+				{
+					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-			if (!pRecord)
-				continue;
+					if (!pRecord)
+						continue;
 
-		if (pRecord->bTeleported)
-			continue;
+					if (pRecord->bTeleported)
+						continue;
 
-			if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
-				continue;
+					if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
+						continue;
 
 					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, HITBOX_BODY, pRecord->BoneData.data());
 					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-					const float flFOVTo = CFG::Aimbot_Melee_Sort == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+					const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
 					const float flDistTo = vLocalPos.DistTo(vPos);
 
-					if (CFG::Aimbot_Melee_Sort == 0 && flFOVTo > CFG::Aimbot_Melee_FOV)
+					if (nSortMode == 0 && flFOVTo > flFOVLimit)
 						continue;
 
 					m_vecTargets.emplace_back(MeleeTarget_t{ pPlayer, vPos, vAngleTo, flFOVTo, flDistTo, pRecord->SimulationTime, pRecord });
@@ -170,10 +179,10 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 
 			Vec3 vPos = pPlayer->GetHitboxPos(HITBOX_BODY);
 			Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-			const float flFOVTo = CFG::Aimbot_Melee_Sort == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+			const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (CFG::Aimbot_Melee_Sort == 0 && flFOVTo > CFG::Aimbot_Melee_FOV)
+			if (nSortMode == 0 && flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(MeleeTarget_t{ pPlayer, vPos, vAngleTo, flFOVTo, flDistTo, pPlayer->m_flSimulationTime() });
@@ -195,10 +204,10 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 
 			Vec3 vPos = pBuilding->GetCenter();
 			Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-			const float flFOVTo = CFG::Aimbot_Melee_Sort == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+			const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (CFG::Aimbot_Melee_Sort == 0 && flFOVTo > CFG::Aimbot_Melee_FOV)
+			if (nSortMode == 0 && flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(MeleeTarget_t{ pBuilding, vPos, vAngleTo, flFOVTo, flDistTo });
