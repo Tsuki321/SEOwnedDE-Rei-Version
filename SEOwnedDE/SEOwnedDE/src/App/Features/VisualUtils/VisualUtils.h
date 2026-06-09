@@ -24,6 +24,13 @@ private:
 	int m_nCachedScreenW = 0;
 	int m_nCachedScreenH = 0;
 	Vec3 m_vCachedLocalOrigin = {};
+	// Per-frame cache for I::EngineClient->IsTakingScreenshot(). The engine
+	// vfunc is called hundreds of times per frame from the per-draw hooks
+	// (IVModelRender_DrawModelExecute, CBaseAnimating_DrawModel). The result
+	// only changes between frames, so we frame-stamp and avoid the indirect
+	// call after the first access in a new frame.
+	int m_nScreenshotFrame = -1;
+	bool m_bTakingScreenshot = false;
 	std::unordered_map<const C_BaseEntity*, FrameCacheEntry> m_mapFrameCache = {};
 	bool m_bEntityCandidatesPrepared = false;
 	std::vector<C_TFPlayer*> m_vecPlayerCandidates = {};
@@ -92,6 +99,10 @@ public:
 
 	bool IsOnScreen(const C_TFPlayer* pLocal, const C_BaseEntity* pEntity);
 	bool IsOnScreenNoEntity(const C_TFPlayer* pLocal, const Vec3& vAbsOrigin);
+	// Frame-cached wrapper around I::EngineClient->IsTakingScreenshot().
+	// Direct vfunc in the per-draw hooks is wasteful (called per model per
+	// frame) - this refreshes once per frame and returns the cached value.
+	bool IsTakingScreenshotCached();
 
 	int GetCat(int nFrame);
 	int GetCat2(int nFrame);

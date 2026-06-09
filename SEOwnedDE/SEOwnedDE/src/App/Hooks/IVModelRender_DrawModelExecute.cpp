@@ -5,9 +5,10 @@
 
 #include "../Features/CFG.h"
 #include "../Features/SpyCamera/SpyCamera.h"
+#include "../Features/VisualUtils/VisualUtils.h"
 
 MAKE_SIGNATURE(CBaseAnimating_DrawModel, "client.dll", "4C 8B DC 49 89 5B ? 89 54 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC ? 48 8B 05 ? ? ? ? 48 8D 3D", 0x0);
-MAKE_SIGNATURE(ViewmodelAttachment_DrawModel, "client.dll", "41 8B D5 FF 50 ? 8B 97", 0x6);
+MAKE_SIGNATURE(ViewmodelAttachment_DrawModel, "client.dll", "41 8B D5 FF 50 ? 8B 97", 0x6");
 
 static IMaterial* GetViewmodelMaterialByIndex(int nIndex)
 {
@@ -26,8 +27,10 @@ static IMaterial* GetViewmodelMaterialByIndex(int nIndex)
 MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), void, __fastcall,
 	IVModelRender* ecx, const DrawModelState_t& state, ModelRenderInfo_t& pInfo, matrix3x4_t* pCustomBoneToWorld)
 {
+	// IsTakingScreenshotCached() frame-stamps the engine vfunc; the result
+	// only changes once per frame at most, so most draws hit the cached bool.
 	const bool bSpyCamRendering = F::SpyCamera->IsRendering();
-	const bool bTakingScreenshot = I::EngineClient->IsTakingScreenshot();
+	const bool bTakingScreenshot = F::VisualUtils->IsTakingScreenshotCached();
 	const bool bCleanScreenshot = CFG::Misc_Clean_Screenshot && bTakingScreenshot;
 
 	if (!bSpyCamRendering)
@@ -147,7 +150,8 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 MAKE_HOOK(CBaseAnimating_DrawModel, Signatures::CBaseAnimating_DrawModel.Get(), int, __fastcall,
 	void *ecx, int flags)
 {
-	const bool clean_ss = CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot();
+	// Frame-cached screenshot state (see IVModelRender_DrawModelExecute above).
+	const bool clean_ss = CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached();
 
 	if (CFG::Materials_ViewModel_Active
 		&& !clean_ss

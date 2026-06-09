@@ -714,3 +714,16 @@ Color_t CVisualUtils::RainbowTickOffset(int nTick)
 
 	return Color_t{ static_cast<byte>(r), static_cast<byte>(g), static_cast<byte>(b), 255 };
 }
+
+bool CVisualUtils::IsTakingScreenshotCached()
+{
+	const int nFrame = I::GlobalVars ? I::GlobalVars->framecount : 0;
+
+	if (nFrame != m_nScreenshotFrame)
+	{
+		m_nScreenshotFrame = nFrame;
+		m_bTakingScreenshot = I::EngineClient->IsTakingScreenshot();
+	}
+
+	return m_bTakingScreenshot;
+}
