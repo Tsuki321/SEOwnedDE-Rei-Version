@@ -269,7 +269,10 @@ void CLagRecords::UpdateRecords()
 		if (pPlayer->deadflag())
 		{
 			if (idx >= 0)
+			{
 				m_RecordCounts[idx] = 0u;
+				m_CachedStates[idx] = {};
+			}
 			continue;
 		}
 
@@ -317,6 +320,7 @@ void CLagRecords::UpdateRecords()
 		if (!pFirstPlayer || pFirstPlayer->IsDormant())
 		{
 			m_RecordCounts[i] = 0u;
+			m_CachedStates[i] = {};
 			continue;
 		}
 
