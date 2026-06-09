@@ -382,7 +382,7 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 		return true;
 
 	const float flRollDelta = std::fmodf(cached.EyeAngles.z - pRecord->EyeAngles.z + 540.0f, 360.0f) - 180.0f;
-	return fabsf(flRollDelta) <= 0.1f;
+	return fabsf(flRollDelta) > 0.1f;
 }
 
 void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
