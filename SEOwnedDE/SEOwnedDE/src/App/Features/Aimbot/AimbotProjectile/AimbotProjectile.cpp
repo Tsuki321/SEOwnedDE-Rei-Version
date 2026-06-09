@@ -1096,11 +1096,21 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 	const Vec3 vLocalPos = pLocal->GetShootPos();
 	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
+	// Hoist invariant reads out of the per-target loops. The player + building
+	// loops walk all entities in the group; pLocal->m_iTeamNum(), the sort
+	// mode, and pWeapon->GetWeaponID() were being fetched per iteration. The
+	// sort-mode and crossbow checks are pure-control; hoisting them lets the
+	// loops be straight-line code.
+	const int nLocalTeam = pLocal->m_iTeamNum();
+	const int nWeaponID = pWeapon->GetWeaponID();
+	const int nSortMode = CFG::Aimbot_Projectile_Sort;
+	const float flFOVLimit = CFG::Aimbot_Projectile_FOV;
+
 	m_vecTargets.clear();
 
 	if (CFG::Aimbot_Target_Players)
 	{
-		const auto nGroup = pWeapon->GetWeaponID() == TF_WEAPON_CROSSBOW ? EEntGroup::PLAYERS_ALL : EEntGroup::PLAYERS_ENEMIES;
+		const auto nGroup = nWeaponID == TF_WEAPON_CROSSBOW ? EEntGroup::PLAYERS_ALL : EEntGroup::PLAYERS_ENEMIES;
 
 		for (const auto pEntity : H::Entities->GetGroup(nGroup))
 		{
@@ -1112,7 +1122,7 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 			if (pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
 				continue;
 
-			if (pPlayer->m_iTeamNum() != pLocal->m_iTeamNum())
+			if (pPlayer->m_iTeamNum() != nLocalTeam)
 			{
 				if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
 					continue;
@@ -1129,7 +1139,7 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 			else
 			{
-				if (pWeapon->GetWeaponID() == TF_WEAPON_CROSSBOW)
+				if (nWeaponID == TF_WEAPON_CROSSBOW)
 				{
 					if (pPlayer->m_iHealth() >= pPlayer->GetMaxHealth() || pPlayer->IsInvulnerable())
 					{
@@ -1140,10 +1150,10 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 			Vec3 vPos = pPlayer->GetCenter();
 			Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-			const float flFOVTo = CFG::Aimbot_Projectile_Sort == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+			const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (CFG::Aimbot_Projectile_Sort == 0 && flFOVTo > CFG::Aimbot_Projectile_FOV)
+			if (nSortMode == 0 && flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(AimTarget_t { pPlayer, vPos, vAngleTo, flFOVTo, flDistTo });
@@ -1152,7 +1162,7 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 	if (CFG::Aimbot_Target_Buildings)
 	{
-		const auto isRescueRanger{ pWeapon->GetWeaponID() == TF_WEAPON_SHOTGUN_BUILDING_RESCUE };
+		const auto isRescueRanger{ nWeaponID == TF_WEAPON_SHOTGUN_BUILDING_RESCUE };
 
 		for (const auto pEntity : H::Entities->GetGroup(isRescueRanger ? EEntGroup::BUILDINGS_ALL : EEntGroup::BUILDINGS_ENEMIES))
 		{
@@ -1164,7 +1174,7 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 			if (pBuilding->m_bPlacing())
 				continue;
 
-			if (isRescueRanger && pBuilding->m_iTeamNum() == pLocal->m_iTeamNum() && pBuilding->m_iHealth() >= pBuilding->m_iMaxHealth())
+			if (isRescueRanger && pBuilding->m_iTeamNum() == nLocalTeam && pBuilding->m_iHealth() >= pBuilding->m_iMaxHealth())
 			{
 				continue;
 			}
@@ -1177,10 +1187,10 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 			}*/
 
 			Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-			const float flFOVTo = CFG::Aimbot_Projectile_Sort == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+			const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (CFG::Aimbot_Projectile_Sort == 0 && flFOVTo > CFG::Aimbot_Projectile_FOV)
+			if (nSortMode == 0 && flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(AimTarget_t { pBuilding, vPos, vAngleTo, flFOVTo, flDistTo });
