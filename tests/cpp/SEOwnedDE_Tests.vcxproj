@@ -312,6 +312,7 @@
     <ClCompile Include="features\TestAnimationPipelineIntegration.cpp" />
     <ClCompile Include="features\TestBaseInterpolatePart1.cpp" />
     <ClCompile Include="features\TestCFG.cpp" />
+    <ClCompile Include="features\TestCrashHandler.cpp" />
     <ClCompile Include="features\TestFrameStageAnimDrive.cpp" />
     <ClCompile Include="features\TestInterpolateServerEntities.cpp" />
     <ClCompile Include="features\TestLagRecordsRotational.cpp" />

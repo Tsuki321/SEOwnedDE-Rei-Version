@@ -28,6 +28,7 @@
     <ClCompile Include="src\App\Hooks\IEngineVGuiInternal_Paint.cpp" />
     <ClCompile Include="src\App\Hooks\WINAPI_WndProc.cpp" />
     <ClCompile Include="src\App\App.cpp" />
+    <ClCompile Include="src\App\CrashHandler\CrashHandler.cpp" />
     <ClCompile Include="src\SDK\Helpers\Draw\Draw.cpp" />
     <ClCompile Include="src\SDK\Helpers\Entities\Entities.cpp" />
     <ClCompile Include="src\SDK\Helpers\Fonts\Fonts.cpp" />
@@ -153,6 +154,7 @@
     <ClInclude Include="src\App\Features\VisualUtils\VisualUtils.h" />
     <ClInclude Include="src\App\Features\WorldModulation\WorldModulation.h" />
     <ClInclude Include="src\App\Features\CFG.h" />
+    <ClInclude Include="src\App\CrashHandler\CrashHandler.h" />
     <ClInclude Include="src\App\Hooks\WINAPI_WndProc.h" />
     <ClInclude Include="src\App\App.h" />
     <ClInclude Include="src\SDK\Helpers\Draw\Draw.h" />

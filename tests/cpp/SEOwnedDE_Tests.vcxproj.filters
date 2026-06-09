@@ -39,6 +39,9 @@
     <ClCompile Include="features\TestCFG.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="features\TestCrashHandler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="features\TestFrameStageAnimDrive.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
