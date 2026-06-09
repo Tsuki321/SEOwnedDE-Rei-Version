@@ -198,6 +198,10 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 	const Vec3 vLocalPos = pLocal->GetShootPos();
 	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
+	// Hoist invariant reads out of the per-target loops. CFG::Aimbot_Hitscan_FOV
+	// was being read per target in both the FOV ternary and the continue check.
+	const float flFOVLimit = CFG::Aimbot_Hitscan_FOV;
+
 	m_vecTargets.clear();
 
 	// Find player targets
@@ -226,34 +230,34 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
 				continue;
 
-	if (CFG::Aimbot_Hitscan_Target_LagRecords)
-	{
-		int nRecords = 0;
+			if (CFG::Aimbot_Hitscan_Target_LagRecords)
+			{
+				int nRecords = 0;
 
-		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
-			continue;
+				if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+					continue;
 
-		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
+				const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-		for (int n = 1; n < nRecords; n++)
-		{
-			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+				for (int n = 1; n < nRecords; n++)
+				{
+					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-			if (!pRecord)
-				continue;
+					if (!pRecord)
+						continue;
 
-		if (pRecord->bTeleported)
-			continue;
+					if (pRecord->bTeleported)
+						continue;
 
-			if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
-				continue;
+					if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
+						continue;
 
 					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, nAimHitbox, pRecord->BoneData.data());
 					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
 					const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
 					const float flDistTo = vLocalPos.DistTo(vPos);
 
-					if (flFOVTo > CFG::Aimbot_Hitscan_FOV)
+					if (flFOVTo > flFOVLimit)
 						continue;
 
 					m_vecTargets.emplace_back(AimTarget_t {
@@ -273,7 +277,7 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (flFOVTo > CFG::Aimbot_Hitscan_FOV)
+			if (flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(AimTarget_t { pPlayer, vPos, vAngleTo, flFOVTo, flDistTo}, nAimHitbox, pPlayer->m_flSimulationTime());
@@ -297,7 +301,7 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (flFOVTo > CFG::Aimbot_Hitscan_FOV)
+			if (flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(AimTarget_t { pBuilding, vPos, vAngleTo, flFOVTo, flDistTo });
@@ -325,7 +329,7 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (flFOVTo > CFG::Aimbot_Hitscan_FOV)
+			if (flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(AimTarget_t {pipe, vPos, vAngleTo, flFOVTo, flDistTo});
