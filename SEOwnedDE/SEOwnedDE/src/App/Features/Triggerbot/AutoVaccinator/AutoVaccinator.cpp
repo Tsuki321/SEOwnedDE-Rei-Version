@@ -82,6 +82,15 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 		)
 	};
 
+	// Hoist per-iteration reads. GetCenter, m_vecOrigin, m_vecMaxs are
+	// vfuncs that were being called 10+ times across the player + projectile
+	// loops below. vPlayerHead is precomputed since it's used by the sniper
+	// trace, the head trace, and is otherwise a vec3-z-add per iteration.
+	const Vec3 vPlayerCenter = player->GetCenter();
+	const Vec3 vPlayerOrigin = player->m_vecOrigin();
+	const Vec3 vPlayerMaxs = player->m_vecMaxs();
+	const Vec3 vPlayerHead = vPlayerOrigin + Vec3{ 0.0f, 0.0f, vPlayerMaxs.z };
+
 	//I::DebugOverlay->ClearAllOverlays();
 
 	// Check for dangerous players
@@ -118,7 +127,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 			continue;
 
 		auto mins{ player->m_vecMins() };
-		auto maxs{ player->m_vecMaxs() };
+		auto maxs{ vPlayerMaxs };
 
 		mins.x *= 3.0f;
 		mins.y *= 3.0f;
@@ -132,17 +141,17 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 		Math::AngleVectors(enemy->GetEyeAngles(), &forward);
 
 		// Can the sniper shoot us?
-		if (!Math::RayToOBB(enemy->GetShootPos(), forward, player->m_vecOrigin(), mins, maxs, player->RenderableToWorldTransform()))
+		if (!Math::RayToOBB(enemy->GetShootPos(), forward, vPlayerOrigin, mins, maxs, player->RenderableToWorldTransform()))
 			continue;
 
-		//I::DebugOverlay->AddSweptBoxOverlay(player->m_vecOrigin(), player->m_vecOrigin(), mins, maxs, {}, 0, 255, 0, 255, 0.1f);
+		//I::DebugOverlay->AddSweptBoxOverlay(vPlayerOrigin, vPlayerOrigin, mins, maxs, {}, 0, 255, 0, 255, 0.1f);
 
 		const auto visibleFromCenter
 		{
 			H::AimUtils->TraceEntityAutoDet
 			(
 				pEntity,
-				player->GetCenter(),
+				vPlayerCenter,
 				enemy->m_vecOrigin() + Vec3{ 0.0f, 0.0f, enemy->m_vecMaxs().z }
 			)
 		};
@@ -152,7 +161,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 			H::AimUtils->TraceEntityAutoDet
 			(
 				pEntity,
-				player->m_vecOrigin() + Vec3{ 0.0f, 0.0f, player->m_vecMaxs().z },
+				vPlayerHead,
 				enemy->m_vecOrigin() + Vec3{ 0.0f, 0.0f, enemy->m_vecMaxs().z }
 			)
 		};
@@ -173,8 +182,10 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 		if (!pEntity)
 			continue;
 
-		const auto visibleFromCenter{ H::AimUtils->TraceEntityAutoDet(pEntity, player->GetCenter(), pEntity->GetCenter()) };
-		const auto visibleFromHead{ H::AimUtils->TraceEntityAutoDet(pEntity, player->m_vecOrigin() + Vec3{ 0.0f, 0.0f, player->m_vecMaxs().z }, pEntity->GetCenter()) };
+		const auto pEntCenter{ pEntity->GetCenter() };
+
+		const auto visibleFromCenter{ H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerCenter, pEntCenter) };
+		const auto visibleFromHead{ H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerHead, pEntCenter) };
 
 		if (!visibleFromCenter && !visibleFromHead)
 			continue;
@@ -188,7 +199,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 		{
 		case ETFClassIds::CTFProjectile_Arrow:
 			{
-				if (vel.IsZero() || entOrigin.DistTo(player->GetCenter()) > 150.0f)
+				if (vel.IsZero() || entOrigin.DistTo(vPlayerCenter) > 150.0f)
 					continue;
 
 				// Dangerous arrows
@@ -198,7 +209,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 
 		case ETFClassIds::CTFProjectile_HealingBolt:
 			{
-				if (vel.IsZero() || entOrigin.DistTo(player->GetCenter()) > 150.0f)
+				if (vel.IsZero() || entOrigin.DistTo(vPlayerCenter) > 150.0f)
 					continue;
 
 				const auto arrow{ pEntity->As<C_TFProjectile_Arrow>() };
@@ -214,7 +225,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 		case ETFClassIds::CTFProjectile_SentryRocket:
 		case ETFClassIds::CTFProjectile_EnergyBall:
 			{
-				if (entOrigin.DistTo(player->GetCenter()) > 250.0f)
+				if (entOrigin.DistTo(vPlayerCenter) > 250.0f)
 					continue;
 
 				const auto rocket{ pEntity->As<C_TFProjectile_Rocket>() };
@@ -228,14 +239,14 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 
 		case ETFClassIds::CTFGrenadePipebombProjectile:
 			{
-				if (entOrigin.DistTo(player->GetCenter()) > 250.0f)
+				if (entOrigin.DistTo(vPlayerCenter) > 250.0f)
 					continue;
 
 				const auto bomb{ pEntity->As<C_TFGrenadePipebombProjectile>() };
 				if (bomb->m_iType() == TF_GL_MODE_REMOTE_DETONATE_PRACTICE)
 					continue;
 
-				if (!bomb->m_bCritical() && percentHealth >= 1.0f && entOrigin.DistTo(player->GetCenter()) >= 100.0f)
+				if (!bomb->m_bCritical() && percentHealth >= 1.0f && entOrigin.DistTo(vPlayerCenter) >= 100.0f)
 				{
 					numClosePipebombs++;
 					continue;
@@ -248,7 +259,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 
 		case ETFClassIds::CTFProjectile_Flare:
 			{
-				if (entOrigin.DistTo(player->GetCenter()) > 150.0f)
+				if (entOrigin.DistTo(vPlayerCenter) > 150.0f)
 					continue;
 
 				const auto flare{ pEntity->As<C_TFProjectile_Flare>() };
@@ -262,7 +273,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 
 		case ETFClassIds::CTFProjectile_BallOfFire:
 			{
-				if (entOrigin.DistTo(player->GetCenter()) > 150.0f)
+				if (entOrigin.DistTo(vPlayerCenter) > 150.0f)
 					continue;
 
 				if (!player->InCond(TF_COND_BURNING) && !player->InCond(TF_COND_BURNING_PYRO))
@@ -275,7 +286,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 
 		case ETFClassIds::CTFProjectile_EnergyRing:
 			{
-				if (entOrigin.DistTo(player->GetCenter()) > 150.0f)
+				if (entOrigin.DistTo(vPlayerCenter) > 150.0f)
 					continue;
 
 				if (percentHealth >= HEALTH_LIMIT)
