@@ -6,11 +6,14 @@
 #include <cstdint>
 #include <vector>
 
-// MAX_LAG_RECORDS: 36 ticks ~= 545 ms at 66 tick. Comfortably above typical
-// player ping and sv_maxunlag for most configs. Trimming from 66 cuts
-// per-player storage by ~45% with no practical impact on lag-comp history.
+// MAX_LAG_RECORDS: 12 ticks ~= 182 ms at 66 tick (120 ms at 100 tick). Hits
+// the Materials_Players_LagRecords_Style == 0 ghost-render cap (MAX_RENDERED_RECORDS=12)
+// exactly, so no consumer is starved. Covers typical TF2 player pings (30-100ms)
+// with margin and the 5-record cap used by MovementSimulation + Aimbot hitscan/melee
+// comfortably. Trimming from 36 cuts per-player static storage by 2/3
+// (from ~222 KB to ~74 KB per player slot, ~4.8 MB saved across MAX_PLAYERS=33).
 inline constexpr int MAX_BONE_COUNT = 128;
-inline constexpr int MAX_LAG_RECORDS = 36;
+inline constexpr int MAX_LAG_RECORDS = 12;
 // MAX_MATRIX_HELPER_DEPTH: measured max nesting is 1 across all consumers
 // (AimbotHitscan / AimbotMelee / AutoBackstab / Materials). 2 is one above
 // the measured depth as a safety margin; cuts the matrix helper's static
