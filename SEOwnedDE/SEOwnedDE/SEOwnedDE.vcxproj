@@ -356,6 +356,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\App\App.cpp" />
+    <ClCompile Include="src\App\CrashHandler\CrashHandler.cpp" />
     <ClCompile Include="src\App\Features\Aimbot\Aimbot.cpp" />
     <ClCompile Include="src\App\Features\Aimbot\AimbotHitscan\AimbotHitscan.cpp" />
     <ClCompile Include="src\App\Features\Aimbot\AimbotMelee\AimbotMelee.cpp" />
