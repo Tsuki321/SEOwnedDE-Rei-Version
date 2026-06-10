@@ -81,7 +81,6 @@ const char* CCrashHandler::GetExceptionName(DWORD nCode)
 		case EXCEPTION_FLT_STACK_CHECK:        return "Float Stack Check";
 		case 0xC0000409:                       return "Stack Buffer Overrun (FASTFAIL)";
 		case 0xC0000374:                       return "Heap Corruption";
-		case 0x80000003:                       return "Breakpoint";
 		default:                               return "Unknown Exception";
 	}
 }
