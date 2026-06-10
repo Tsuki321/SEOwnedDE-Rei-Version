@@ -2,7 +2,7 @@
 
 #include <windows.h>
 
-#include "../../../Utils/Singleton/Singleton.h"
+#include "../../Utils/Singleton/Singleton.h"
 
 // Top-level structured-exception handler. Registered via
 // SetUnhandledExceptionFilter from DllMain on DLL_PROCESS_ATTACH so it covers
