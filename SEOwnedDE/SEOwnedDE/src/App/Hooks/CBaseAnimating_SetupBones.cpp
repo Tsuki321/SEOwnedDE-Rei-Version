@@ -128,6 +128,11 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 								const Vec3 vLiveOrigin = ent->GetAbsOrigin();
 								const Vec3 vDelta = vLiveOrigin - pRecord->AbsOrigin;
 
+								// Distance-based LOD: skip expensive operations for distant players
+								const auto pLocal = H::Entities->GetLocal();
+								const float distSqr = pLocal ? vLiveOrigin.DistToSqr(pLocal->GetAbsOrigin()) : 0.0f;
+								constexpr float kLerpDistThresholdSqr = 2250000.0f; // 1500^2
+
 								// Phase 2: yaw rotational delta correction. When the live
 								// AbsAngles yaw differs meaningfully from the recorded yaw
 								// (e.g. fast spin), translation-only correction leaves the
@@ -163,25 +168,14 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 									}
 								}
 
-							// Phase 2: when two consecutive lag records exist within
-							// the validity window, lerp the cached bone translation
-							// component toward the previous record's pose to soften
-							// per-tick snaps. Rotational components keep the freshest
-							// (rec0) data which already reflects the live yaw above.
-							if (nRecords >= 2)
+							// Phase 2: bone interpolation - skip for distant players and small movements
+							if (nRecords >= 2 && distSqr < kLerpDistThresholdSqr)
 							{
 								if (const auto pPrev = F::LagRecords->GetRecord(pPlayer, 1))
 								{
-									// Origin-distance early-out: bones are stored in world
-									// space and are anchored to the player's origin, so a
-									// near-zero origin delta implies near-identical bone
-									// translations (sub-pixel at typical aim distances) and
-									// the per-bone blend would be wasted work. Skipping it
-									// costs nothing visually for stationary or slow-walking
-									// players but saves a 128-bone loop per visible-enemy
-									// DrawModel call - the dominant per-frame cost when
-									// multiple enemies are bunched together.
-									if ((pRecord->AbsOrigin - pPrev->AbsOrigin).LengthSqr() >= 0.01f)
+									// Tighter origin threshold: 4 units instead of 0.1
+									constexpr float kMinLerpDistSqr = 16.0f;
+									if ((pRecord->AbsOrigin - pPrev->AbsOrigin).LengthSqr() >= kMinLerpDistSqr)
 									{
 										const float dt =
 											pRecord->SimulationTime - pPrev->SimulationTime;
@@ -192,23 +186,12 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 												(currentTime - pPrev->SimulationTime) / dt,
 												0.0f, 1.0f);
 
-											// Blend translation from rec1 toward rec0 by t.
-											// We already wrote rec0 + delta into pBoneToWorldOut,
-											// so we only need to adjust toward rec1 by (1 - t).
 											const float oneMinusT = 1.0f - t;
 
 											if (oneMinusT > 0.001f)
 											{
-												// Bound the blend by the min of the two records'
-												// authoritative BoneCount to avoid reading past
-												// the end of either BoneData buffer.
 												const int nBlendCount = std::min({ nCopyCount, pRecord->BoneCount, pPrev->BoneCount });
 
-												// Hoist the two BoneData base pointers out of the
-												// per-iter dereference chain. With the inline
-												// std::array BoneData the compiler folds the
-												// indexing, but the explicit hoist guarantees it
-												// even under -O0 builds and across MSVC upgrades.
 												const auto* pPrevBones = pPrev->BoneData.data();
 												const auto* pRecBones = pRecord->BoneData.data();
 
