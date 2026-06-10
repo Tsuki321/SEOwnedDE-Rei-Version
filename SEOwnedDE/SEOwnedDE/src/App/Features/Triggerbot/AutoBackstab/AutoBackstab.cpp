@@ -273,10 +273,10 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 			if (!bLegitMode)
 			{
-				angleTo = Math::CalcAngle(pLocal->GetShootPos(), record->Center);
+				angleTo = Math::CalcAngle(vShootPos, record->Center);
 			}
 
-			if (canKnife || IsBehindAndFacingTarget(pLocal->GetCenter(), angleTo, record->Center, record->EyeAngles))
+			if (canKnife || IsBehindAndFacingTarget(vLocalCenter, angleTo, record->Center, record->EyeAngles))
 			{
 				{
 					CLagRecordScope scope(record);
@@ -284,9 +284,9 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 					Vec3 forward{};
 					Math::AngleVectors(angleTo, &forward);
 
-					auto to = pLocal->GetShootPos() + (forward * 47.0f);
+					auto to = vShootPos + (forward * 47.0f);
 
-					if (!H::AimUtils->TraceEntityMelee(pPlayer, pLocal->GetShootPos(), to))
+					if (!H::AimUtils->TraceEntityMelee(pPlayer, vShootPos, to))
 						continue;
 				}
 
