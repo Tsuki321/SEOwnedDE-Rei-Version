@@ -49,8 +49,8 @@ bool CAimUtils::TraceProjectile(C_BaseEntity *pEntity, const Vec3 &vFrom, const 
 	CTraceFilterWorldCustom filter = {};
 	filter.m_pTarget = pEntity;
 
-	constexpr Vec3 hull_mins = { -4.0f, -4.0f, -4.0f };
-	constexpr Vec3 hull_maxs = { 4.0f, 4.0f, 4.0f };
+	static const Vec3 hull_mins = { -4.0f, -4.0f, -4.0f };
+	static const Vec3 hull_maxs = { 4.0f, 4.0f, 4.0f };
 
 	TraceHull(vFrom, vTo, hull_mins, hull_maxs, MASK_SOLID, &filter, &trace);
 
@@ -63,8 +63,8 @@ bool CAimUtils::TraceProjectilePipes(const Vec3 &vFrom, const Vec3 &vTo, C_BaseE
 	CTraceFilterWorldCustom Filter = {};
 	Filter.m_pTarget = pTarget;
 
-	constexpr Vec3 pipe_hull_mins = { -8.0f, -8.0f, -8.0f };
-	constexpr Vec3 pipe_hull_maxs = { 8.0f, 8.0f, 8.0f };
+	static const Vec3 pipe_hull_mins = { -8.0f, -8.0f, -8.0f };
+	static const Vec3 pipe_hull_maxs = { 8.0f, 8.0f, 8.0f };
 
 	TraceHull(vFrom, vTo, pipe_hull_mins, pipe_hull_maxs, MASK_SOLID, &Filter, &Trace);
 
@@ -82,8 +82,8 @@ bool CAimUtils::TraceFlames(C_BaseEntity *pEntity, const Vec3 &vFrom, const Vec3
 	CTraceFilterWorldCustom filter = {};
 	filter.m_pTarget = pEntity;
 
-	constexpr Vec3 flame_hull_mins = { -12.0f, -12.0f, -12.0f };
-	constexpr Vec3 flame_hull_maxs = { 12.0f, 12.0f, 12.0f };
+	static const Vec3 flame_hull_mins = { -12.0f, -12.0f, -12.0f };
+	static const Vec3 flame_hull_maxs = { 12.0f, 12.0f, 12.0f };
 
 	TraceHull(vFrom, vTo, flame_hull_mins, flame_hull_maxs, MASK_SOLID, &filter, &trace);
 
@@ -95,8 +95,8 @@ bool CAimUtils::TraceEntityMelee(C_BaseEntity *pEntity, const Vec3 &vFrom, const
 	trace_t Trace = {};
 	CTraceFilterHitscan Filter = {};
 
-	constexpr Vec3 melee_hull_mins = { -18.0f, -18.0f, -18.0f };
-	constexpr Vec3 melee_hull_maxs = { 18.0f, 18.0f, 18.0f };
+	static const Vec3 melee_hull_mins = { -18.0f, -18.0f, -18.0f };
+	static const Vec3 melee_hull_maxs = { 18.0f, 18.0f, 18.0f };
 
 	TraceHull(vFrom, vTo, melee_hull_mins, melee_hull_maxs, MASK_SOLID, &Filter, &Trace);
 
