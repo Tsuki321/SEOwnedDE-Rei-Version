@@ -47,27 +47,27 @@ public:
 
 namespace Math
 {
-	inline double FastSqrt(double n) {
+	inline double FastSqrt(double n) noexcept {
 		return std::sqrt(n);
 	}
 
-	inline float NormalizeAngle(float ang) {
+	inline float NormalizeAngle(float ang) noexcept {
 		return (!std::isfinite(ang) ? 0.0f : std::remainder(ang, 360.0f));
 	}
 
-	inline void SinCos(float radians, float *sine, float *cosine)
+	inline void SinCos(float radians, float *sine, float *cosine) noexcept
 	{
 		*sine = std::sin(radians);
 		*cosine = std::cos(radians);
 	}
 
-	inline void ClampAngles(Vec3 &v) {
+	inline void ClampAngles(Vec3 &v) noexcept {
 		v.x = std::max(-89.0f, std::min(89.0f, NormalizeAngle(v.x)));
 		v.y = NormalizeAngle(v.y);
 		v.z = 0.0f;
 	}
 
-	inline void VectorAngles(const Vec3 &forward, Vec3 &angles)
+	inline void VectorAngles(const Vec3 &forward, Vec3 &angles) noexcept
 	{
 		float tmp, yaw, pitch;
 
@@ -100,7 +100,7 @@ namespace Math
 		angles[2] = 0;
 	}
 
-	inline void AngleVectors(const Vec3 &angles, Vec3 *forward)
+	inline void AngleVectors(const Vec3 &angles, Vec3 *forward) noexcept
 	{
 		float sp, sy, cp, cy;
 
@@ -115,7 +115,7 @@ namespace Math
 		}
 	}
 
-	inline void AngleVectors(const Vec3 &angles, Vec3 *forward, Vec3 *right, Vec3 *up)
+	inline void AngleVectors(const Vec3 &angles, Vec3 *forward, Vec3 *right, Vec3 *up) noexcept
 	{
 		float sr, sp, sy, cr, cp, cy;
 		SinCos(DEG2RAD(angles.x), &sp, &cp);
@@ -144,7 +144,7 @@ namespace Math
 		}
 	}
 
-	inline Vec3 CalcAngle(const Vec3 &source, const Vec3 &destination, bool clamp = true)
+	inline Vec3 CalcAngle(const Vec3 &source, const Vec3 &destination, bool clamp = true) noexcept
 	{
 		Vec3 angles = {};
 		Vec3 delta = destination - source;
@@ -160,7 +160,7 @@ namespace Math
 		return angles;
 	}
 
-	inline float CalcFov(const Vec3 &src, const Vec3 &dst)
+	inline float CalcFov(const Vec3 &src, const Vec3 &dst) noexcept
 	{
 		Vec3 v_src = Vec3();
 		AngleVectors(src, &v_src);
@@ -176,13 +176,13 @@ namespace Math
 		return result;
 	}
 
-	inline void VectorTransform(const Vec3 &input, const matrix3x4_t &matrix, Vec3 &output)
+	inline void VectorTransform(const Vec3 &input, const matrix3x4_t &matrix, Vec3 &output) noexcept
 	{
 		for (auto i = 0; i < 3; i++)
 			output[i] = input.Dot((Vec3 &)matrix[i]) + matrix[i][3];
 	}
 
-	inline float RemapVal(float val, float A, float B, float C, float D)
+	inline float RemapVal(float val, float A, float B, float C, float D) noexcept
 	{
 		if (A == B)
 			return val >= B ? D : C;
@@ -190,7 +190,7 @@ namespace Math
 		return C + (D - C) * ((val - A) / (B - A));
 	}
 
-	inline float RemapValClamped(float val, float A, float B, float C, float D)
+	inline float RemapValClamped(float val, float A, float B, float C, float D) noexcept
 	{
 		if (A == B)
 			return val >= B ? D : C;
@@ -201,7 +201,7 @@ namespace Math
 		return C + (D - C) * cVal;
 	}
 
-	inline Vec3 VelocityToAngles(const Vec3 &direction)
+	inline Vec3 VelocityToAngles(const Vec3 &direction) noexcept
 	{
 		auto Magnitude = [&](const Vec3 &v) -> float {
 			return sqrtf(v.Dot(v));
@@ -234,14 +234,14 @@ namespace Math
 		return { pitch, yaw, 0.0f };
 	}
 
-	inline void MatrixSetColumn(const Vec3 &in, int column, matrix3x4_t &out)
+	inline void MatrixSetColumn(const Vec3 &in, int column, matrix3x4_t &out) noexcept
 	{
 		out[0][column] = in.x;
 		out[1][column] = in.y;
 		out[2][column] = in.z;
 	}
 
-	inline void AngleMatrix(const Vec3 &angles, matrix3x4_t &matrix)
+	inline void AngleMatrix(const Vec3 &angles, matrix3x4_t &matrix) noexcept
 	{
 		float sr, sp, sy, cr, cp, cy;
 
@@ -271,7 +271,7 @@ namespace Math
 		matrix[2][3] = 0.0f;
 	}
 
-	inline void MatrixAngles(const matrix3x4_t &matrix, float *angles)
+	inline void MatrixAngles(const matrix3x4_t &matrix, float *angles) noexcept
 	{
 		float forward[3] = {};
 		float left[3] = {};
@@ -304,7 +304,7 @@ namespace Math
 		}
 	}
 
-	inline void RotateTriangle(std::array<Vec2, 3> &points, float rotation)
+	inline void RotateTriangle(std::array<Vec2, 3> &points, float rotation) noexcept
 	{
 		Vec2 points_center = (points[0] + points[1] + points[2]) / 3;
 
@@ -322,7 +322,7 @@ namespace Math
 		}
 	}
 
-	inline bool RayToOBB(const  Vec3 &origin, const  Vec3 &direction, const Vec3 &position, const Vec3 &min, const Vec3 &max, const matrix3x4_t orientation)
+	inline bool RayToOBB(const  Vec3 &origin, const  Vec3 &direction, const Vec3 &position, const Vec3 &min, const Vec3 &max, const matrix3x4_t orientation) noexcept
 	{
 		Vec3 p = position - origin;
 
@@ -361,7 +361,7 @@ namespace Math
 		return true;
 	}
 
-	inline void VectorRotate(Vec3 &in1, const matrix3x4_t &in2, Vec3 &out)
+	inline void VectorRotate(Vec3 &in1, const matrix3x4_t &in2, Vec3 &out) noexcept
 	{
 		out[0] = in1.Dot(in2[0]);
 		out[1] = in1.Dot(in2[1]);

@@ -60,20 +60,10 @@ Color_t ColorUtils::Mult(Color_t clr, float mult)
 
 std::string Color_t::toHexStr() const
 {
-	std::string rs{ r < 16 ? std::format("0{:X}", r) : std::format("{:X}", r) };
-	std::string rg{ g < 16 ? std::format("0{:X}", g) : std::format("{:X}", g) };
-	std::string rb{ b < 16 ? std::format("0{:X}", b) : std::format("{:X}", b) };
-	std::string ra{ a < 16 ? std::format("0{:X}", a) : std::format("{:X}", a) };
-
-	return rs + rg + rb + ra;
+	return std::format("{:02X}{:02X}{:02X}{:02X}", r, g, b, a);
 }
 
 std::wstring Color_t::toHexStrW() const
 {
-	std::wstring rs{ r < 16 ? std::format(L"0{:X}", r) : std::format(L"{:X}", r) };
-	std::wstring rg{ g < 16 ? std::format(L"0{:X}", g) : std::format(L"{:X}", g) };
-	std::wstring rb{ b < 16 ? std::format(L"0{:X}", b) : std::format(L"{:X}", b) };
-	std::wstring ra{ a < 16 ? std::format(L"0{:X}", a) : std::format(L"{:X}", a) };
-
-	return rs + rg + rb + ra;
+	return std::format(L"{:02X}{:02X}{:02X}{:02X}", r, g, b, a);
 }

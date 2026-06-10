@@ -21,10 +21,12 @@ std::vector<int> Memory::PatternToBytes(const char *pattern)
 	if (!pattern)
 		return bytes;
 
-	const auto start = pattern;
-	const char *const end = pattern + strlen(pattern);
+	const size_t len = strlen(pattern);
+	bytes.reserve(len / 3 + 1);
 
-	for (const char *current = start; current < end; )
+	const char *const end = pattern + len;
+
+	for (const char *current = pattern; current < end; )
 	{
 		if (*current == ' ')
 		{
@@ -61,25 +63,23 @@ std::uintptr_t Memory::FindSignature(const std::byte *image_bytes, size_t image_
 {
 	const auto pattern_bytes = PatternToBytes(szPattern);
 	const auto signature_size = pattern_bytes.size();
-	const int *signature_bytes = pattern_bytes.data();
 
 	if (!image_bytes || signature_size == 0 || signature_size > image_size)
 		return 0x0;
 
-	for (size_t i = 0; i <= image_size - signature_size; ++i)
-	{
-		bool byte_sequence_found = true;
+	const int *signature_bytes = pattern_bytes.data();
+	const size_t scan_end = image_size - signature_size;
 
-		for (size_t j = 0; j < signature_size; ++j)
+	for (size_t i = 0; i <= scan_end; ++i)
+	{
+		size_t j = 0;
+		for (; j < signature_size; ++j)
 		{
-			if (image_bytes[i + j] != static_cast<std::byte>(signature_bytes[j]) && signature_bytes[j] != -1)
-			{
-				byte_sequence_found = false;
+			if (signature_bytes[j] != -1 && image_bytes[i + j] != static_cast<std::byte>(signature_bytes[j]))
 				break;
-			}
 		}
 
-		if (byte_sequence_found)
+		if (j == signature_size)
 			return reinterpret_cast<std::uintptr_t>(&image_bytes[i]);
 	}
 

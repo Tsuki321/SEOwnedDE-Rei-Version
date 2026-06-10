@@ -25,17 +25,17 @@ namespace Colors
 
 namespace ColorUtils
 {
-	inline float ToFloat(unsigned char x)
+	inline float ToFloat(unsigned char x) noexcept
 	{
 		return static_cast<float>(x) / 255.0f;
 	}
 
-	inline unsigned long ToDWORD(Color_t x)
+	inline unsigned long ToDWORD(Color_t x) noexcept
 	{
 		return static_cast<unsigned long>(x.r & 0xFF) << 24 | static_cast<unsigned long>(x.g & 0xFF) << 16 | static_cast<unsigned long>(x.b & 0xFF) << 8 | static_cast<unsigned long>(x.a & 0xFF);
 	}
 
-	inline Color_t Rainbow(float offset, float rate = 1.f)
+	inline Color_t Rainbow(float offset, float rate = 1.f) noexcept
 	{
 		const int r = std::lround(std::cos(offset * rate + 0.0f) * 127.5f + 127.5f);
 		const int g = std::lround(std::cos(offset * rate + 2.0f) * 127.5f + 127.5f);
