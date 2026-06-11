@@ -787,18 +787,14 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 			if (ShouldFire(pCmd, pLocal, pWeapon, target))
 			{
 				HandleFire(pCmd, pWeapon);
-
-				const bool bIsFiring = IsFiring(pCmd, pWeapon);
-				G::bFiring = bIsFiring;
-
-				// Reset delay timer after firing
-				if (CFG::Aimbot_Hitscan_Delay_Fire && bIsFiring)
-					m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
 			}
-			else
-			{
-				G::bFiring = false;
-			}
+
+			const bool bIsFiring = IsFiring(pCmd, pWeapon);
+			G::bFiring = bIsFiring;
+
+			// Reset delay timer after firing
+			if (CFG::Aimbot_Hitscan_Delay_Fire && bIsFiring)
+				m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
 
 			// Are we ready to aim?
 			if (ShouldAim(pCmd, pLocal, pWeapon) || bIsFiring)
@@ -808,10 +804,10 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					Aim(pCmd, pLocal, target.AngleTo);
 				}
 
-			if (bIsFiring && target.LagRecord && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
-			{
-				pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
-			}
+				if (bIsFiring && target.LagRecord && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
+				{
+					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
+				}
 			}
 		}
 	}

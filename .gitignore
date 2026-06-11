@@ -11,7 +11,7 @@
 .github/tests/
 .github/instructions/
 !.github/workflows/
-
+CLAUDE.md
 ### C++ ###
 # Prerequisites
 *.d
