@@ -19,8 +19,8 @@ public:
 	void OnPlayerDeath(IGameEvent* event);
 
 private:
-	int m_nPendingDisguiseClass = 0;
-	bool m_bHasPendingDisguise = false;
+	std::vector<int> m_vecPendingDisguiseClasses = {};
+	float m_flDisguiseTime = 0.0f;
 };
 
 MAKE_SINGLETON_SCOPED(CMisc, Misc, F);

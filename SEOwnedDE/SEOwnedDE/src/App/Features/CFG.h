@@ -454,6 +454,10 @@ namespace CFG
 	CFGVAR(Misc_Auto_Rocket_Jump_Key, 0);
 	CFGVAR(Misc_Auto_Air_Pogo_Key, 0);
 	CFGVAR(Misc_Auto_Disguise, false);
+	CFGVAR(Misc_Auto_Disguise_Team, 0); // 0 = Enemy, 1 = Friendly
+	CFGVAR(Misc_Auto_Disguise_Delay, 1.5f);
+	CFGVAR(Misc_Auto_Disguise_Prefer_Medic, true);
+	CFGVAR(Misc_Auto_Disguise_Avoid_Scout, true);
 	CFGVAR(Misc_Auto_Medigun_Key, 0);
 	CFGVAR(Misc_Movement_Lock_Key, 0);
 	CFGVAR(Misc_Clean_Screenshot, true);

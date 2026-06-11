@@ -203,19 +203,84 @@ void CMisc::AutoDisguise(CUserCmd* cmd)
 
 	const auto local{H::Entities->GetLocal()};
 
-	if (!local || local->deadflag() || local->m_iClass() != TF_CLASS_SPY || local->InCond(TF_COND_DISGUISED) || local->InCond(TF_COND_DISGUISING))
+	if (!local || local->deadflag() || local->m_iClass() != TF_CLASS_SPY)
 	{
+		m_vecPendingDisguiseClasses.clear();
+		m_flDisguiseTime = 0.0f;
 		return;
 	}
 
-	if (!m_bHasPendingDisguise)
+	// Wait for delay and not currently disguising
+	if (m_flDisguiseTime > 0.0f && I::GlobalVars->curtime >= m_flDisguiseTime && !local->InCond(TF_COND_DISGUISING))
 	{
-		return;
-	}
+		if (!m_vecPendingDisguiseClasses.empty())
+		{
+			int selectedClass = 0;
 
-	// Execute disguise command: disguise <class> -1 (where -1 = enemy team)
-	I::EngineClient->ClientCmd_Unrestricted(std::format("disguise {} -1", m_nPendingDisguiseClass).c_str());
-	m_bHasPendingDisguise = false;
+			// Find fastest class if multiple slow classes
+			bool hasSlowClass = false;
+			int fastestClass = 0;
+			int fastestSpeed = 0;
+
+			for (int cls : m_vecPendingDisguiseClasses)
+			{
+				// Class speeds: Scout=400, Medic=320, Spy=320, Others=300
+				int speed = (cls == TF_CLASS_SCOUT) ? 400 : (cls == TF_CLASS_MEDIC || cls == TF_CLASS_SPY) ? 320 : 300;
+
+				if (speed < 400)
+					hasSlowClass = true;
+
+				if (speed > fastestSpeed)
+				{
+					fastestSpeed = speed;
+					fastestClass = cls;
+				}
+			}
+
+			if (hasSlowClass && fastestClass != 0)
+			{
+				selectedClass = fastestClass;
+			}
+			else
+			{
+				// Random selection
+				selectedClass = m_vecPendingDisguiseClasses[rand() % m_vecPendingDisguiseClasses.size()];
+			}
+
+			// Apply preferences: avoid Scout
+			if (CFG::Misc_Auto_Disguise_Avoid_Scout && selectedClass == TF_CLASS_SCOUT && m_vecPendingDisguiseClasses.size() > 1)
+			{
+				// Pick another class
+				for (int cls : m_vecPendingDisguiseClasses)
+				{
+					if (cls != TF_CLASS_SCOUT)
+					{
+						selectedClass = cls;
+						break;
+					}
+				}
+			}
+
+			// Prefer Medic if available
+			if (CFG::Misc_Auto_Disguise_Prefer_Medic)
+			{
+				for (int cls : m_vecPendingDisguiseClasses)
+				{
+					if (cls == TF_CLASS_MEDIC)
+					{
+						selectedClass = cls;
+						break;
+					}
+				}
+			}
+
+			const int team = CFG::Misc_Auto_Disguise_Team == 1 ? -2 : -1;
+			I::EngineClient->ClientCmd_Unrestricted(std::format("disguise {} {}", selectedClass, team).c_str());
+		}
+
+		m_vecPendingDisguiseClasses.clear();
+		m_flDisguiseTime = 0.0f;
+	}
 }
 
 void CMisc::OnPlayerDeath(IGameEvent* event)
@@ -271,9 +336,16 @@ void CMisc::OnPlayerDeath(IGameEvent* event)
 		return;
 	}
 
-	// Exclude Your Eternal Reward and The Wanga Prick - they auto-disguise on backstab
-	// and using disguise with full cloak on those knives consumes the entire cloak meter
+	// Exclude Your Eternal Reward and The Wanga Prick
 	if (bIsKnife && (nItemDefIndex == Spy_t_YourEternalReward || nItemDefIndex == Spy_t_TheWangaPrick))
+	{
+		return;
+	}
+
+	// Don't disguise if cloaked, low cloak, or recently damaged
+	if (pLocal->InCond(TF_COND_STEALTHED)
+		|| pLocal->m_flCloakMeter() < 30.0f
+		|| (I::GlobalVars->curtime - pLocal->m_flLastDamageTime()) < 2.0f)
 	{
 		return;
 	}
@@ -293,8 +365,15 @@ void CMisc::OnPlayerDeath(IGameEvent* event)
 		return;
 	}
 
-	m_nPendingDisguiseClass = pVictimPlayer->m_iClass();
-	m_bHasPendingDisguise = true;
+	// Add to pending list if not already present
+	const int victimClass = pVictimPlayer->m_iClass();
+	if (std::find(m_vecPendingDisguiseClasses.begin(), m_vecPendingDisguiseClasses.end(), victimClass) == m_vecPendingDisguiseClasses.end())
+	{
+		m_vecPendingDisguiseClasses.push_back(victimClass);
+	}
+
+	// Set/reset timer
+	m_flDisguiseTime = I::GlobalVars->curtime + CFG::Misc_Auto_Disguise_Delay;
 }
 
 void CMisc::AutoMedigun(CUserCmd* cmd)

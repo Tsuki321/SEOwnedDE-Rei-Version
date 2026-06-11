@@ -745,15 +745,7 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	if (Shifting::bShifting && !Shifting::bShiftingWarp)
 		return;
 
-	// When Delay Fire is toggled on mid-game, prime the timer so the first shot is also delayed
-	{
-		static bool bWasDelayEnabled = false;
-		const bool bIsDelayEnabled = CFG::Aimbot_Hitscan_Delay_Fire;
-		if (bIsDelayEnabled && !bWasDelayEnabled)
-			m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
-		bWasDelayEnabled = bIsDelayEnabled;
-	}
-
+	// Delay check - prevents snap aiming
 	if (CFG::Aimbot_Hitscan_Delay_Fire && I::GlobalVars->curtime < m_flDelayFireEndTime)
 		return;
 
@@ -795,13 +787,18 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 			if (ShouldFire(pCmd, pLocal, pWeapon, target))
 			{
 				HandleFire(pCmd, pWeapon);
+
+				const bool bIsFiring = IsFiring(pCmd, pWeapon);
+				G::bFiring = bIsFiring;
+
+				// Reset delay timer after firing
+				if (CFG::Aimbot_Hitscan_Delay_Fire && bIsFiring)
+					m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
 			}
-
-			const bool bIsFiring = IsFiring(pCmd, pWeapon);
-			G::bFiring = bIsFiring;
-
-			if (CFG::Aimbot_Hitscan_Delay_Fire && bIsFiring)
-				m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
+			else
+			{
+				G::bFiring = false;
+			}
 
 			// Are we ready to aim?
 			if (ShouldAim(pCmd, pLocal, pWeapon) || bIsFiring)
