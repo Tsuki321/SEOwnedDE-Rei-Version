@@ -2252,6 +2252,16 @@ void CMenu::MainWindow()
 		GroupBoxStart("Auto", 150);
 		{
 			CheckBox("Auto Disguise", CFG::Misc_Auto_Disguise);
+			if (CFG::Misc_Auto_Disguise)
+			{
+				SelectSingle("Team", CFG::Misc_Auto_Disguise_Team, {
+					{ "Enemy", 0 },
+					{ "Friendly", 1 }
+				});
+				SliderFloat("Delay", CFG::Misc_Auto_Disguise_Delay, 0.0f, 5.0f, 0.1f, "%.1fs");
+				CheckBox("Prefer Medic", CFG::Misc_Auto_Disguise_Prefer_Medic);
+				CheckBox("Avoid Scout", CFG::Misc_Auto_Disguise_Avoid_Scout);
+			}
 			CheckBox("Auto Vaccinator", CFG::AutoVaccinator_Active);
 			SelectSingle("Auto Vaccinator Pop", CFG::AutoVaccinator_Pop, {
 				{ "Everyone", 0 },
