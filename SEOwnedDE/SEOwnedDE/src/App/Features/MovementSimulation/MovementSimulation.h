@@ -72,6 +72,18 @@ class CMovementSimulation
 	Vec3 m_vMethod2Velocity = {};
 	Vec3 m_vMethod3OriginalVelocity = {};
 
+	struct MoveRecord_t
+	{
+		Vec3 m_vVelocity = {};
+		Vec3 m_vDirection = {};
+		float m_flSimTime = 0.0f;
+		int m_iFlags = 0;
+	};
+	std::unordered_map<int, std::deque<MoveRecord_t>> m_mMoveRecords = {};
+
+	void StoreMoveRecord(C_TFPlayer* pPlayer);
+	float CalculateHitchance(C_TFPlayer* pPlayer, int iSamples);
+
 	bool m_bOldInPrediction = false;
 	bool m_bOldFirstTimePredicted = false;
 	float m_flOldFrametime = 0.0f;

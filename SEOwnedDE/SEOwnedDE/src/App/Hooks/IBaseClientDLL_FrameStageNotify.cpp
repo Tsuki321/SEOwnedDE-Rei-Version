@@ -5,6 +5,7 @@
 #include "../Features/LagRecords/LagRecords.h"
 #include "../Features/MiscVisuals/MiscVisuals.h"
 #include "../Features/VisualUtils/VisualUtils.h"
+#include "../Features/MovementSimulation/MovementSimulation.h"
 
 MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35), void, __fastcall,
 	void* ecx, ClientFrameStage_t curStage)
@@ -94,6 +95,12 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 									F::LagRecords->AddRecord(pPlayer);
 								}
 							}
+						}
+
+						// Store movement records for hitchance calculation
+						if (CFG::Aimbot_Projectile_Hitchance_Enabled)
+						{
+							F::MovementSimulation->StoreMoveRecord(pPlayer);
 						}
 					}
 				}

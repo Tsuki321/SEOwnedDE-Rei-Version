@@ -766,6 +766,17 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 	{
 		const auto pPlayer = target.Entity->As<C_TFPlayer>();
 
+		// Hitchance check
+		if (CFG::Aimbot_Projectile_Hitchance_Enabled)
+		{
+			const int iSamples = pPlayer->m_fFlags() & FL_ONGROUND ? 4 : 3;
+			const float flHitchance = F::MovementSimulation->CalculateHitchance(pPlayer, iSamples);
+			const float flMinimum = CFG::Aimbot_Projectile_Hitchance_Minimum / 100.0f;
+
+			if (flHitchance < flMinimum)
+				return false;
+		}
+
 		CMovementSimScope simScope(pPlayer);
 		if (!simScope)
 			return false;

@@ -401,18 +401,146 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 		return diff;
 	};
 
-	if (CFG::Aimbot_Projectile_Ground_Strafe_Prediction && (m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && F::LagRecords->HasRecords(pPlayer))
+	if (pPlayer->m_vecVelocity().Length2D() > 10.0f)
+	{
+		const Vec3 vCurrentDirection = Math::VelocityToAngles(pPlayer->m_vecVelocity());
+		static std::unordered_map<int, float> s_mLastYaw;
+
+		const float flCurrentYaw = vCurrentDirection.y;
+		const float flLastYaw = s_mLastYaw[pPlayer->entindex()];
+
+		if (flLastYaw != 0.0f)
+		{
+			const float flYawChange = NormalizeYawDiff(flCurrentYaw, flLastYaw);
+			m_flYawTurnRate = fabsf(flYawChange);
+		}
+
+		s_mLastYaw[pPlayer->entindex()] = flCurrentYaw;
+	}
+}
+
+void CMovementSimulation::StoreMoveRecord(C_TFPlayer* pPlayer)
+{
+	if (!pPlayer || pPlayer->deadflag())
+		return;
+
+	auto& vRecords = m_mMoveRecords[pPlayer->entindex()];
+
+	MoveRecord_t record = {};
+	record.m_vVelocity = pPlayer->m_vecVelocity();
+	record.m_vDirection = pPlayer->m_vecVelocity().Length2D() > 1.0f ? Math::VelocityToAngles(pPlayer->m_vecVelocity()) : Vec3{};
+	record.m_flSimTime = pPlayer->m_flSimulationTime();
+	record.m_iFlags = pPlayer->m_fFlags();
+
+	vRecords.push_front(record);
+
+	if (vRecords.size() > 66)
+		vRecords.pop_back();
+}
+
+float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
+{
+	if (!pPlayer)
+		return 0.0f;
+
+	auto& vRecords = m_mMoveRecords[pPlayer->entindex()];
+	if (vRecords.size() < 3)
+		return 1.0f;
+
+	const auto iRecordCount = std::min(static_cast<int>(vRecords.size()), 30);
+	if (iRecordCount < 3)
+		return 1.0f;
+
+	float flCurrentChance = 1.0f;
+	float flAverageYaw = 0.0f;
+	int iSampleCount = 0;
+
+	for (int i = 0; i < iRecordCount - 1; i++)
+	{
+		if (i + 1 >= static_cast<int>(vRecords.size()))
+			break;
+
+		const auto& record1 = vRecords[i];
+		const auto& record2 = vRecords[i + 1];
+
+		if (record1.m_vDirection.IsZero() || record2.m_vDirection.IsZero())
+			continue;
+
+		const float flYaw1 = record1.m_vDirection.y;
+		const float flYaw2 = record2.m_vDirection.y;
+		const float flTimeDelta = std::max(record1.m_flSimTime - record2.m_flSimTime, TICK_INTERVAL);
+		const int iTicks = std::max(TIME_TO_TICKS(flTimeDelta), 1);
+
+		float flYawChange = Math::NormalizeAngle(flYaw1 - flYaw2) / static_cast<float>(iTicks);
+
+		flAverageYaw += flYawChange;
+		iSampleCount++;
+
+		if ((i + 1) % iSamples == 0 || i == iRecordCount - 2)
+		{
+			const float flSampleAvg = flAverageYaw / static_cast<float>(iSampleCount);
+
+			static std::unordered_map<int, float> s_mExpectedYaw;
+			const float flExpected = s_mExpectedYaw[pPlayer->entindex()];
+
+			if (flExpected != 0.0f && fabsf(flExpected - flSampleAvg) > 1.5f)
+			{
+				const float flPenalty = 1.0f / (static_cast<float>((iRecordCount - 1) / iSamples) + 1.0f);
+				flCurrentChance -= flPenalty;
+			}
+
+			s_mExpectedYaw[pPlayer->entindex()] = flSampleAvg;
+			flAverageYaw = 0.0f;
+			iSampleCount = 0;
+		}
+	}
+
+	return std::clamp(flCurrentChance, 0.0f, 1.0f);
+}
+
+void CMovementSimulation::RunTick(float flTimeToTarget)
+{
+	if (!m_pPlayer)
+		return;
+
+	// Wraps a yaw angle difference to [-180, 180] to handle ±180° boundary crossings
+	const auto NormalizeYawDiff = [](float yawNew, float yawOld) -> float
+	{
+		float diff = yawNew - yawOld;
+		while (diff > 180.0f) diff -= 360.0f;
+		while (diff < -180.0f) diff += 360.0f;
+		return diff;
+	};
+
+	if (m_pPlayer->m_vecVelocity().Length2D() > 10.0f)
+	{
+		const Vec3 vCurrentDirection = Math::VelocityToAngles(m_pPlayer->m_vecVelocity());
+		static std::unordered_map<int, float> s_mLastYaw;
+
+		const float flCurrentYaw = vCurrentDirection.y;
+		const float flLastYaw = s_mLastYaw[m_pPlayer->entindex()];
+
+		if (flLastYaw != 0.0f)
+		{
+			const float flYawChange = NormalizeYawDiff(flCurrentYaw, flLastYaw);
+			m_flYawTurnRate = fabsf(flYawChange);
+		}
+
+		s_mLastYaw[m_pPlayer->entindex()] = flCurrentYaw;
+	}
+
+	if (CFG::Aimbot_Projectile_Ground_Strafe_Prediction && (m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && F::LagRecords->HasRecords(m_pPlayer))
 	{
 		if (m_MoveData.m_vecVelocity.Length2D() < (m_MoveData.m_flMaxSpeed * 0.85f))
 		{
 			return;
 		}
 
-		const auto pRecord0 = F::LagRecords->GetRecord(pPlayer, 0);
-		const auto pRecord1 = F::LagRecords->GetRecord(pPlayer, 1);
-		const auto pRecord2 = F::LagRecords->GetRecord(pPlayer, 2);
-		const auto pRecord3 = F::LagRecords->GetRecord(pPlayer, 3);
-		const auto pRecord4 = F::LagRecords->GetRecord(pPlayer, 4);
+		const auto pRecord0 = F::LagRecords->GetRecord(m_pPlayer, 0);
+		const auto pRecord1 = F::LagRecords->GetRecord(m_pPlayer, 1);
+		const auto pRecord2 = F::LagRecords->GetRecord(m_pPlayer, 2);
+		const auto pRecord3 = F::LagRecords->GetRecord(m_pPlayer, 3);
+		const auto pRecord4 = F::LagRecords->GetRecord(m_pPlayer, 4);
 
 		if (pRecord0 && pRecord1 && pRecord2 && pRecord3 && pRecord4)
 		{
@@ -448,13 +576,13 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 		}
 	}
 
-	if (CFG::Aimbot_Projectile_Air_Strafe_Prediction && !(m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && F::LagRecords->HasRecords(pPlayer))
+	if (CFG::Aimbot_Projectile_Air_Strafe_Prediction && !(m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && F::LagRecords->HasRecords(m_pPlayer))
 	{
-		const LagRecord_t* rec0{F::LagRecords->GetRecord(pPlayer, 0)};
-		const LagRecord_t* rec1{F::LagRecords->GetRecord(pPlayer, 1)};
-		const LagRecord_t* rec2{F::LagRecords->GetRecord(pPlayer, 2)};
-		const LagRecord_t* rec3{F::LagRecords->GetRecord(pPlayer, 3)};
-		const LagRecord_t* rec4{F::LagRecords->GetRecord(pPlayer, 4)};
+		const LagRecord_t* rec0{F::LagRecords->GetRecord(m_pPlayer, 0)};
+		const LagRecord_t* rec1{F::LagRecords->GetRecord(m_pPlayer, 1)};
+		const LagRecord_t* rec2{F::LagRecords->GetRecord(m_pPlayer, 2)};
+		const LagRecord_t* rec3{F::LagRecords->GetRecord(m_pPlayer, 3)};
+		const LagRecord_t* rec4{F::LagRecords->GetRecord(m_pPlayer, 4)};
 
 		if (rec0 && rec1 && rec2 && rec3 && rec4)
 		{

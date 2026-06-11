@@ -55,6 +55,8 @@ namespace CFG
 	CFGVAR(Aimbot_Projectile_FOV, 45.0f);
 	CFGVAR(Aimbot_Projectile_Max_Simulation_Time, 1.5f);
 	CFGVAR(Aimbot_Projectile_Max_Processing_Targets, 1);
+	CFGVAR(Aimbot_Projectile_Hitchance_Enabled, false);
+	CFGVAR(Aimbot_Projectile_Hitchance_Minimum, 50.0f); // 0-100%
 
 	CFGVAR(Aimbot_Melee_Active, true);
 	CFGVAR(Aimbot_Melee_Always_Active, false);
