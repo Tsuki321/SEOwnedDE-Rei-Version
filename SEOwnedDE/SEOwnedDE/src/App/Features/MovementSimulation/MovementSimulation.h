@@ -81,9 +81,6 @@ class CMovementSimulation
 	};
 	std::unordered_map<int, std::deque<MoveRecord_t>> m_mMoveRecords = {};
 
-	void StoreMoveRecord(C_TFPlayer* pPlayer);
-	float CalculateHitchance(C_TFPlayer* pPlayer, int iSamples);
-
 	bool m_bOldInPrediction = false;
 	bool m_bOldFirstTimePredicted = false;
 	float m_flOldFrametime = 0.0f;
@@ -97,6 +94,9 @@ public:
 
 	const Vec3& GetOrigin() { return m_MoveData.m_vecAbsOrigin; }
 	bool IsRunning() { return m_bRunning; }
+
+	void StoreMoveRecord(C_TFPlayer* pPlayer);
+	float CalculateHitchance(C_TFPlayer* pPlayer, int iSamples);
 };
 
 // RAII scope guard: ensures Restore() is called on all exit paths.
