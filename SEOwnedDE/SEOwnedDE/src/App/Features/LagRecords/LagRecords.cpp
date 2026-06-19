@@ -91,8 +91,13 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		const auto pLocal = H::Entities->GetLocal();
 		if (pLocal && F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin()))
 		{
+			// Bound the peer walk: a corrupted/recycled move-peer chain could
+			// otherwise cycle indefinitely and freeze the net-update thread. 64
+			// is well above any realistic cosmetic/weapon count (typically <10).
+			constexpr int MAX_MOVE_CHILDREN = 64;
+			int nChild = 0;
 			auto attach = pPlayer->FirstMoveChild();
-			while (attach)
+			while (attach && nChild < MAX_MOVE_CHILDREN)
 			{
 				if (attach->ShouldDraw())
 				{
@@ -112,6 +117,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 					}
 				}
 
+				++nChild;
 				attach = attach->NextMovePeer();
 			}
 		}
@@ -314,10 +320,18 @@ void CLagRecords::UpdateRecords()
 		auto& records = m_LagRecords[i];
 		const size_t head = m_RecordHeads[i];
 
-		// All records in this ring belong to the same player (AddRecord
-		// invariant), so the live simtime / dormancy status are constant.
-		C_TFPlayer* pFirstPlayer = records[head].Player;
-		if (!pFirstPlayer || pFirstPlayer->IsDormant())
+		// Validate the stored Player pointer against the live entity list before
+		// dereferencing it. The ring is keyed by entity index, so re-fetch
+		// whatever entity currently occupies this slot and compare by pointer
+		// (never dereferences the stored pointer). A raw C_TFPlayer* kept across
+		// the unlag window can dangle after a disconnect/recycle and fault on the
+		// reads below; on mismatch/dormancy/death, drop the ring.
+		C_TFPlayer* pFirstPlayer = nullptr;
+		if (const auto pClientEnt = I::ClientEntityList->GetClientEntity(i))
+			pFirstPlayer = pClientEnt->As<C_TFPlayer>();
+
+		if (!pFirstPlayer || pFirstPlayer->IsDormant() || pFirstPlayer->deadflag()
+			|| pFirstPlayer != records[head].Player)
 		{
 			m_RecordCounts[i] = 0u;
 			m_CachedStates[i] = {};
@@ -407,6 +421,14 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	if (!pCachedBoneData)
 		return;
 
+	// Sanity-guard the cached bone count. GetCachedBoneData() resolves a
+	// CUtlVector at a netvar-derived offset; a stale offset after a TF2 patch
+	// makes Count() read garbage and turns the memcpys below into reads past
+	// the bone buffer. Bail (no-op) instead of trusting it.
+	const int nLiveCount = pCachedBoneData->Count();
+	if (nLiveCount <= 0 || nLiveCount > MAX_BONE_COUNT)
+		return;
+
 	auto& entry = m_Stack[m_nActiveDepth];
 	entry.Player = pPlayer;
 	entry.AbsOrigin = pPlayer->GetAbsOrigin();
@@ -446,6 +468,12 @@ void CLagRecordMatrixHelper::Restore()
 	if (!pCachedBoneData)
 		return;
 
-	const int nBoneCount = std::min(pCachedBoneData->Count(), entry.BoneCount);
+	// Sanity-guard (see Set): a stale bone-cache offset yields a bogus Count()
+	// and the memcpy below would overrun. Bail instead.
+	const int nCachedRestore = pCachedBoneData->Count();
+	if (nCachedRestore <= 0 || nCachedRestore > MAX_BONE_COUNT)
+		return;
+
+	const int nBoneCount = std::min(nCachedRestore, entry.BoneCount);
 	memcpy(pCachedBoneData->Base(), entry.BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
 }

@@ -108,7 +108,27 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 				{
 					if (const auto bones = ent->As<C_BaseAnimating>()->GetCachedBoneData())
 					{
-						const int nCopyCount = std::min(nMaxBones, bones->Count());
+						// Sanity-guard the cached bone count. GetCachedBoneData() resolves a
+						// CUtlVector at a netvar-derived offset (m_hLightingOrigin - 88); a stale
+						// offset after a TF2 patch makes Count() read garbage, and serving a bogus
+						// count turns the memcpy below into a heap overwrite. Bail to the engine
+						// path instead of trusting it.
+						const int nCachedCount = bones->Count();
+						if (nCachedCount <= 0 || nCachedCount > MAX_BONE_COUNT)
+						{
+							return CALL_ORIGINAL(ecx, pBoneToWorldOut, nMaxBones, boneMask, currentTime);
+						}
+
+						const int nCopyCount = std::min(nMaxBones, nCachedCount);
+
+						// Never report success having written zero bones. Callers read bone indices
+						// from pBoneToWorldOut assuming SetupBones populated them; returning true with
+						// nothing written yields uninitialized/NaN transforms and downstream faults.
+						if (nCopyCount <= 0)
+						{
+							return CALL_ORIGINAL(ecx, pBoneToWorldOut, nMaxBones, boneMask, currentTime);
+						}
+
 						std::memcpy(pBoneToWorldOut, bones->Base(), sizeof(matrix3x4_t) * nCopyCount);
 
 						// Offset cached bones to match the engine-interpolated visual origin.
@@ -168,8 +188,10 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 									}
 								}
 
-							// Phase 2: bone interpolation - skip for distant players and small movements
-							if (nRecords >= 2 && distSqr < kLerpDistThresholdSqr)
+							// Phase 2: bone interpolation - skip for distant players, small movements,
+						// and the yaw-rotation path (the translational blend would double-correct
+						// an already-yaw-rotated skeleton, causing jitter on fast spins).
+							if (std::fabs(deltaYaw) <= kYawEpsilonDeg && nRecords >= 2 && distSqr < kLerpDistThresholdSqr)
 							{
 								if (const auto pPrev = F::LagRecords->GetRecord(pPlayer, 1))
 								{
