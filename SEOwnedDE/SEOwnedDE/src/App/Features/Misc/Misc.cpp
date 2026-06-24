@@ -203,12 +203,15 @@ void CMisc::AutoDisguise(CUserCmd* cmd)
 
 	const auto local{H::Entities->GetLocal()};
 
-	if (!local || local->deadflag() || local->m_iClass() != TF_CLASS_SPY || local->InCond(TF_COND_DISGUISED))
+	if (!local || local->deadflag() || local->m_iClass() != TF_CLASS_SPY)
 	{
 		m_vecPendingDisguiseClasses.clear();
 		m_flDisguiseTime = 0.0f;
 		return;
 	}
+
+	if (local->InCond(TF_COND_DISGUISED))
+		return;
 
 	// Wait for delay and not currently disguising
 	if (m_flDisguiseTime > 0.0f && I::GlobalVars->curtime >= m_flDisguiseTime && !local->InCond(TF_COND_DISGUISING))

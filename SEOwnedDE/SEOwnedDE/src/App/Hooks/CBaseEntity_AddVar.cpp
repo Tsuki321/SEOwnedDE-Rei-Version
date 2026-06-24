@@ -12,26 +12,11 @@ MAKE_HOOK(CBaseEntity_AddVar, Signatures::CBaseEntity_AddVar.Get(), void, __fast
 		const auto hash = HASH_RT(watcher->GetDebugName());
 
 		static constexpr auto m_iv_vecVelocity = HASH_CT("C_BaseEntity::m_iv_vecVelocity");
-		static constexpr auto m_iv_angEyeAngles = HASH_CT("C_TFPlayer::m_iv_angEyeAngles");
-		static constexpr auto m_iv_flPoseParameter = HASH_CT("C_BaseAnimating::m_iv_flPoseParameter");
-		static constexpr auto m_iv_flCycle = HASH_CT("C_BaseAnimating::m_iv_flCycle");
 		static constexpr auto m_iv_flMaxGroundSpeed = HASH_CT("CMultiPlayerAnimState::m_iv_flMaxGroundSpeed");
 
 		if (hash == m_iv_vecVelocity
-			|| hash == m_iv_flPoseParameter
-			|| hash == m_iv_flCycle
 			|| hash == m_iv_flMaxGroundSpeed)
 			return;
-
-		C_BaseEntity* pLocal = nullptr;
-		if (H::Entities && I::ClientEntityList && I::EngineClient)
-			pLocal = H::Entities->GetLocal();
-
-		if (ecx != pLocal)
-		{
-			if (hash == m_iv_angEyeAngles)
-				return;
-		}
 	}
 
 	CALL_ORIGINAL(ecx, data, watcher, type, bSetup);

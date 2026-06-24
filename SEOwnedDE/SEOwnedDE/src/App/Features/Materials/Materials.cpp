@@ -305,7 +305,7 @@ void CMaterials::RunLagRecords()
 
 		if (CFG::Materials_Players_LagRecords_Style == 0)
 		{
-			constexpr int MAX_RENDERED_RECORDS = 12;
+			constexpr int MAX_RENDERED_RECORDS = 6;
 			const int nRenderEnd = std::min(nRecords, MAX_RENDERED_RECORDS + 1);
 
 			for (int n = 1; n < nRenderEnd; n++)

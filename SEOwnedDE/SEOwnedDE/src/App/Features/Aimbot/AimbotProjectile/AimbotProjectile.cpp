@@ -804,8 +804,6 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 
 			target.TimeToTarget = flTimeToTarget;
 
-			int nTargetTick = TIME_TO_TICKS(flTimeToTarget + flTimingBias);
-
 			//fuck you KGB
 			/*if (CFG::Aimbot_Projectile_Aim_Type == 1)
 				nTargetTick += 1;*/
