@@ -404,10 +404,9 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 	if (pPlayer->m_vecVelocity().Length2D() > 10.0f)
 	{
 		const Vec3 vCurrentDirection = Math::VelocityToAngles(pPlayer->m_vecVelocity());
-		static std::unordered_map<int, float> s_mLastYaw;
 
 		const float flCurrentYaw = vCurrentDirection.y;
-		const float flLastYaw = s_mLastYaw[pPlayer->entindex()];
+		const float flLastYaw = m_afLastYaw[pPlayer->entindex()];
 
 		if (flLastYaw != 0.0f)
 		{
@@ -415,7 +414,7 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 			m_flYawTurnRate = fabsf(flYawChange);
 		}
 
-		s_mLastYaw[pPlayer->entindex()] = flCurrentYaw;
+		m_afLastYaw[pPlayer->entindex()] = flCurrentYaw;
 	}
 }
 
@@ -480,8 +479,7 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 		{
 			const float flSampleAvg = flAverageYaw / static_cast<float>(iSampleCount);
 
-			static std::unordered_map<int, float> s_mExpectedYaw;
-			const float flExpected = s_mExpectedYaw[pPlayer->entindex()];
+			const float flExpected = m_afExpectedYaw[pPlayer->entindex()];
 
 			if (flExpected != 0.0f && fabsf(flExpected - flSampleAvg) > 1.5f)
 			{
@@ -489,7 +487,7 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 				flCurrentChance -= flPenalty;
 			}
 
-			s_mExpectedYaw[pPlayer->entindex()] = flSampleAvg;
+			m_afExpectedYaw[pPlayer->entindex()] = flSampleAvg;
 			flAverageYaw = 0.0f;
 			iSampleCount = 0;
 		}

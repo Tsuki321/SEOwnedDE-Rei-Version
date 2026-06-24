@@ -203,7 +203,7 @@ void CMisc::AutoDisguise(CUserCmd* cmd)
 
 	const auto local{H::Entities->GetLocal()};
 
-	if (!local || local->deadflag() || local->m_iClass() != TF_CLASS_SPY)
+	if (!local || local->deadflag() || local->m_iClass() != TF_CLASS_SPY || local->InCond(TF_COND_DISGUISED))
 	{
 		m_vecPendingDisguiseClasses.clear();
 		m_flDisguiseTime = 0.0f;

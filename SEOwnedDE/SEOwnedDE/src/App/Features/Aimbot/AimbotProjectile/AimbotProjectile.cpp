@@ -1070,12 +1070,16 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 			return false;
 		};
 
+		const float flTimingBias = ProjectilePredictionMath::ComputeTimingBias(SDKUtils::GetLatency(), SDKUtils::GetLerp());
+		const float flTemporalTolerance = TICK_INTERVAL * 2.0f;
+
 		if (!CalcProjAngle(vLocalPos, vTarget, target.AngleTo, flTimeToTarget))
 			return false;
 
 		target.TimeToTarget = flTimeToTarget;
 
-	int nTargetTick = TIME_TO_TICKS(flTimeToTarget + SDKUtils::GetLatency() + SDKUtils::GetLerp());
+		if (flTimeToTarget + flTimingBias > CFG::Aimbot_Projectile_Max_Simulation_Time + flTemporalTolerance)
+			return false;
 
 		if (pWeapon->GetWeaponID() == TF_WEAPON_PIPEBOMBLAUNCHER)
 		{
@@ -1085,16 +1089,13 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 			}
 		}
 
-		if (nTargetTick <= TIME_TO_TICKS(CFG::Aimbot_Projectile_Max_Simulation_Time))
+		if (CanSee(pLocal, pWeapon, vLocalPos, vTarget, target, flTimeToTarget))
 		{
-			if (CanSee(pLocal, pWeapon, vLocalPos, vTarget, target, flTimeToTarget))
-			{
-				return true;
-			}
-			if (CFG::Aimbot_Projectile_Rocket_Splash && runSplash())
-			{
-				return true;
-			}
+			return true;
+		}
+		if (CFG::Aimbot_Projectile_Rocket_Splash && runSplash())
+		{
+			return true;
 		}
 	}
 

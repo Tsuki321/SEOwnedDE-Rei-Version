@@ -95,7 +95,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 
 		case TF_WEAPON_COMPOUND_BOW:
 		{
-			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, -8.0f, -3.0f }, angles, pos, ang, false);
+			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, 8.0f, -3.0f }, angles, pos, ang, false);
 
 			auto charge_begin_time{ weapon->As<C_TFPipebombLauncher>()->m_flChargeBeginTime() };
 			auto charge{ cur_time - charge_begin_time };
@@ -116,7 +116,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 		case TF_WEAPON_CROSSBOW:
 		case TF_WEAPON_SHOTGUN_BUILDING_RESCUE:
 		{
-			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, -8.0f, -3.0f }, angles, pos, ang, false);
+			SDKUtils::GetProjectileFireSetupRebuilt(player, { 23.5f, 8.0f, -3.0f }, angles, pos, ang, false);
 
 			out = { TF_PROJECTILE_ARROW, pos, ang, 2400.0f, 0.2f, true };
 

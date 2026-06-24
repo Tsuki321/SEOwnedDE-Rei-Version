@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
+#include <array>
 
 class CMovementSimulation
 {
@@ -79,6 +80,8 @@ class CMovementSimulation
 		float m_flSimTime = 0.0f;
 		int m_iFlags = 0;
 	};
+	std::array<float, MAX_PLAYERS> m_afLastYaw = {};
+	std::array<float, MAX_PLAYERS> m_afExpectedYaw = {};
 	std::unordered_map<int, std::deque<MoveRecord_t>> m_mMoveRecords = {};
 
 	bool m_bOldInPrediction = false;
