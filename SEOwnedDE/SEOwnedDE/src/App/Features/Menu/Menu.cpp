@@ -1272,8 +1272,8 @@ void CMenu::MainWindow()
 					});
 
 				SelectSingle("Prediction Method", CFG::Aimbot_Projectile_Aim_Prediction_Method, {
-					{ "Linear", 0 },
-					{ "Acceleration", 1 }
+					{ "Constant Velocity", 0 },
+					{ "Acceleration Tracking", 1 }
 				});
 				SliderFloat("FOV", CFG::Aimbot_Projectile_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Max Simulation Time", CFG::Aimbot_Projectile_Max_Simulation_Time, 1.0f, 5.0f, 0.5f, "%.1fs");
