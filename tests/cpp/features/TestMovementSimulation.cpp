@@ -30,8 +30,7 @@ TEST(MovementSimulationContracts, MainSourceContainsFeatureTokens) {
 
     const auto mainSource = testhelpers::ReadTextFile(mainPath);
     EXPECT_NE(mainSource.find("CFG::Aimbot_Projectile_Aim_Prediction_Method"), std::string::npos);
-    EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 2"), std::string::npos);
-    EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 3"), std::string::npos);
+    EXPECT_NE(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 1"), std::string::npos);
     EXPECT_NE(mainSource.find("m_vAdaptiveVelocity"), std::string::npos);
     EXPECT_NE(mainSource.find("m_vAccelTrend"), std::string::npos);
     EXPECT_NE(mainSource.find("flRecordConfidence"), std::string::npos);

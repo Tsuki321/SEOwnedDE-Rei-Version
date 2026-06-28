@@ -1,4 +1,4 @@
-﻿#include "MovementSimulation.h"
+#include "MovementSimulation.h"
 
 #include "../LagRecords/LagRecords.h"
 
@@ -127,139 +127,10 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 
 	pMoveData->m_vecViewAngles = {0.0f, Math::VelocityToAngles(pMoveData->m_vecVelocity).y, 0.0f};
 
-	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 0)
+	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 1)
 	{
-		pMoveData->m_flForwardMove = 450.0f;
-		pMoveData->m_flSideMove = 0.0f;
-	}
-
-	else if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 1)
-	{
-		Vec3 vForward = {}, vRight = {};
-		Math::AngleVectors(pMoveData->m_vecViewAngles, &vForward, &vRight, nullptr);
-
-		if (fabsf(vRight.x) > 0.001f)
-		{
-			const float flRatio = vRight.y / vRight.x;
-			const float flDenom = vForward.y - flRatio * vForward.x;
-
-			if (fabsf(flDenom) > 0.001f)
-				pMoveData->m_flForwardMove = (pMoveData->m_vecVelocity.y - flRatio * pMoveData->m_vecVelocity.x) / flDenom;
-			else
-				pMoveData->m_flForwardMove = 0.0f;
-
-			pMoveData->m_flSideMove = (pMoveData->m_vecVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
-		}
-		else
-		{
-			pMoveData->m_flForwardMove = 450.0f;
-			pMoveData->m_flSideMove = 0.0f;
-		}
-	}
-
-	else if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 2)
-	{
-		// Velocity Extrapolation: use lag records to compute acceleration trend
-		// and project a predicted velocity, then decompose into move inputs
-		Vec3 vPredictedVelocity = pMoveData->m_vecVelocity;
-
-		if (F::LagRecords->HasRecords(pPlayer))
-		{
-			const LagRecord_t* rec0 = F::LagRecords->GetRecord(pPlayer, 0);
-			const LagRecord_t* rec1 = F::LagRecords->GetRecord(pPlayer, 1);
-			const LagRecord_t* rec2 = F::LagRecords->GetRecord(pPlayer, 2);
-			const LagRecord_t* rec3 = F::LagRecords->GetRecord(pPlayer, 3);
-
-			if (rec0 && rec1 && rec2 && rec3)
-			{
-				// Compute acceleration between each pair of records, scaled to per-tick using actual time deltas
-				const float dt01 = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
-				const float dt12 = std::max(rec1->SimulationTime - rec2->SimulationTime, TICK_INTERVAL);
-				const float dt23 = std::max(rec2->SimulationTime - rec3->SimulationTime, TICK_INTERVAL);
-
-				const Vec3 accel01 = (rec0->Velocity - rec1->Velocity) / dt01 * TICK_INTERVAL;
-				const Vec3 accel12 = (rec1->Velocity - rec2->Velocity) / dt12 * TICK_INTERVAL;
-				const Vec3 accel23 = (rec2->Velocity - rec3->Velocity) / dt23 * TICK_INTERVAL;
-
-				// weighted average: more recent acceleration is more important
-				// weights: 0.5 for most recent, 0.3 for middle, 0.2 for oldest
-				Vec3 vAvgAccel = {};
-				vAvgAccel.x = accel01.x * 0.5f + accel12.x * 0.3f + accel23.x * 0.2f;
-				vAvgAccel.y = accel01.y * 0.5f + accel12.y * 0.3f + accel23.y * 0.2f;
-				vAvgAccel.z = 0.0f; // don't extrapolate vertical, gravity handles it
-
-				// apply one tick of extrapolated acceleration to current velocity
-				vPredictedVelocity.x += vAvgAccel.x;
-				vPredictedVelocity.y += vAvgAccel.y;
-
-				// clamp to max speed to avoid unrealistic predictions
-				const float flPredSpeed = vPredictedVelocity.Length2D();
-				const float flMaxSpeedLimit = pMoveData->m_flMaxSpeed * 1.2f; // allow slight overshoot for acceleration
-				if (flPredSpeed > flMaxSpeedLimit && flPredSpeed > 0.001f)
-				{
-					const float flScale = flMaxSpeedLimit / flPredSpeed;
-					vPredictedVelocity.x *= flScale;
-					vPredictedVelocity.y *= flScale;
-				}
-
-				// Store for per-tick application in RunTick
-				m_vMethod2Accel = vAvgAccel;
-				m_vMethod2Velocity = vPredictedVelocity;
-			}
-			else if (rec0 && rec1)
-			{
-				// fallback: only 2 records available, scale by actual time delta
-				const float dt = std::max(rec0->SimulationTime - rec1->SimulationTime, TICK_INTERVAL);
-				const Vec3 vAccel = (rec0->Velocity - rec1->Velocity) / dt * TICK_INTERVAL;
-				vPredictedVelocity.x += vAccel.x;
-				vPredictedVelocity.y += vAccel.y;
-
-				const float flPredSpeed = vPredictedVelocity.Length2D();
-				const float flMaxSpeedLimit = pMoveData->m_flMaxSpeed * 1.2f;
-				if (flPredSpeed > flMaxSpeedLimit && flPredSpeed > 0.001f)
-				{
-					const float flScale = flMaxSpeedLimit / flPredSpeed;
-					vPredictedVelocity.x *= flScale;
-					vPredictedVelocity.y *= flScale;
-				}
-
-				// Store fallback accel for per-tick application
-				m_vMethod2Accel = vAccel;
-				m_vMethod2Velocity = vPredictedVelocity;
-			}
-		}
-
-		// update view angles to match predicted velocity direction
-		if (vPredictedVelocity.Length2D() > 1.0f)
-			pMoveData->m_vecViewAngles = { 0.0f, Math::VelocityToAngles(vPredictedVelocity).y, 0.0f };
-
-		// decompose predicted velocity into forward/side move
-		Vec3 vForward = {}, vRight = {};
-		Math::AngleVectors(pMoveData->m_vecViewAngles, &vForward, &vRight, nullptr);
-
-		if (fabsf(vRight.x) > 0.001f)
-		{
-			const float flRatio = vRight.y / vRight.x;
-			const float flDenom = vForward.y - flRatio * vForward.x;
-
-			if (fabsf(flDenom) > 0.001f)
-				pMoveData->m_flForwardMove = (vPredictedVelocity.y - flRatio * vPredictedVelocity.x) / flDenom;
-			else
-				pMoveData->m_flForwardMove = 0.0f;
-
-			pMoveData->m_flSideMove = (vPredictedVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
-		}
-		else
-		{
-			pMoveData->m_flForwardMove = 450.0f;
-			pMoveData->m_flSideMove = 0.0f;
-		}
-	}
-
-	else if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 3)
-	{
-		// Adaptive Accel Tracking: regresses recent lag-record velocity over time,
-		// then updates movement inputs each simulation tick with drift limiting.
+		// Acceleration-based: regress recent lag-record velocities over time,
+		// then update movement inputs each simulation tick with drift limiting.
 		m_vAccelTrend = {};
 		m_vAdaptiveVelocity = pMoveData->m_vecVelocity;
 
@@ -291,15 +162,11 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 				for (const LagRecord_t* record : records)
 				{
 					if (!record)
-					{
 						continue;
-					}
 
 					const float flAge = rec0->SimulationTime - record->SimulationTime;
 					if (flAge < -TICK_INTERVAL || flAge > TICK_INTERVAL * 8.0f)
-					{
 						continue;
-					}
 
 					const float flTime = -std::max(flAge, 0.0f);
 					flSumTime += flTime;
@@ -334,10 +201,8 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 				m_vAccelTrend.z = 0.0f;
 			}
 
-			// Store original velocity for drift limiting
 			m_vMethod3OriginalVelocity = m_vAdaptiveVelocity;
 
-			// Clamp accel trend to reasonable range (prevent over-prediction)
 			const float flAccelMag = m_vAccelTrend.Length2D();
 			const float flMaxAccel = pMoveData->m_flMaxSpeed * 0.15f;
 			if (flAccelMag > flMaxAccel && flAccelMag > 0.001f)
@@ -347,7 +212,6 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 			}
 		}
 
-		// Initial decomposition of current velocity into movement inputs
 		if (m_vAdaptiveVelocity.Length2D() > 1.0f)
 			pMoveData->m_vecViewAngles = { 0.0f, Math::VelocityToAngles(m_vAdaptiveVelocity).y, 0.0f };
 
@@ -365,6 +229,31 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 				pMoveData->m_flForwardMove = 0.0f;
 
 			pMoveData->m_flSideMove = (m_vAdaptiveVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
+		}
+		else
+		{
+			pMoveData->m_flForwardMove = 450.0f;
+			pMoveData->m_flSideMove = 0.0f;
+		}
+	}
+
+	else
+	{
+		// Linear: decompose current velocity into forward/side move
+		Vec3 vForward = {}, vRight = {};
+		Math::AngleVectors(pMoveData->m_vecViewAngles, &vForward, &vRight, nullptr);
+
+		if (fabsf(vRight.x) > 0.001f)
+		{
+			const float flRatio = vRight.y / vRight.x;
+			const float flDenom = vForward.y - flRatio * vForward.x;
+
+			if (fabsf(flDenom) > 0.001f)
+				pMoveData->m_flForwardMove = (pMoveData->m_vecVelocity.y - flRatio * pMoveData->m_vecVelocity.x) / flDenom;
+			else
+				pMoveData->m_flForwardMove = 0.0f;
+
+			pMoveData->m_flSideMove = (pMoveData->m_vecVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
 		}
 		else
 		{
@@ -611,51 +500,13 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 		m_MoveData.m_vecViewAngles.y += m_flYawTurnRate;
 	}
 
-	// Method 2: per-tick velocity extrapolation â€” advance predicted velocity by
-	// the acceleration trend and recompute movement inputs each tick
-	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 2 && m_vMethod2Velocity.Length2D() > 1.0f)
-	{
-		m_vMethod2Velocity.x += m_vMethod2Accel.x;
-		m_vMethod2Velocity.y += m_vMethod2Accel.y;
-
-		// Clamp to max speed so prediction doesn't diverge
-		const float flPredSpeed = m_vMethod2Velocity.Length2D();
-		if (flPredSpeed > m_MoveData.m_flMaxSpeed * 1.1f && flPredSpeed > 0.001f)
-		{
-			const float flScale = m_MoveData.m_flMaxSpeed * 1.1f / flPredSpeed;
-			m_vMethod2Velocity.x *= flScale;
-			m_vMethod2Velocity.y *= flScale;
-		}
-
-		const Vec3 vNewAngles = { 0.0f, Math::VelocityToAngles(m_vMethod2Velocity).y, 0.0f };
-		Vec3 vForward = {}, vRight = {};
-		Math::AngleVectors(vNewAngles, &vForward, &vRight, nullptr);
-
-		if (fabsf(vRight.x) > 0.001f)
-		{
-			const float flRatio = vRight.y / vRight.x;
-			const float flDenom = vForward.y - flRatio * vForward.x;
-
-			if (fabsf(flDenom) > 0.001f)
-				m_MoveData.m_flForwardMove = (m_vMethod2Velocity.y - flRatio * m_vMethod2Velocity.x) / flDenom;
-			else
-				m_MoveData.m_flForwardMove = 0.0f;
-
-			m_MoveData.m_flSideMove = (m_vMethod2Velocity.x - vForward.x * m_MoveData.m_flForwardMove) / vRight.x;
-		}
-
-		m_MoveData.m_vecViewAngles = vNewAngles;
-		m_MoveData.m_vecAngles = vNewAngles;
-	}
-
-	// Method 3: per-tick adaptive velocity update - advance predicted velocity by
-	// the acceleration trend and recompute movement inputs to match
-	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 3 && m_vAdaptiveVelocity.Length2D() > 1.0f)
+	// Acceleration-based prediction: advance predicted velocity by the
+	// regression-derived accel trend and recompute movement inputs to match
+	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 1 && m_vAdaptiveVelocity.Length2D() > 1.0f)
 	{
 		m_vAdaptiveVelocity.x += m_vAccelTrend.x;
 		m_vAdaptiveVelocity.y += m_vAccelTrend.y;
 
-	// Clamp to max speed so prediction doesn't diverge
 		const float flPredSpeed = m_vAdaptiveVelocity.Length2D();
 		if (flPredSpeed > m_MoveData.m_flMaxSpeed * 1.1f && flPredSpeed > 0.001f)
 		{
@@ -664,8 +515,6 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 			m_vAdaptiveVelocity.y *= flScale;
 		}
 
-		// Drift limiter: if the velocity direction has accumulated >15Â° from the original,
-		// dampen the accel trend to prevent runaway directional drift from noise
 		if (m_vMethod3OriginalVelocity.Length2D() > 1.0f && flPredSpeed > 0.001f)
 		{
 			const float flDot = (m_vAdaptiveVelocity.x * m_vMethod3OriginalVelocity.x
@@ -675,7 +524,6 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 
 			if (flAngleDeg > 15.0f)
 			{
-				// Freeze further acceleration; velocity direction has drifted too far
 				m_vAccelTrend.x = 0.0f;
 				m_vAccelTrend.y = 0.0f;
 			}
@@ -701,6 +549,7 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 		m_MoveData.m_vecViewAngles = vNewAngles;
 		m_MoveData.m_vecAngles = vNewAngles;
 	}
+
 
 	m_bRunning = true;
 

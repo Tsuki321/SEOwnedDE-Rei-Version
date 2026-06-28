@@ -338,6 +338,7 @@
     <ClCompile Include="features\TestPaint.cpp" />
     <ClCompile Include="features\TestPlayers.cpp" />
     <ClCompile Include="features\TestProjectileSim.cpp" />
+    <ClCompile Include="features\TestProjectilePrediction.cpp" />
     <ClCompile Include="features\TestRadar.cpp" />
     <ClCompile Include="features\TestRapidFire.cpp" />
     <ClCompile Include="features\TestSeedPred.cpp" />
