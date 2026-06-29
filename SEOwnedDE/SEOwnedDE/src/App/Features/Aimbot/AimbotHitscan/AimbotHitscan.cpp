@@ -239,7 +239,7 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 
 				const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-				for (int n = 1; n < nRecords; n++)
+				for (int n = 0; n < nRecords; n++)
 				{
 					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
@@ -804,7 +804,7 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					Aim(pCmd, pLocal, target.AngleTo);
 				}
 
-				if (bIsFiring && target.LagRecord && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
+				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
 					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
 				}

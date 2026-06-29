@@ -152,7 +152,7 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 
 				const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-				for (int n = 1; n < nRecords; n++)
+				for (int n = 0; n < nRecords; n++)
 				{
 					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 

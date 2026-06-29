@@ -379,28 +379,34 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 	// Cheapest predicates first: int compare and a single fabsf short-circuit
 	// before the more expensive vector / angle checks. Flag and feet-yaw
 	// are the most common trip conditions on a freshly-ticked target.
+	//
+	// Thresholds are relaxed to 0.5 deg / 0.5 units so that near-stationary
+	// targets (scoped Sniper, revved Heavy) still offer usable backtrack
+	// candidates instead of being silently filtered out. 0.1 deg / 0.1 units
+	// was tight enough that every record of a barely-moving player was
+	// rejected, forcing manual shots onto the interpolated live pose.
 	if (cached.Flags != pRecord->Flags)
 		return true;
 
-	if (fabsf(cached.FeetYaw - pRecord->FeetYaw) > 0.1f)
+	if (fabsf(cached.FeetYaw - pRecord->FeetYaw) > 0.5f)
 		return true;
 
-	if ((cached.AbsOrigin - pRecord->AbsOrigin).LengthSqr() > 0.01f)
+	if ((cached.AbsOrigin - pRecord->AbsOrigin).LengthSqr() > 0.25f)
 		return true;
 
 	// fmodf-based wrap into [-180, 180] (matches NormalizeYawDelta in
 	// CBaseAnimating_SetupBones.cpp). std::remainderf respects the IEEE
 	// rounding mode and is several times slower than fmodf on MSVC.
 	const float flYawDelta = std::fmodf(cached.EyeAngles.y - pRecord->EyeAngles.y + 540.0f, 360.0f) - 180.0f;
-	if (fabsf(flYawDelta) > 0.1f)
+	if (fabsf(flYawDelta) > 0.5f)
 		return true;
 
 	const float flPitchDelta = std::fmodf(cached.EyeAngles.x - pRecord->EyeAngles.x + 540.0f, 360.0f) - 180.0f;
-	if (fabsf(flPitchDelta) > 0.1f)
+	if (fabsf(flPitchDelta) > 0.5f)
 		return true;
 
 	const float flRollDelta = std::fmodf(cached.EyeAngles.z - pRecord->EyeAngles.z + 540.0f, 360.0f) - 180.0f;
-	return fabsf(flRollDelta) > 0.1f;
+	return fabsf(flRollDelta) > 0.5f;
 }
 
 void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
