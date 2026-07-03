@@ -69,6 +69,50 @@ bool CVisualUtils::IsOwnedByLocalCached(const C_TFPlayer* pLocal, const C_BaseEn
 	return cache.OwnedByLocal;
 }
 
+const std::wstring& CVisualUtils::GetCachedWideName(C_TFPlayer* pLocal, C_TFPlayer* pPlayer, const char* utf8Name)
+{
+	static const std::wstring sEmpty;
+	if (!pPlayer)
+		return sEmpty;
+
+	ResetFrameCacheIfNeeded(pLocal);
+	auto& cache = GetFrameCacheEntry(pPlayer, pLocal);
+
+	if (!cache.NameValid)
+	{
+		if (utf8Name)
+		{
+			cache.Name = Utils::ConvertUtf8ToWide(utf8Name);
+		}
+		else
+		{
+			player_info_t info = {};
+			if (I::EngineClient->GetPlayerInfo(pPlayer->entindex(), &info))
+				cache.Name = Utils::ConvertUtf8ToWide(info.name);
+		}
+		cache.NameValid = true;
+	}
+
+	return cache.Name;
+}
+
+bool CVisualUtils::GetCachedIsFriend(const C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
+{
+	if (!pPlayer)
+		return false;
+
+	ResetFrameCacheIfNeeded(pLocal);
+	auto& cache = GetFrameCacheEntry(pPlayer, pLocal);
+
+	if (!cache.FriendValid)
+	{
+		cache.IsFriend = pPlayer->IsPlayerOnSteamFriendsList();
+		cache.FriendValid = true;
+	}
+
+	return cache.IsFriend;
+}
+
 void CVisualUtils::BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal)
 {
 	ResetFrameCacheIfNeeded(pLocal);
@@ -248,7 +292,7 @@ bool CVisualUtils::ShouldRenderPlayer(
 		return false;
 
 	const bool bIsLocal = pPlayer == pLocal;
-	const bool bIsFriend = pPlayer->IsPlayerOnSteamFriendsList();
+	const bool bIsFriend = GetCachedIsFriend(pLocal, pPlayer);
 
 	if (bIgnoreLocal && bIsLocal)
 		return false;
@@ -390,7 +434,7 @@ Color_t CVisualUtils::GetEntityColor(C_TFPlayer* pLocal, C_BaseEntity* pEntity)
 			result = CFG::Color_Invisible;
 			bResolved = true;
 		}
-		else if (pPlayer != pLocal && pPlayer->IsPlayerOnSteamFriendsList())
+		else if (pPlayer != pLocal && GetCachedIsFriend(pLocal, pPlayer))
 		{
 			result = CFG::Color_Friend;
 			bResolved = true;

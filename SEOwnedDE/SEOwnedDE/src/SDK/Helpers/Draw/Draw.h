@@ -13,6 +13,7 @@ class CDraw
 {
 	int m_nScreenW = 0, m_nScreenH = 0;
 	VMatrix m_WorldToProjection = {};
+	DWORD m_dwLastFont = 0;
 
 public:
 	void UpdateScreenSize();

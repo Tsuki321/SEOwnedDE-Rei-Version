@@ -283,6 +283,13 @@ void CMaterials::RunLagRecords()
 	if (CFG::Materials_Players_No_Depth)
 		pRenderContext->DepthRange(0.0f, 0.2f);
 
+	// Per-frame cap on total lag-record model re-renders across all enemies.
+	// Records are drawn newest-first (n=1..), so exhausting the budget trims
+	// the OLDEST (least visually useful) ghosts first. Purely cosmetic; the
+	// backtrack data consumed by aimbot is unaffected.
+	constexpr int MAX_TOTAL_LAG_RECORDS_PER_FRAME = 24;
+	int nRenderBudget = MAX_TOTAL_LAG_RECORDS_PER_FRAME;
+
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
 		if (!pEntity)
@@ -329,6 +336,8 @@ void CMaterials::RunLagRecords()
 				pPlayer->DrawModel(STUDIO_RENDER | STUDIO_NOSHADOWS);
 				pPlayer->m_flInvisibility() = flOldInvisibility;
 				m_bRendering = false;
+				if (--nRenderBudget <= 0)
+					break;
 			}
 		}
 		else
@@ -346,8 +355,11 @@ void CMaterials::RunLagRecords()
 			pPlayer->m_flInvisibility() = 0.0f;
 			pPlayer->DrawModel(STUDIO_RENDER | STUDIO_NOSHADOWS);
 			pPlayer->m_flInvisibility() = flOldInvisibility;
+			--nRenderBudget;
 			m_bRendering = false;
 		}
+		if (nRenderBudget <= 0)
+			break;
 	}
 
 	I::ModelRender->ForcedMaterialOverride(nullptr);

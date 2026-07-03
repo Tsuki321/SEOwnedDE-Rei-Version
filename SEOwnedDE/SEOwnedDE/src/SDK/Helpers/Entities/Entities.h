@@ -2,6 +2,9 @@
 
 #include "../../TF2/c_tf_player.h"
 
+#include <array>
+#include <unordered_set>
+
 enum class EEntGroup
 {
 	PLAYERS_ALL,
@@ -21,7 +24,8 @@ enum class EEntGroup
 	HEALTHPACKS,
 	AMMOPACKS,
 	HALLOWEEN_GIFT,
-	MVM_MONEY
+	MVM_MONEY,
+	COUNT
 };
 
 class CEntityHelper
@@ -31,18 +35,18 @@ public:
 	C_TFWeaponBase* GetWeapon();
 
 private:
-	std::map<EEntGroup, std::vector<C_BaseEntity*>> m_mapGroups = {};
-	std::map<int, bool> m_mapHealthPacks = {};
-	std::map<int, bool> m_mapAmmoPacks = {};
+	std::array<std::vector<C_BaseEntity*>, static_cast<size_t>(EEntGroup::COUNT)> m_arrGroups = {};
+	std::unordered_set<int> m_setHealthPacks = {};
+	std::unordered_set<int> m_setAmmoPacks = {};
 
 	bool IsHealthPack(C_BaseEntity* pEntity)
 	{
-		return m_mapHealthPacks.contains(pEntity->m_nModelIndex());
+		return m_setHealthPacks.contains(pEntity->m_nModelIndex());
 	}
 
 	bool IsAmmoPack(C_BaseEntity* pEntity)
 	{
-		return m_mapAmmoPacks.contains(pEntity->m_nModelIndex());
+		return m_setAmmoPacks.contains(pEntity->m_nModelIndex());
 	}
 
 public:
@@ -52,11 +56,11 @@ public:
 
 	void ClearModelIndexes()
 	{
-		m_mapHealthPacks.clear();
-		m_mapAmmoPacks.clear();
+		m_setHealthPacks.clear();
+		m_setAmmoPacks.clear();
 	}
 
-	const std::vector<C_BaseEntity*>& GetGroup(const EEntGroup group) { return m_mapGroups[group]; }
+	const std::vector<C_BaseEntity*>& GetGroup(const EEntGroup group) { return m_arrGroups[static_cast<size_t>(group)]; }
 };
 
 MAKE_SINGLETON_SCOPED(CEntityHelper, Entities, H);

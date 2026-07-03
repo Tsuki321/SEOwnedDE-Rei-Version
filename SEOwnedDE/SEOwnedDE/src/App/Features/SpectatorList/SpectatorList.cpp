@@ -30,7 +30,7 @@ bool CSpectatorList::GetSpectators()
 		if (!I::EngineClient->GetPlayerInfo(pPlayer->entindex(), &playerInfo))
 			continue;
 
-		m_vecSpectators.emplace_back(Utils::ConvertUtf8ToWide(playerInfo.name), nMode);
+		m_vecSpectators.emplace_back(F::VisualUtils->GetCachedWideName(pLocal, pPlayer, playerInfo.name), nMode);
 	}
 
 	return !m_vecSpectators.empty();

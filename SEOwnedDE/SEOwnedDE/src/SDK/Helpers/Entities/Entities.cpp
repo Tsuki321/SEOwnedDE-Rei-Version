@@ -49,14 +49,14 @@ void CEntityHelper::UpdateCache()
 					const auto pPlayer = pEntity->As<C_TFPlayer>();
 					if (pPlayer->deadflag() && pPlayer->m_iObserverMode() != OBS_MODE_NONE)
 					{
-						m_mapGroups[EEntGroup::PLAYERS_OBSERVER].push_back(pEntity);
+						m_arrGroups[static_cast<size_t>(EEntGroup::PLAYERS_OBSERVER)].push_back(pEntity);
 					}
 
 					if (!pEntity->IsInValidTeam(&nPlayerTeam))
 						continue;
 
-					m_mapGroups[EEntGroup::PLAYERS_ALL].push_back(pEntity);
-					m_mapGroups[nLocalTeam != nPlayerTeam ? EEntGroup::PLAYERS_ENEMIES : EEntGroup::PLAYERS_TEAMMATES].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(EEntGroup::PLAYERS_ALL)].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(nLocalTeam != nPlayerTeam ? EEntGroup::PLAYERS_ENEMIES : EEntGroup::PLAYERS_TEAMMATES)].push_back(pEntity);
 
 					break;
 				}
@@ -70,8 +70,8 @@ void CEntityHelper::UpdateCache()
 					if (!pEntity->IsInValidTeam(&nObjectTeam))
 						continue;
 
-					m_mapGroups[EEntGroup::BUILDINGS_ALL].push_back(pEntity);
-					m_mapGroups[nLocalTeam != nObjectTeam ? EEntGroup::BUILDINGS_ENEMIES : EEntGroup::BUILDINGS_TEAMMATES].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(EEntGroup::BUILDINGS_ALL)].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(nLocalTeam != nObjectTeam ? EEntGroup::BUILDINGS_ENEMIES : EEntGroup::BUILDINGS_TEAMMATES)].push_back(pEntity);
 
 					break;
 				}
@@ -103,11 +103,11 @@ void CEntityHelper::UpdateCache()
 							continue;*/
 
 						if (pPipebomb->HasStickyEffects() && pPipebomb->As<C_BaseGrenade>()->m_hThrower().Get() == pLocal)
-							m_mapGroups[EEntGroup::PROJECTILES_LOCAL_STICKIES].push_back(pEntity);
+							m_arrGroups[static_cast<size_t>(EEntGroup::PROJECTILES_LOCAL_STICKIES)].push_back(pEntity);
 					}
 
-					m_mapGroups[EEntGroup::PROJECTILES_ALL].push_back(pEntity);
-					m_mapGroups[nLocalTeam != nProjectileTeam ? EEntGroup::PROJECTILES_ENEMIES : EEntGroup::PROJECTILES_TEAMMATES].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(EEntGroup::PROJECTILES_ALL)].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(nLocalTeam != nProjectileTeam ? EEntGroup::PROJECTILES_ENEMIES : EEntGroup::PROJECTILES_TEAMMATES)].push_back(pEntity);
 
 					break;
 				}
@@ -115,23 +115,23 @@ void CEntityHelper::UpdateCache()
 			case ETFClassIds::CBaseAnimating:
 				{
 					if (IsHealthPack(pEntity))
-						m_mapGroups[EEntGroup::HEALTHPACKS].push_back(pEntity);
+						m_arrGroups[static_cast<size_t>(EEntGroup::HEALTHPACKS)].push_back(pEntity);
 
 					if (IsAmmoPack(pEntity))
-						m_mapGroups[EEntGroup::AMMOPACKS].push_back(pEntity);
+						m_arrGroups[static_cast<size_t>(EEntGroup::AMMOPACKS)].push_back(pEntity);
 
 					break;
 				}
 
 			case ETFClassIds::CTFAmmoPack:
 				{
-					m_mapGroups[EEntGroup::AMMOPACKS].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(EEntGroup::AMMOPACKS)].push_back(pEntity);
 					break;
 				}
 
 			case ETFClassIds::CHalloweenGiftPickup:
 				{
-					m_mapGroups[EEntGroup::HALLOWEEN_GIFT].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(EEntGroup::HALLOWEEN_GIFT)].push_back(pEntity);
 
 					break;
 				}
@@ -143,7 +143,7 @@ void CEntityHelper::UpdateCache()
 						continue;
 					}
 
-					m_mapGroups[EEntGroup::MVM_MONEY].push_back(pEntity);
+					m_arrGroups[static_cast<size_t>(EEntGroup::MVM_MONEY)].push_back(pEntity);
 
 					break;
 				}
@@ -156,37 +156,37 @@ void CEntityHelper::UpdateCache()
 
 void CEntityHelper::UpdateModelIndexes()
 {
-	m_mapHealthPacks.clear();
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/medkit_small.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/medkit_medium.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/medkit_large.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/props_halloween/halloween_medkit_small.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/props_halloween/halloween_medkit_medium.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/props_halloween/halloween_medkit_large.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/medkit_small_bday.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/medkit_medium_bday.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/medkit_large_bday.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/props_medieval/medieval_meat.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/plate.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/plate_sandwich_xmas.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/plate_robo_sandwich.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/workshop/weapons/c_models/c_fishcake/plate_fishcake.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/workshop/weapons/c_models/c_buffalo_steak/plate_buffalo_steak.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/workshop/weapons/c_models/c_chocolate/plate_chocolate.mdl")] = true;
-	m_mapHealthPacks[I::ModelInfoClient->GetModelIndex("models/items/banana/plate_banana.mdl")] = true;
+	m_setHealthPacks.clear();
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/medkit_small.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/medkit_medium.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/medkit_large.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/props_halloween/halloween_medkit_small.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/props_halloween/halloween_medkit_medium.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/props_halloween/halloween_medkit_large.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/medkit_small_bday.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/medkit_medium_bday.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/medkit_large_bday.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/props_medieval/medieval_meat.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/plate.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/plate_sandwich_xmas.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/plate_robo_sandwich.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/workshop/weapons/c_models/c_fishcake/plate_fishcake.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/workshop/weapons/c_models/c_buffalo_steak/plate_buffalo_steak.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/workshop/weapons/c_models/c_chocolate/plate_chocolate.mdl"));
+	m_setHealthPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/banana/plate_banana.mdl"));
 
-	m_mapAmmoPacks.clear();
-	m_mapAmmoPacks[I::ModelInfoClient->GetModelIndex("models/items/ammopack_small.mdl")] = true;
-	m_mapAmmoPacks[I::ModelInfoClient->GetModelIndex("models/items/ammopack_medium.mdl")] = true;
-	m_mapAmmoPacks[I::ModelInfoClient->GetModelIndex("models/items/ammopack_large.mdl")] = true;
-	m_mapAmmoPacks[I::ModelInfoClient->GetModelIndex("models/items/ammopack_small_bday.mdl")] = true;
-	m_mapAmmoPacks[I::ModelInfoClient->GetModelIndex("models/items/ammopack_medium_bday.mdl")] = true;
-	m_mapAmmoPacks[I::ModelInfoClient->GetModelIndex("models/items/ammopack_large_bday.mdl")] = true;
+	m_setAmmoPacks.clear();
+	m_setAmmoPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/ammopack_small.mdl"));
+	m_setAmmoPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/ammopack_medium.mdl"));
+	m_setAmmoPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/ammopack_large.mdl"));
+	m_setAmmoPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/ammopack_small_bday.mdl"));
+	m_setAmmoPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/ammopack_medium_bday.mdl"));
+	m_setAmmoPacks.insert(I::ModelInfoClient->GetModelIndex("models/items/ammopack_large_bday.mdl"));
 }
 
 void CEntityHelper::ClearCache()
 {
-	for (auto& group : m_mapGroups | std::views::values)
+	for (auto& group : m_arrGroups)
 	{
 		group.clear();
 	}

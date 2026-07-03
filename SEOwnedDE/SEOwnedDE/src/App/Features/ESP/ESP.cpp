@@ -365,7 +365,7 @@ void CESP::Run()
 						(y - (H::Fonts->Get(EFonts::ESP_SMALL).m_nTall - 1)) - SPACING_Y,
 						textColor,
 						POS_CENTERX,
-						Utils::ConvertUtf8ToWide(PlayerInfo.name).c_str()
+						F::VisualUtils->GetCachedWideName(pLocal, pPlayer, PlayerInfo.name).c_str()
 					);
 				}
 			}

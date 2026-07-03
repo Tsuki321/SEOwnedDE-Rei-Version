@@ -12,6 +12,7 @@ void CDraw::UpdateScreenSize()
 
 void CDraw::UpdateW2SMatrix()
 {
+	m_dwLastFont = 0;
 	CViewSetup ViewSetup = {};
 
 	if (I::BaseClientDLL->GetPlayerView(ViewSetup))
@@ -100,7 +101,7 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 	va_end(va_alist);
 	swprintf_s(wstr, 1024, L"%hs", cbuffer);
 
-	if (pos)
+	if (pos & (POS_LEFT | POS_TOP | POS_CENTERX | POS_CENTERY))
 	{
 		int w = 0, h = 0;
 		I::MatSystemSurface->GetTextSize(font.m_dwFont, wstr, w, h);
@@ -112,7 +113,11 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 	}
 
 	I::MatSystemSurface->DrawSetTextPos(x, y);
-	I::MatSystemSurface->DrawSetTextFont(font.m_dwFont);
+	if (font.m_dwFont != m_dwLastFont)
+	{
+		I::MatSystemSurface->DrawSetTextFont(font.m_dwFont);
+		m_dwLastFont = font.m_dwFont;
+	}
 	I::MatSystemSurface->DrawSetTextColor(clr.r, clr.g, clr.b, clr.a);
 	I::MatSystemSurface->DrawPrintText(wstr, int(wcslen(wstr)));
 }
@@ -129,7 +134,7 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 	vswprintf_s(wstr, str, va_alist);
 	va_end(va_alist);
 
-	if (pos)
+	if (pos & (POS_LEFT | POS_TOP | POS_CENTERX | POS_CENTERY))
 	{
 		int w = 0, h = 0;
 		I::MatSystemSurface->GetTextSize(font.m_dwFont, wstr, w, h);
@@ -141,7 +146,11 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 	}
 
 	I::MatSystemSurface->DrawSetTextPos(x, y);
-	I::MatSystemSurface->DrawSetTextFont(font.m_dwFont);
+	if (font.m_dwFont != m_dwLastFont)
+	{
+		I::MatSystemSurface->DrawSetTextFont(font.m_dwFont);
+		m_dwLastFont = font.m_dwFont;
+	}
 	I::MatSystemSurface->DrawSetTextColor(clr.r, clr.g, clr.b, clr.a);
 	I::MatSystemSurface->DrawPrintText(wstr, int(wcslen(wstr)));
 }

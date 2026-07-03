@@ -2,10 +2,13 @@
 
 #include "../../TF2/IMatSystemSurface.h"
 
+#include <array>
+
 enum class EFonts
 {
 	Menu,
-	ESP, ESP_CONDS, ESP_SMALL
+	ESP, ESP_CONDS, ESP_SMALL,
+	COUNT
 };
 
 class CFont
@@ -19,7 +22,7 @@ public:
 class CFontManager
 {
 private:
-	std::map<EFonts, CFont> m_mapFonts = {};
+	std::array<CFont, static_cast<size_t>(EFonts::COUNT)> m_arrFonts = {};
 
 public:
 	void Reload();

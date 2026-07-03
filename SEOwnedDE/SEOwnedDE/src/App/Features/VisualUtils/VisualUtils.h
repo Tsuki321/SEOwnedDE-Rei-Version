@@ -17,6 +17,10 @@ private:
 		Color_t Color = { 255, 255, 255, 255 };
 		bool OnScreenValid = false;
 		bool OnScreen = false;
+		bool NameValid = false;
+		std::wstring Name;
+		bool FriendValid = false;
+		bool IsFriend = false;
 	};
 
 	int m_nCachedFrame = -1;
@@ -44,6 +48,7 @@ private:
 	void ResetFrameCacheIfNeeded(const C_TFPlayer* pLocal);
 	FrameCacheEntry& GetFrameCacheEntry(const C_BaseEntity* pEntity, const C_TFPlayer* pLocal);
 	bool IsOwnedByLocalCached(const C_TFPlayer* pLocal, const C_BaseEntity* pEntity);
+	bool GetCachedIsFriend(const C_TFPlayer* pLocal, C_TFPlayer* pPlayer);
 	void BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal);
 	void BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal);
 
@@ -103,6 +108,8 @@ public:
 	// Direct vfunc in the per-draw hooks is wasteful (called per model per
 	// frame) - this refreshes once per frame and returns the cached value.
 	bool IsTakingScreenshotCached();
+
+	const std::wstring& GetCachedWideName(C_TFPlayer* pLocal, C_TFPlayer* pPlayer, const char* utf8Name = nullptr);
 
 	int GetCat(int nFrame);
 	int GetCat2(int nFrame);
