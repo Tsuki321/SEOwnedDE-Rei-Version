@@ -6,14 +6,15 @@
 #include <cstdint>
 #include <vector>
 
-// MAX_LAG_RECORDS: 12 ticks ~= 182 ms at 66 tick (120 ms at 100 tick). Hits
-// the Materials_Players_LagRecords_Style == 0 ghost-render cap (MAX_RENDERED_RECORDS=12)
-// exactly, so no consumer is starved. Covers typical TF2 player pings (30-100ms)
-// with margin and the 5-record cap used by MovementSimulation + Aimbot hitscan/melee
-// comfortably. Trimming from 36 cuts per-player static storage by 2/3
-// (from ~222 KB to ~74 KB per player slot, ~4.8 MB saved across MAX_PLAYERS=33).
+// MAX_LAG_RECORDS: 24 ticks ~= 360 ms at 66 tick (240 ms at 100 tick). Sits
+// comfortably inside the default sv_maxunlag (1.0 s) window, so essentially the
+// whole ring stays valid for realistic pings (30-100 ms) - past the Materials
+// ghost-render cap and the 5-record cap used by MovementSimulation + Aimbot
+// hitscan/melee, while giving up only the deep reach that sv_maxunlag would
+// truncate anyway. Per-player static storage is ~144 KB per slot (~4.6 MB
+// across MAX_PLAYERS=33), dominated by the inline BoneData block.
 inline constexpr int MAX_BONE_COUNT = 128;
-inline constexpr int MAX_LAG_RECORDS = 12;
+inline constexpr int MAX_LAG_RECORDS = 24;
 // MAX_MATRIX_HELPER_DEPTH: measured max nesting is 1 across all consumers
 // (AimbotHitscan / AimbotMelee / AutoBackstab / Materials). 2 is one above
 // the measured depth as a safety margin; cuts the matrix helper's static
@@ -61,7 +62,7 @@ class CLagRecords
 	// is a single contiguous block per player - zero heap allocations, cache-
 	// friendly iteration, and the SetupBones hot loop dereferences bones via
 	// a direct pointer instead of unique_ptr::get().
-	// Heads/counts use uint8_t since MAX_LAG_RECORDS=36 fits trivially; cuts
+	// Heads/counts use uint8_t since MAX_LAG_RECORDS (24) fits trivially; cuts
 	// per-player ring state from 16 B to 2 B and improves cache locality when
 	// walking all MAX_PLAYERS rings in UpdateRecords.
 	std::array<std::array<LagRecord_t, MAX_LAG_RECORDS>, MAX_PLAYERS> m_LagRecords = {};

@@ -59,7 +59,45 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	if (idx < 0)
 		return;
 
-	LagRecord_t newRecord = {};
+	auto& records = m_LagRecords[idx];
+
+	// Validate against the head record (newest in the ring) BEFORE the
+	// expensive SetupBones so a non-advancing tick bails without touching the
+	// ring. SimulationTime, origin and identity are all readable without bones,
+	// so the only work an early-out wastes is a handful of netvar reads (the
+	// original ran SetupBones first, then discarded its result here).
+	const float flSimTime = pPlayer->m_flSimulationTime();
+	const Vec3 vecOrigin = pPlayer->GetAbsOrigin();
+	size_t baseCount = m_RecordCounts[idx];
+	bool bTeleported = false;
+
+	if (baseCount > 0)
+	{
+		const auto& head = records[m_RecordHeads[idx]];
+
+		if (head.Player != pPlayer)
+		{
+			// Stale player identity (entity index recycled): drop the ring so we
+			// start writing from a clean slot.
+			m_RecordCounts[idx] = 0u;
+			baseCount = 0;
+		}
+		else
+		{
+			if (flSimTime <= head.SimulationTime)
+				return;
+
+			if ((vecOrigin - head.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
+				bTeleported = true;
+		}
+	}
+
+	// Write straight into the ring slot one past the current head. Aliasing the
+	// destination (instead of a stack-local record that is later move-assigned
+	// in) lets SetupBones land the 128-matrix bone block in its final home just
+	// once - no 6 KB zero-init of BoneData and no 6 KB copy on commit.
+	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
+	LagRecord_t& newRecord = records[newHead];
 
 	m_bSettingUpBones = true;
 
@@ -70,11 +108,10 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		pPlayer->InvalidateBoneCache();
 	}
 
-	// BoneData is now an inline std::array<matrix3x4_t, MAX_BONE_COUNT>
-	// inside LagRecord_t, so the buffer is already allocated and zero-
-	// initialized by the default constructor. We narrow the authoritative
-	// BoneCount after SetupBones succeeds based on the model's actual
-	// skeleton size.
+	// BoneData is an inline std::array<matrix3x4_t, MAX_BONE_COUNT> inside the
+	// ring slot, so the buffer is already allocated. We narrow the authoritative
+	// BoneCount after SetupBones succeeds based on the model's actual skeleton
+	// size; matrices past that count are never read by any consumer.
 	const auto result = pPlayer->SetupBones(newRecord.BoneData.data(), MAX_BONE_COUNT, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
 
 	if (setup_bones_optimization)
@@ -89,7 +126,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		// when the player pops into view (Aimbot/Materials ghosts
 		// need fresh bones).
 		const auto pLocal = H::Entities->GetLocal();
-		if (pLocal && F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin()))
+		if (pLocal && F::VisualUtils->IsOnScreenNoEntity(pLocal, vecOrigin))
 		{
 			// Bound the peer walk: a corrupted/recycled move-peer chain could
 			// otherwise cycle indefinitely and freeze the net-update thread. 64
@@ -126,59 +163,44 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	m_bSettingUpBones = false;
 
 	if (!result)
+	{
+		// SetupBones may have partially overwritten the slot's bone block. When
+		// the ring was full this slot was the oldest committed record, so shrink
+		// the count by one to retire it; otherwise the slot was uncommitted
+		// scratch and the count is left untouched. Either way head does not
+		// advance, so the aborted write is never surfaced by GetRecord.
+		if (m_RecordCounts[idx] >= MAX_LAG_RECORDS)
+			m_RecordCounts[idx] = MAX_LAG_RECORDS - 1;
 		return;
+	}
 
 	newRecord.Player = pPlayer;
-	newRecord.SimulationTime = pPlayer->m_flSimulationTime();
-	newRecord.AbsOrigin = pPlayer->GetAbsOrigin();
+	newRecord.SimulationTime = flSimTime;
+	newRecord.AbsOrigin = vecOrigin;
 	newRecord.AbsAngles = pPlayer->GetAbsAngles();
 	newRecord.EyeAngles = pPlayer->GetEyeAngles();
 	newRecord.Velocity = pPlayer->m_vecVelocity();
 	newRecord.Center = pPlayer->GetCenter();
 	newRecord.Flags = pPlayer->m_fFlags();
+	newRecord.bTeleported = bTeleported;
 
+	// Reused slot: default every conditionally-written field so stale values
+	// from the record being overwritten can never leak through.
+	newRecord.FeetYaw = 0.0f;
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		newRecord.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 
 	// Authoritative bone count: bound by both the engine's cached count and
-	// MAX_BONE_COUNT (the size we actually allocated).
+	// MAX_BONE_COUNT (the size we actually allocated). Defaults to 0 so a
+	// missing cache leaves no consumer reading stale bones.
+	newRecord.BoneCount = 0;
 	if (const auto pCachedBoneData = pPlayer->GetCachedBoneData())
 		newRecord.BoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
 
-	auto& records = m_LagRecords[idx];
-	const size_t oldCount = m_RecordCounts[idx];
-
-	// Validate against the head record (newest in the ring) when one exists.
-	if (oldCount > 0)
-	{
-		const auto& head = records[m_RecordHeads[idx]];
-
-		if (head.Player != pPlayer)
-		{
-			// Stale player identity: the displaced record data will be
-			// overwritten on next reuse; just reset the head so we start
-			// writing from a clean slot.
-			m_RecordCounts[idx] = 0u;
-		}
-		else
-		{
-			if (newRecord.SimulationTime <= head.SimulationTime)
-				return;
-
-			if ((newRecord.AbsOrigin - head.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
-				newRecord.bTeleported = true;
-		}
-	}
-
-	// Move-construct into the ring slot one past the current head. With
-	// BoneData now an inline std::array, the move-assign is a memcpy of
-	// the 128 * 48-byte matrix block (the displaced slot is overwritten in
-	// place on ring overflow).
-	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
-	records[newHead] = std::move(newRecord);
-
+	// Commit: advance the head to the freshly written slot and grow the count
+	// (clamped at capacity, oldest record silently retired on overflow).
 	m_RecordHeads[idx] = static_cast<uint8_t>(newHead);
-	m_RecordCounts[idx] = static_cast<uint8_t>(std::min<size_t>(m_RecordCounts[idx] + 1, MAX_LAG_RECORDS));
+	m_RecordCounts[idx] = static_cast<uint8_t>(std::min<size_t>(baseCount + 1, MAX_LAG_RECORDS));
 }
 
 const LagRecord_t* CLagRecords::GetRecord(C_TFPlayer* pPlayer, int nRecord)
