@@ -92,3 +92,47 @@ TEST(LagRecordsRotationalContracts, FailedChildBonesSetIsDeclaredAndUsed) {
         << "Phase 2 expects HasFailedBones() accessor.";
     EXPECT_NE(cpp.find("m_FailedChildBones"), std::string::npos);
 }
+
+// Velocity/tick-relative teleport detection: the fixed 64u gate must be scaled
+// by elapsed time and the recorded velocity so multi-tick / choke gaps and fast
+// movers are not misclassified as teleports (dropping otherwise-valid records).
+TEST(LagRecordsRotationalContracts, TeleportDetectionScalesWithVelocityAndTime) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto header = testhelpers::ReadTextFile(root / kFeatureHeader);
+    const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
+
+    // New tuning constants declared in the header.
+    EXPECT_NE(header.find("LAG_COMPENSATION_TELEPORTED_BASE_RADIUS"), std::string::npos);
+    EXPECT_NE(header.find("LAG_COMPENSATION_TELEPORTED_VELOCITY_SLACK"), std::string::npos);
+
+    // AddRecord derives an allowance from velocity * dt before flagging.
+    EXPECT_NE(src.find("head.Velocity.Length()"), std::string::npos);
+    EXPECT_NE(src.find("flSimTime - head.SimulationTime"), std::string::npos);
+    EXPECT_NE(src.find("bTeleported = true"), std::string::npos);
+}
+
+// Shared usability predicate: the null + teleport + differs filter is defined
+// once on CLagRecords and reused by every backtrack consumer.
+TEST(LagRecordsRotationalContracts, IsRecordUsablePredicateIsCentralized) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto header = testhelpers::ReadTextFile(root / kFeatureHeader);
+    const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
+
+    EXPECT_NE(header.find("IsRecordUsable"), std::string::npos);
+    EXPECT_NE(src.find("bool CLagRecords::IsRecordUsable("), std::string::npos);
+
+    // Predicate composes the teleport gate and the differs-from-live check.
+    EXPECT_NE(src.find("pRecord->bTeleported"), std::string::npos);
+    EXPECT_NE(src.find("DiffersFromCurrentCached(pRecord, cached)"), std::string::npos);
+}
+
+// GetCachedState must reject out-of-range indices (hostile / recycled entindex)
+// instead of indexing m_CachedStates out of bounds.
+TEST(LagRecordsRotationalContracts, GetCachedStateBoundsChecksIndex) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto header = testhelpers::ReadTextFile(root / kFeatureHeader);
+
+    EXPECT_NE(header.find("GetCachedState"), std::string::npos);
+    // Guard clause on the valid [1, MAX_PLAYERS) range.
+    EXPECT_NE(header.find("nPlayerIndex < 1 || nPlayerIndex >= MAX_PLAYERS"), std::string::npos);
+}

@@ -156,13 +156,7 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 				{
 					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-					if (!pRecord)
-						continue;
-
-					if (pRecord->bTeleported)
-						continue;
-
-					if (!CLagRecords::DiffersFromCurrentCached(pRecord, cachedState))
+					if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
 						continue;
 
 					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, HITBOX_BODY, pRecord->BoneData.data());

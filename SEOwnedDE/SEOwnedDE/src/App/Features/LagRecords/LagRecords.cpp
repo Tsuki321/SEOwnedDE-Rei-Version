@@ -87,8 +87,27 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 			if (flSimTime <= head.SimulationTime)
 				return;
 
-			if ((vecOrigin - head.AbsOrigin).LengthSqr() > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
-				bTeleported = true;
+			// Teleport detection scaled by elapsed time and the target's last
+			// known velocity. A fixed 64u gate flags legitimate movement as a
+			// teleport whenever consecutive records span more than one tick -
+			// e.g. a choking / fakelagging target whose records land many ticks
+			// apart, or a fast mover across a packet-loss gap - and drops those
+			// otherwise-valid backtrack records. A real teleport (teleporter,
+			// Eureka, respawn) moves the player with no matching velocity, so it
+			// still trips the gate. Allowance = base radius + velocity * dt with
+			// slack for acceleration / air-strafe; compared in squared space so
+			// the sqrt below only runs on the rare >base-radius case.
+			const float flMovedSqr = (vecOrigin - head.AbsOrigin).LengthSqr();
+
+			if (flMovedSqr > LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR)
+			{
+				const float flDt = flSimTime - head.SimulationTime; // > 0 (checked above)
+				const float flAllowed = LAG_COMPENSATION_TELEPORTED_BASE_RADIUS
+					+ head.Velocity.Length() * flDt * LAG_COMPENSATION_TELEPORTED_VELOCITY_SLACK;
+
+				if (flMovedSqr > flAllowed * flAllowed)
+					bTeleported = true;
+			}
 		}
 	}
 
@@ -429,6 +448,16 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 
 	const float flRollDelta = std::fmodf(cached.EyeAngles.z - pRecord->EyeAngles.z + 540.0f, 360.0f) - 180.0f;
 	return fabsf(flRollDelta) > 0.5f;
+}
+
+bool CLagRecords::IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
+{
+	// Order the cheapest rejects first: the null and teleport checks are single
+	// loads/branches, so they short-circuit before the multi-field pose compare.
+	if (!pRecord || pRecord->bTeleported)
+		return false;
+
+	return DiffersFromCurrentCached(pRecord, cached);
 }
 
 void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)

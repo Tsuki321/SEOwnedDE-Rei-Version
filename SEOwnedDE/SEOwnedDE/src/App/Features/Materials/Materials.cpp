@@ -319,7 +319,7 @@ void CMaterials::RunLagRecords()
 			{
 				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-				if (!pRecord || pRecord->bTeleported || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState) || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
+				if (!CLagRecords::IsRecordUsable(pRecord, cachedState) || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
 					continue;
 
 				const float flBlend = Math::RemapValClamped(static_cast<float>(n), 1.0f, static_cast<float>(nRecords), 0.1f, 0.001f);
@@ -344,7 +344,7 @@ void CMaterials::RunLagRecords()
 		{
 			const auto pRecord = F::LagRecords->GetRecord(pPlayer, nRecords - 1);
 
-			if (!pRecord || pRecord->bTeleported || !CLagRecords::DiffersFromCurrentCached(pRecord, cachedState) || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
+			if (!CLagRecords::IsRecordUsable(pRecord, cachedState) || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
 				continue;
 
 			I::RenderView->SetBlend(1.0f);

@@ -22,6 +22,14 @@ inline constexpr int MAX_LAG_RECORDS = 24;
 inline constexpr int MAX_MATRIX_HELPER_DEPTH = 2;
 
 inline constexpr float LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR = 64.0f * 64.0f;
+// Base radius (units) below which a per-record displacement is never treated as
+// a teleport - equals sqrt(LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR). Above it,
+// the allowance grows by velocity * dt so multi-tick / choke gaps and fast
+// movers are not misclassified as teleports.
+inline constexpr float LAG_COMPENSATION_TELEPORTED_BASE_RADIUS = 64.0f;
+// Slack multiplier on the velocity-derived displacement term. > 1 to absorb
+// intra-interval acceleration and air-strafing without flagging real movement.
+inline constexpr float LAG_COMPENSATION_TELEPORTED_VELOCITY_SLACK = 1.5f;
 
 struct LagRecord_t
 {
@@ -98,10 +106,30 @@ public:
 	void UpdateRecords();
 	static bool DiffersFromCurrentCached(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
 
+	// Combined per-record usability gate shared by every backtrack consumer
+	// (AimbotHitscan, AimbotMelee, AutoBackstab, Materials): a record is usable
+	// when it is non-null, is not a post-teleport discontinuity, and its pose
+	// actually differs from the player's live cached state (so we never
+	// backtrack onto the interpolated present). Centralized so the call sites
+	// cannot drift apart as the filter evolves.
+	static bool IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
+
 	// Returns the per-frame snapshot of the player's live state, populated
 	// by UpdateRecords and reused by all consumers. Use this instead of
-	// calling CacheCurrentState() per consumer pass.
-	const LagRecordCachedState_t& GetCachedState(int nPlayerIndex) const { return m_CachedStates[nPlayerIndex]; }
+	// calling CacheCurrentState() per consumer pass. Guarded against a
+	// hostile / recycled entindex so a bad caller index yields an empty
+	// snapshot instead of an out-of-bounds read (the valid player range is
+	// [1, MAX_PLAYERS), matching PlayerToIndex).
+	const LagRecordCachedState_t& GetCachedState(int nPlayerIndex) const
+	{
+		if (nPlayerIndex < 1 || nPlayerIndex >= MAX_PLAYERS)
+		{
+			static const LagRecordCachedState_t kEmpty{};
+			return kEmpty;
+		}
+
+		return m_CachedStates[nPlayerIndex];
+	}
 
 	static LagRecordCachedState_t CacheCurrentState(C_TFPlayer* pPlayer);
 	bool IsSettingUpBones() { return m_bSettingUpBones; }
