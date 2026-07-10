@@ -80,9 +80,23 @@ class CMovementSimulation
 		float m_flSimTime = 0.0f;
 		int m_iFlags = 0;
 	};
+	static constexpr int MOVE_RECORD_CAPACITY = 66;
 	std::array<float, MAX_PLAYERS> m_afLastYaw = {};
 	std::array<float, MAX_PLAYERS> m_afExpectedYaw = {};
-	std::unordered_map<int, std::deque<MoveRecord_t>> m_mMoveRecords = {};
+	// Fixed per-player ring buffer keyed by entindex (bounded to MAX_PLAYERS),
+	// replacing an unordered_map<int, deque> that hashed + churned heap blocks
+	// every frame. Logical index 0 is the most recent record.
+	std::array<std::array<MoveRecord_t, MOVE_RECORD_CAPACITY>, MAX_PLAYERS> m_aMoveRecords = {};
+	std::array<uint8_t, MAX_PLAYERS> m_aMoveRecordHead = {};
+	std::array<uint8_t, MAX_PLAYERS> m_aMoveRecordCount = {};
+
+	int GetMoveRecordCount(int iEntIndex) const { return m_aMoveRecordCount[iEntIndex]; }
+
+	const MoveRecord_t& GetMoveRecord(int iEntIndex, int iLogical) const
+	{
+		const int iPhysical = (m_aMoveRecordHead[iEntIndex] + iLogical) % MOVE_RECORD_CAPACITY;
+		return m_aMoveRecords[iEntIndex][iPhysical];
+	}
 
 	bool m_bOldInPrediction = false;
 	bool m_bOldFirstTimePredicted = false;

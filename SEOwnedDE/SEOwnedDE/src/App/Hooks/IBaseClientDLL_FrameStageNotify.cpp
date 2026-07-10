@@ -108,11 +108,6 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 
 			F::LagRecords->UpdateRecords();
 
-			if (G::mapVelFixRecords.size() > 64)
-			{
-				G::mapVelFixRecords.clear();
-			}
-
 			for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
 			{
 				if (!pEntity)
@@ -120,10 +115,18 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 
 				const auto pPlayer = pEntity->As<C_TFPlayer>();
 
-				if (pPlayer->deadflag())
+				const int nIndex = pPlayer->entindex();
+
+				if (nIndex < 1 || nIndex > MAX_PLAYERS)
 					continue;
 
-				G::mapVelFixRecords[pPlayer] = { pPlayer->m_vecOrigin(), pPlayer->m_fFlags(), pPlayer->m_flSimulationTime() };
+				if (pPlayer->deadflag())
+				{
+					G::arrVelFixRecords[nIndex].m_pOwner = nullptr;
+					continue;
+				}
+
+				G::arrVelFixRecords[nIndex] = { pPlayer, pPlayer->m_vecOrigin(), pPlayer->m_fFlags(), pPlayer->m_flSimulationTime() };
 			}
 
 			break;

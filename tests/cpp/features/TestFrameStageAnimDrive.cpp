@@ -56,10 +56,10 @@ TEST(FrameStageAnimDriveContracts, MaintainsLagRecordsAndVelFix) {
     EXPECT_NE(src.find("F::LagRecords->AddRecord(pPlayer)"), std::string::npos);
     EXPECT_NE(src.find("F::LagRecords->UpdateRecords()"), std::string::npos);
 
-    // VelFix scratchpad is bounded and refreshed every net update.
-    EXPECT_NE(src.find("G::mapVelFixRecords"), std::string::npos);
-    EXPECT_NE(src.find("G::mapVelFixRecords.size() > 64"), std::string::npos);
-    EXPECT_NE(src.find(".clear()"), std::string::npos);
+    // VelFix scratchpad is a fixed per-entindex array, refreshed every net update
+    // and bounded by construction (no runtime size cap needed).
+    EXPECT_NE(src.find("G::arrVelFixRecords"), std::string::npos);
+    EXPECT_NE(src.find("nIndex > MAX_PLAYERS"), std::string::npos);
 }
 
 TEST(FrameStageAnimDriveContracts, GatedBySetupBonesOptimizationForLagRecords) {

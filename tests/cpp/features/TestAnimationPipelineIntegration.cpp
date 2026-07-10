@@ -12,7 +12,7 @@
 //     -> per remote player: UpdateClientSideAnimation x N (tick-locked)
 //     -> per remote player: LagRecords::AddRecord
 //       -> SetupBones writes into LagRecord_t::BoneData
-//     -> mapVelFixRecords refreshed
+//     -> arrVelFixRecords refreshed
 //   FRAME_RENDER_START
 //     -> CBaseAnimating::SetupBones consumes cached bones + delta correction
 //   CPrediction::RunCommand
@@ -36,7 +36,7 @@ const PipelineFile kPipeline[] = {
             "G::bUpdatingAnims",
             "pPlayer->UpdateClientSideAnimation()",
             "F::LagRecords->AddRecord(pPlayer)",
-            "G::mapVelFixRecords",
+            "G::arrVelFixRecords",
         },
     },
     {
@@ -76,7 +76,7 @@ const PipelineFile kPipeline[] = {
     {
         "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_SetAbsVelocity.cpp",
         {
-            "G::mapVelFixRecords",
+            "G::arrVelFixRecords",
             "FL_DUCKING",
         },
     },

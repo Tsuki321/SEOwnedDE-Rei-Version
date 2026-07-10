@@ -25,7 +25,7 @@ MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), v
 	F::SeedPred->Reset();
 	F::Killstreak->Reset();
 
-	G::mapVelFixRecords.clear();
+	G::arrVelFixRecords = {};
 
 	Shifting::Reset();
 }

@@ -9,13 +9,13 @@ MAKE_HOOK(CBaseEntity_SetAbsVelocity, Signatures::CBaseEntity_SetAbsVelocity.Get
 	{
 		if (const auto pBasePlayer = ecx->As<C_TFPlayer>())
 		{
-			// Single O(log N) lookup instead of contains() + operator[] which
-			// walks the red-black tree twice.
-			const auto it = G::mapVelFixRecords.find(pBasePlayer);
+			// O(1) array probe by entindex, validated against the owner pointer so a
+			// disconnect/reconnect into the same slot can't serve a stale record.
+			const int nIndex = pBasePlayer->entindex();
 
-			if (it != G::mapVelFixRecords.end())
+			if (nIndex >= 1 && nIndex <= MAX_PLAYERS && G::arrVelFixRecords[nIndex].m_pOwner == pBasePlayer)
 			{
-				const auto& record = it->second;
+				const auto& record = G::arrVelFixRecords[nIndex];
 				const float flSimTimeDelta = pBasePlayer->m_flSimulationTime() - record.m_flSimulationTime;
 
 				if (flSimTimeDelta > 0.0f)

@@ -312,18 +312,21 @@ void CMovementSimulation::StoreMoveRecord(C_TFPlayer* pPlayer)
 	if (!pPlayer || pPlayer->deadflag())
 		return;
 
-	auto& vRecords = m_mMoveRecords[pPlayer->entindex()];
+	const int iEntIndex = pPlayer->entindex();
 
-	MoveRecord_t record = {};
+	// Push a new "logical 0" (most recent) into the ring: step head back one slot
+	// (wrapping), write there, and grow the count up to capacity.
+	uint8_t& iHead = m_aMoveRecordHead[iEntIndex];
+	iHead = static_cast<uint8_t>((iHead + MOVE_RECORD_CAPACITY - 1) % MOVE_RECORD_CAPACITY);
+
+	MoveRecord_t& record = m_aMoveRecords[iEntIndex][iHead];
 	record.m_vVelocity = pPlayer->m_vecVelocity();
 	record.m_vDirection = pPlayer->m_vecVelocity().Length2D() > 1.0f ? Math::VelocityToAngles(pPlayer->m_vecVelocity()) : Vec3{};
 	record.m_flSimTime = pPlayer->m_flSimulationTime();
 	record.m_iFlags = pPlayer->m_fFlags();
 
-	vRecords.push_front(record);
-
-	if (vRecords.size() > 66)
-		vRecords.pop_back();
+	if (m_aMoveRecordCount[iEntIndex] < MOVE_RECORD_CAPACITY)
+		m_aMoveRecordCount[iEntIndex]++;
 }
 
 float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
@@ -331,11 +334,12 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 	if (!pPlayer)
 		return 0.0f;
 
-	auto& vRecords = m_mMoveRecords[pPlayer->entindex()];
-	if (vRecords.size() < 3)
+	const int iEntIndex = pPlayer->entindex();
+	const int iStored = GetMoveRecordCount(iEntIndex);
+	if (iStored < 3)
 		return 1.0f;
 
-	const auto iRecordCount = std::min(static_cast<int>(vRecords.size()), 30);
+	const auto iRecordCount = std::min(iStored, 30);
 	if (iRecordCount < 3)
 		return 1.0f;
 
@@ -345,11 +349,11 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 
 	for (int i = 0; i < iRecordCount - 1; i++)
 	{
-		if (i + 1 >= static_cast<int>(vRecords.size()))
+		if (i + 1 >= iStored)
 			break;
 
-		const auto& record1 = vRecords[i];
-		const auto& record2 = vRecords[i + 1];
+		const auto& record1 = GetMoveRecord(iEntIndex, i);
+		const auto& record2 = GetMoveRecord(iEntIndex, i + 1);
 
 		if (record1.m_vDirection.IsZero() || record2.m_vDirection.IsZero())
 			continue;

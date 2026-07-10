@@ -320,12 +320,16 @@ namespace G
 
 	struct VelFixRecord_t
 	{
+		C_BasePlayer* m_pOwner = nullptr;
 		Vec3 m_vecOrigin = {};
 		int m_fFlags = 0;
 		float m_flSimulationTime = 0.0f;
 	};
 
-	inline std::map<C_BasePlayer *, VelFixRecord_t> mapVelFixRecords = {};
+	// Flat array keyed by entindex (1-based, hence MAX_PLAYERS + 1) instead of a
+	// std::map<player*> that allocated/rebalanced a red-black node per player every
+	// net update. m_pOwner validates the slot against pointer/slot reuse.
+	inline std::array<VelFixRecord_t, MAX_PLAYERS + 1> arrVelFixRecords = {};
 
 	inline bool bFiring = false;
 	inline int nTicksTargetSame = 0;

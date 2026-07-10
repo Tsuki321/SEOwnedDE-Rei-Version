@@ -133,10 +133,15 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 
 			if (!bTakingScreenshot)
 			{
-				const auto pEntity = pClientEntity->As<C_BaseEntity>();
+				// Skip the two hash-set lookups entirely when neither feature drew
+				// anything this frame (the common case with Materials/Outlines off).
+				if (F::Materials->HasAnyDrawn() || F::Outlines->HasAnyDrawn())
+				{
+					const auto pEntity = pClientEntity->As<C_BaseEntity>();
 
-				if (!F::Materials->IsRendering() && !F::Outlines->IsRendering() && (F::Outlines->HasDrawn(pEntity) || F::Materials->HasDrawn(pEntity)))
-					return;
+					if (!F::Materials->IsRendering() && !F::Outlines->IsRendering() && (F::Outlines->HasDrawn(pEntity) || F::Materials->HasDrawn(pEntity)))
+						return;
+				}
 			}
 		}
 	}

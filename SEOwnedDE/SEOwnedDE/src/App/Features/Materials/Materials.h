@@ -34,6 +34,13 @@ public:
 		return m_setDrawnEntities.contains(pEntity);
 	}
 
+	// Cheap gate for the per-draw hot path: when nothing was drawn this frame the
+	// set is empty, so callers can skip the hash lookup entirely.
+	bool HasAnyDrawn()
+	{
+		return !m_setDrawnEntities.empty();
+	}
+
 	bool IsRendering()
 	{
 		return m_bRendering;

@@ -17,7 +17,7 @@ MAKE_HOOK(CStudioRender_DrawModelStaticProp, Memory::GetVFunc(I::StudioRender, 3
 
 			if (flDistance > 100.0f)
 			{
-				flAlpha = Math::RemapValClamped(pLocal->m_vecOrigin().DistTo(vOrigin), 100.0f, 200.0f, 0.15f, 1.0f);
+				flAlpha = Math::RemapValClamped(flDistance, 100.0f, 200.0f, 0.15f, 1.0f);
 			}
 			else
 			{

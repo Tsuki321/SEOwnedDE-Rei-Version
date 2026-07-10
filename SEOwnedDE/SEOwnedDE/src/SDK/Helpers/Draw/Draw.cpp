@@ -93,8 +93,10 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 		return;
 
 	va_list va_alist = {};
-	char cbuffer[1024] = { '\0' };
-	wchar_t wstr[1024] = { '\0' };
+	// No aggregate zero-init: vsprintf_s/swprintf_s null-terminate their output,
+	// so memsetting 3 KB of stack every text draw is pure waste on a hot primitive.
+	char cbuffer[1024];
+	wchar_t wstr[1024];
 
 	va_start(va_alist, str);
 	vsprintf_s(cbuffer, str, va_alist);
@@ -128,7 +130,8 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 		return;
 
 	va_list va_alist{};
-	wchar_t wstr[1024] = { '\0' };
+	// See narrow overload: vswprintf_s null-terminates, no need to zero the buffer.
+	wchar_t wstr[1024];
 
 	va_start(va_alist, str);
 	vswprintf_s(wstr, str, va_alist);
