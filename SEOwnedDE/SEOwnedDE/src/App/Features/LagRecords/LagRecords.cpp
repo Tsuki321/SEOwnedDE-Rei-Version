@@ -263,6 +263,7 @@ void CLagRecords::UpdateRecords()
 			m_RecordCounts[i] = 0u;
 
 		m_CachedStates = {};
+		m_flSmoothedLatency = -1.0f;
 
 		if (!m_FailedChildBones.empty())
 			m_FailedChildBones.clear();
@@ -351,7 +352,17 @@ void CLagRecords::UpdateRecords()
 		if (flUnlag > 0.0f)
 			flMaxWindow = flUnlag;
 	}
-	const float flLatency = GetOutgoingLatency() + SDKUtils::GetLerp();
+	// Exponentially smooth the outgoing latency so an unstable connection that
+	// alternates high/low ping does not thrash the window and repeatedly discard
+	// deep records on the low-ping frames (tail pruning below is one-way). Lerp
+	// is convar-derived and already stable, so only the network term is smoothed.
+	const float flRawLatency = GetOutgoingLatency();
+	if (m_flSmoothedLatency < 0.0f)
+		m_flSmoothedLatency = flRawLatency;
+	else
+		m_flSmoothedLatency += (flRawLatency - m_flSmoothedLatency) * LAG_LATENCY_EMA_ALPHA;
+
+	const float flLatency = m_flSmoothedLatency + SDKUtils::GetLerp();
 
 	for (int i = 0; i < MAX_PLAYERS; ++i)
 	{

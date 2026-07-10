@@ -118,3 +118,27 @@ TEST(SetupBonesContracts, BypassesCacheForFailedChildBones) {
         << "baseEnt == ent at this point; a second HasFailedBones(ent) call "
            "is a redundant hash query.";
 }
+
+// The two-record blend must not run across a teleport: record 0 (post-jump) and
+// record 1 (pre-jump) are far apart, so blending smears the skeleton across the
+// gap and throws off a manual snap taken exactly on the teleport.
+TEST(SetupBonesContracts, BlendSkipsAcrossTeleport) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kHookSource);
+
+    EXPECT_NE(src.find("!pRecord->bTeleported"), std::string::npos);
+}
+
+// The blend interpolates LIMB pose only: the per-record origin step (O1 - O0)
+// baked into the absolute bone matrices is subtracted so the blend never drags
+// a moving target's limbs backward off the origin-corrected body (a manual-
+// accuracy loss that scales with target speed).
+TEST(SetupBonesContracts, BlendInterpolatesLimbPoseNotBodyPosition) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kHookSource);
+
+    EXPECT_NE(src.find("pPrev->AbsOrigin.x - pRecord->AbsOrigin.x"), std::string::npos);
+    EXPECT_NE(src.find(") - odx"), std::string::npos);
+    EXPECT_NE(src.find(") - ody"), std::string::npos);
+    EXPECT_NE(src.find(") - odz"), std::string::npos);
+}

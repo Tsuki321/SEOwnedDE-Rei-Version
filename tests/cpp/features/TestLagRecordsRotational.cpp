@@ -136,3 +136,20 @@ TEST(LagRecordsRotationalContracts, GetCachedStateBoundsChecksIndex) {
     // Guard clause on the valid [1, MAX_PLAYERS) range.
     EXPECT_NE(header.find("nPlayerIndex < 1 || nPlayerIndex >= MAX_PLAYERS"), std::string::npos);
 }
+
+// Unstable-ping hardening: the latency term that scopes the validity window is
+// exponentially smoothed so a connection alternating high/low ping does not
+// thrash the window and destructively truncate deep records on low-ping frames.
+TEST(LagRecordsRotationalContracts, ValidityWindowLatencyIsSmoothed) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto header = testhelpers::ReadTextFile(root / kFeatureHeader);
+    const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
+
+    EXPECT_NE(header.find("LAG_LATENCY_EMA_ALPHA"), std::string::npos);
+    EXPECT_NE(header.find("m_flSmoothedLatency"), std::string::npos);
+    // EMA update feeds the window latency instead of the raw sample.
+    EXPECT_NE(src.find("m_flSmoothedLatency += (flRawLatency - m_flSmoothedLatency) * LAG_LATENCY_EMA_ALPHA"), std::string::npos);
+    EXPECT_NE(src.find("const float flLatency = m_flSmoothedLatency + SDKUtils::GetLerp()"), std::string::npos);
+    // Reset to re-seed on a full-ring clear (death / ghost / kart).
+    EXPECT_NE(src.find("m_flSmoothedLatency = -1.0f"), std::string::npos);
+}

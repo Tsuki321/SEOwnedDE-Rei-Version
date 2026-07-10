@@ -190,8 +190,10 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 
 							// Phase 2: bone interpolation - skip for distant players, small movements,
 						// and the yaw-rotation path (the translational blend would double-correct
-						// an already-yaw-rotated skeleton, causing jitter on fast spins).
-							if (std::fabs(deltaYaw) <= kYawEpsilonDeg && nRecords >= 2 && distSqr < kLerpDistThresholdSqr)
+						// an already-yaw-rotated skeleton, causing jitter on fast spins), and skip
+							// across a teleport (record 0 post-jump vs record 1 pre-jump are far apart,
+							// so the blend would smear the skeleton across the gap on a manual snap).
+							if (std::fabs(deltaYaw) <= kYawEpsilonDeg && !pRecord->bTeleported && nRecords >= 2 && distSqr < kLerpDistThresholdSqr)
 							{
 								if (const auto pPrev = F::LagRecords->GetRecord(pPlayer, 1))
 								{
@@ -217,11 +219,23 @@ MAKE_HOOK(CBaseAnimating_SetupBones, Signatures::CBaseAnimating_SetupBones.Get()
 												const auto* pPrevBones = pPrev->BoneData.data();
 												const auto* pRecBones = pRecord->BoneData.data();
 
+													// Interpolate the LIMB pose only, not the body position. The
+													// translation correction above already re-centered the skeleton
+													// on the live interpolated origin; the raw record bones are
+													// absolute world matrices, so their per-bone difference also
+													// carries the per-record origin step (O1 - O0). Subtract it so
+													// the blend does not drag a moving target's limbs backward off
+													// the corrected body - that skew scales with target speed and is
+													// a direct manual-accuracy loss.
+													const float odx = pPrev->AbsOrigin.x - pRecord->AbsOrigin.x;
+													const float ody = pPrev->AbsOrigin.y - pRecord->AbsOrigin.y;
+													const float odz = pPrev->AbsOrigin.z - pRecord->AbsOrigin.z;
+
 												for (int i = 0; i < nBlendCount; ++i)
 												{
-													const float dx = pPrevBones[i][0][3] - pRecBones[i][0][3];
-													const float dy = pPrevBones[i][1][3] - pRecBones[i][1][3];
-													const float dz = pPrevBones[i][2][3] - pRecBones[i][2][3];
+													const float dx = (pPrevBones[i][0][3] - pRecBones[i][0][3]) - odx;
+													const float dy = (pPrevBones[i][1][3] - pRecBones[i][1][3]) - ody;
+													const float dz = (pPrevBones[i][2][3] - pRecBones[i][2][3]) - odz;
 
 													pBoneToWorldOut[i][0][3] += dx * oneMinusT;
 													pBoneToWorldOut[i][1][3] += dy * oneMinusT;

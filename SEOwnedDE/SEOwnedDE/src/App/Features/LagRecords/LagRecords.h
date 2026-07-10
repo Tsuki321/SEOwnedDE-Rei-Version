@@ -31,6 +31,14 @@ inline constexpr float LAG_COMPENSATION_TELEPORTED_BASE_RADIUS = 64.0f;
 // intra-interval acceleration and air-strafing without flagging real movement.
 inline constexpr float LAG_COMPENSATION_TELEPORTED_VELOCITY_SLACK = 1.5f;
 
+// EMA weight for the per-frame latency term that scopes the validity window.
+// Small alpha => heavy smoothing (~1/alpha frames of memory, ~130 ms at 66 fps)
+// so an unstable connection alternating between high and low ping does not
+// oscillate the window and destructively truncate deep records on the low
+// frames. Tail pruning in UpdateRecords is one-way (counts shrink and never
+// grow back into overwritten slots), which is why the input needs smoothing.
+inline constexpr float LAG_LATENCY_EMA_ALPHA = 0.12f;
+
 struct LagRecord_t
 {
 	C_TFPlayer* Player = nullptr;
@@ -77,6 +85,13 @@ class CLagRecords
 	std::array<uint8_t, MAX_PLAYERS> m_RecordHeads = {};
 	std::array<uint8_t, MAX_PLAYERS> m_RecordCounts = {};
 	bool m_bSettingUpBones = false;
+
+	// Exponentially-smoothed latency (outgoing + lerp) used to scope the
+	// per-frame validity window. Seeded to -1 so the first UpdateRecords adopts
+	// the raw sample verbatim instead of easing up from zero; reset to -1 on
+	// every full-ring clear (death / ghost / kart) so a stale average from a
+	// prior life or server cannot leak into a fresh one.
+	float m_flSmoothedLatency = -1.0f;
 
 	// Per-player snapshot of the live (current-frame) state used by
 	// DiffersFromCurrentCached. Built once per frame inside UpdateRecords so
