@@ -24,6 +24,33 @@ float CLagRecords::GetOutgoingLatency()
 	return 0.0f;
 }
 
+bool CLagRecords::AreConsumersActive()
+{
+	return CFG::Aimbot_Hitscan_Target_LagRecords
+		|| CFG::Aimbot_Melee_Target_LagRecords
+		|| CFG::Triggerbot_AutoBackstab_Use_LagRecords
+		|| CFG::Aimbot_Projectile_Ground_Strafe_Prediction
+		|| CFG::Aimbot_Projectile_Air_Strafe_Prediction
+		|| (CFG::Materials_Players_Active && !CFG::Materials_Players_Ignore_LagRecords);
+}
+
+bool CLagRecords::ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
+{
+	if (!pLocal || !pPlayer)
+		return false;
+
+	// When skip-offscreen is off, always capture (legacy default).
+	if (!CFG::Misc_LagRecords_Skip_Offscreen)
+		return true;
+
+	// Any active consumer must keep a full ring even for off-screen players
+	// so aimbot/backstab/materials never starve for records.
+	if (AreConsumersActive())
+		return true;
+
+	return F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin());
+}
+
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency)
 {
 	if (flCmprSimTime > flCurSimTime)

@@ -115,6 +115,16 @@ class CLagRecords
 
 public:
 	static float GetOutgoingLatency();
+
+	// True when any feature that reads lag records is configured on. Used by
+	// capture gating (FrameStageNotify) so the consumer CFG list lives in one
+	// place instead of being copy-pasted across hook branches.
+	static bool AreConsumersActive();
+
+	// Whether AddRecord should run for this player under the current skip-
+	// offscreen / consumer policy. Callers still apply dead/team filters.
+	static bool ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer);
+
 	void AddRecord(C_TFPlayer* pPlayer);
 	const LagRecord_t* GetRecord(C_TFPlayer* pPlayer, int nRecord);
 	bool HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords = nullptr);

@@ -31,6 +31,24 @@ void CEntityHelper::UpdateCache()
 		if (!pLocal->IsInValidTeam(&nLocalTeam))
 			return;
 
+		// Preserve capacity across ClearCache/UpdateCache. clear() does not
+		// shrink; reserve only grows. Typical TF2 concurrent counts with headroom.
+		m_arrGroups[static_cast<size_t>(EEntGroup::PLAYERS_ALL)].reserve(64);
+		m_arrGroups[static_cast<size_t>(EEntGroup::PLAYERS_ENEMIES)].reserve(32);
+		m_arrGroups[static_cast<size_t>(EEntGroup::PLAYERS_TEAMMATES)].reserve(32);
+		m_arrGroups[static_cast<size_t>(EEntGroup::PLAYERS_OBSERVER)].reserve(16);
+		m_arrGroups[static_cast<size_t>(EEntGroup::BUILDINGS_ALL)].reserve(64);
+		m_arrGroups[static_cast<size_t>(EEntGroup::BUILDINGS_ENEMIES)].reserve(48);
+		m_arrGroups[static_cast<size_t>(EEntGroup::BUILDINGS_TEAMMATES)].reserve(48);
+		m_arrGroups[static_cast<size_t>(EEntGroup::PROJECTILES_ALL)].reserve(128);
+		m_arrGroups[static_cast<size_t>(EEntGroup::PROJECTILES_ENEMIES)].reserve(96);
+		m_arrGroups[static_cast<size_t>(EEntGroup::PROJECTILES_TEAMMATES)].reserve(96);
+		m_arrGroups[static_cast<size_t>(EEntGroup::PROJECTILES_LOCAL_STICKIES)].reserve(32);
+		m_arrGroups[static_cast<size_t>(EEntGroup::HEALTHPACKS)].reserve(32);
+		m_arrGroups[static_cast<size_t>(EEntGroup::AMMOPACKS)].reserve(32);
+		m_arrGroups[static_cast<size_t>(EEntGroup::HALLOWEEN_GIFT)].reserve(8);
+		m_arrGroups[static_cast<size_t>(EEntGroup::MVM_MONEY)].reserve(64);
+
 		for (int n = 1; n <= I::ClientEntityList->GetHighestEntityIndex(); n++)
 		{
 			IClientEntity* pClientEntity = I::ClientEntityList->GetClientEntity(n);
@@ -186,6 +204,8 @@ void CEntityHelper::UpdateModelIndexes()
 
 void CEntityHelper::ClearCache()
 {
+	// clear() keeps capacity so the next UpdateCache does not reallocate
+	// group vectors after they have grown to a stable size.
 	for (auto& group : m_arrGroups)
 	{
 		group.clear();

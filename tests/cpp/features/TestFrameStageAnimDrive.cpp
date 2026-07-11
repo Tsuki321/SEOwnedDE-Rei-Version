@@ -5,6 +5,8 @@
 namespace {
 constexpr const char* kHookSource =
     "SEOwnedDE/SEOwnedDE/src/App/Hooks/IBaseClientDLL_FrameStageNotify.cpp";
+constexpr const char* kLagRecordsSource =
+    "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.cpp";
 }
 
 // FrameStageNotify is the per-frame driver that catches up remote-player animation
@@ -70,4 +72,19 @@ TEST(FrameStageAnimDriveContracts, GatedBySetupBonesOptimizationForLagRecords) {
     // otherwise only enemies are recorded.
     EXPECT_NE(src.find("CFG::Misc_SetupBones_Optimization"), std::string::npos);
     EXPECT_NE(src.find("m_iTeamNum() != pLocal->m_iTeamNum()"), std::string::npos);
+}
+
+TEST(FrameStageAnimDriveContracts, UsesCentralizedLagRecordCapturePolicy) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto hookSrc = testhelpers::ReadTextFile(root / kHookSource);
+    const auto lagSrc = testhelpers::ReadTextFile(root / kLagRecordsSource);
+
+    // Hook delegates capture gating to CLagRecords (no duplicated CFG OR-list).
+    EXPECT_NE(hookSrc.find("CLagRecords::ShouldCaptureRecord(pLocal, pPlayer)"), std::string::npos);
+    EXPECT_EQ(hookSrc.find("CFG::Misc_LagRecords_Skip_Offscreen"), std::string::npos);
+    EXPECT_EQ(hookSrc.find("CFG::Aimbot_Hitscan_Target_LagRecords"), std::string::npos);
+
+    EXPECT_NE(lagSrc.find("CLagRecords::AreConsumersActive()"), std::string::npos);
+    EXPECT_NE(lagSrc.find("CLagRecords::ShouldCaptureRecord("), std::string::npos);
+    EXPECT_NE(lagSrc.find("CFG::Misc_LagRecords_Skip_Offscreen"), std::string::npos);
 }

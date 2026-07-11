@@ -57,15 +57,20 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	float flOldSide = pCmd->sidemove;
 	float flOldForward = pCmd->forwardmove;
 
-	if (auto pLocal = H::Entities->GetLocal())
+	// Resolve local/weapon once for this cmd. Attack readiness and the rest of
+	// CreateMove reuse these pointers instead of re-walking the entity list.
+	C_TFPlayer* pLocal = H::Entities->GetLocal();
+	C_TFWeaponBase* pWeapon = pLocal ? H::Entities->GetWeapon() : nullptr;
+
+	G::bCanPrimaryAttack = false;
+	G::bCanSecondaryAttack = false;
+	G::bCanHeadshot = false;
+
+	if (pLocal && pWeapon)
 	{
-		if (auto pWeapon = H::Entities->GetWeapon())
-		{
-			//TODO?: do we really need to cache these?
-			G::bCanPrimaryAttack = pWeapon->CanPrimaryAttack(pLocal);
-			G::bCanSecondaryAttack = pWeapon->CanSecondaryAttack(pLocal);
-			G::bCanHeadshot = pWeapon->CanHeadShot(pLocal);
-		}
+		G::bCanPrimaryAttack = pWeapon->CanPrimaryAttack(pLocal);
+		G::bCanSecondaryAttack = pWeapon->CanSecondaryAttack(pLocal);
+		G::bCanHeadshot = pWeapon->CanHeadShot(pLocal);
 	}
 
 	//nTicksSinceCanFire
@@ -100,9 +105,9 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	{
 		if (CFG::Misc_Choke_On_Bhop && CFG::Misc_Bunnyhop)
 		{
-			if (C_TFPlayer* const local{ H::Entities->GetLocal() })
+			if (pLocal)
 			{
-				if ((local->m_fFlags() & FL_ONGROUND) && !(F::EnginePrediction->flags & FL_ONGROUND))
+				if ((pLocal->m_fFlags() & FL_ONGROUND) && !(F::EnginePrediction->flags & FL_ONGROUND))
 				{
 					*pSendPacket = false;
 				}
@@ -142,7 +147,7 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	/* Taunt Slide */
 	if (CFG::Misc_Taunt_Slide)
 	{
-		if (auto pLocal = H::Entities->GetLocal())
+		if (pLocal)
 		{
 			if (pLocal->InCond(TF_COND_TAUNTING) && pLocal->m_bAllowMoveDuringTaunt())
 			{
@@ -179,7 +184,7 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	/* Warp */
 	if (CFG::Exploits_Warp_Exploit && CFG::Exploits_Warp_Mode == 1 && Shifting::bShiftingWarp)
 	{
-		if (auto pLocal = H::Entities->GetLocal())
+		if (pLocal)
 		{
 			if (CFG::Exploits_Warp_Exploit == 1)
 			{

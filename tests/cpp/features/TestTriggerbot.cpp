@@ -5,6 +5,8 @@
 namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/Triggerbot.cpp";
+constexpr const char* kAutoBackstabSource =
+    "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoBackstab/AutoBackstab.cpp";
 }
 
 TEST(TriggerbotContracts, ContainsExpectedSourceFiles) {
@@ -46,4 +48,16 @@ TEST(TriggerbotContracts, UsesGuardClausesAndReturns) {
 
     EXPECT_GE(totalIfs, static_cast<std::size_t>(13));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(4));
+}
+
+TEST(TriggerbotContracts, AutoBackstabUsesMoveChildRazorbackWalk) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);
+
+    EXPECT_NE(src.find("HasActiveRazorback"), std::string::npos);
+    EXPECT_NE(src.find("FirstMoveChild()"), std::string::npos);
+    EXPECT_NE(src.find("NextMovePeer()"), std::string::npos);
+    EXPECT_NE(src.find("CTFWearableRazorback"), std::string::npos);
+    // Must not scan the full client entity list for razorbacks.
+    EXPECT_EQ(src.find("GetHighestEntityIndex()"), std::string::npos);
 }

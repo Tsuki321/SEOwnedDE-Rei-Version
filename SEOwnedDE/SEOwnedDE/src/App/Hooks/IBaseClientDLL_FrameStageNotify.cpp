@@ -4,7 +4,6 @@
 #include "../Features/WorldModulation/WorldModulation.h"
 #include "../Features/LagRecords/LagRecords.h"
 #include "../Features/MiscVisuals/MiscVisuals.h"
-#include "../Features/VisualUtils/VisualUtils.h"
 #include "../Features/MovementSimulation/MovementSimulation.h"
 
 MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35), void, __fastcall,
@@ -62,17 +61,9 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 								// Misc_LagRecords_Skip_Offscreen). Cuts the
 								// SetupBones(128) cost for off-screen players
 								// when no consumer of the records is active.
-								// Gated on "no consumer" so we never break a
-								// feature that reads the ring; default off and
-								// guarded by 5 individual config checks.
-								if (!CFG::Misc_LagRecords_Skip_Offscreen
-									|| CFG::Aimbot_Hitscan_Target_LagRecords
-									|| CFG::Aimbot_Melee_Target_LagRecords
-									|| CFG::Triggerbot_AutoBackstab_Use_LagRecords
-									|| CFG::Aimbot_Projectile_Ground_Strafe_Prediction
-									|| CFG::Aimbot_Projectile_Air_Strafe_Prediction
-									|| (CFG::Materials_Players_Active && !CFG::Materials_Players_Ignore_LagRecords)
-									|| F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin()))
+								// Policy lives in CLagRecords so both branches
+								// and future callers share one CFG gate.
+								if (CLagRecords::ShouldCaptureRecord(pLocal, pPlayer))
 								{
 									F::LagRecords->AddRecord(pPlayer);
 								}
@@ -83,14 +74,7 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 						{
 							if (pPlayer->m_iTeamNum() != pLocal->m_iTeamNum() && !pPlayer->deadflag())
 							{
-								if (!CFG::Misc_LagRecords_Skip_Offscreen
-									|| CFG::Aimbot_Hitscan_Target_LagRecords
-									|| CFG::Aimbot_Melee_Target_LagRecords
-									|| CFG::Triggerbot_AutoBackstab_Use_LagRecords
-									|| CFG::Aimbot_Projectile_Ground_Strafe_Prediction
-									|| CFG::Aimbot_Projectile_Air_Strafe_Prediction
-									|| (CFG::Materials_Players_Active && !CFG::Materials_Players_Ignore_LagRecords)
-									|| F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin()))
+								if (CLagRecords::ShouldCaptureRecord(pLocal, pPlayer))
 								{
 									F::LagRecords->AddRecord(pPlayer);
 								}

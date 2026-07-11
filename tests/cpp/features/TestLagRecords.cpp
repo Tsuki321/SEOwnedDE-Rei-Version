@@ -5,6 +5,7 @@
 namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.cpp";
+constexpr const char* kHeaderSource = "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.h";
 }
 
 TEST(LagRecordsContracts, ContainsExpectedSourceFiles) {
@@ -51,4 +52,18 @@ TEST(LagRecordsContracts, UsesGuardClausesAndReturns) {
 
     EXPECT_GE(totalIfs, static_cast<std::size_t>(4));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(3));
+}
+
+TEST(LagRecordsContracts, CentralizesConsumerCapturePolicy) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto header = testhelpers::ReadTextFile(root / kHeaderSource);
+    const auto mainSource = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(header.find("AreConsumersActive"), std::string::npos);
+    EXPECT_NE(header.find("ShouldCaptureRecord"), std::string::npos);
+    EXPECT_NE(mainSource.find("CLagRecords::AreConsumersActive()"), std::string::npos);
+    EXPECT_NE(mainSource.find("CLagRecords::ShouldCaptureRecord("), std::string::npos);
+    EXPECT_NE(mainSource.find("CFG::Aimbot_Hitscan_Target_LagRecords"), std::string::npos);
+    EXPECT_NE(mainSource.find("CFG::Triggerbot_AutoBackstab_Use_LagRecords"), std::string::npos);
+    EXPECT_NE(mainSource.find("CFG::Materials_Players_Ignore_LagRecords"), std::string::npos);
 }

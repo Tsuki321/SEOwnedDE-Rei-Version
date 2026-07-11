@@ -11,28 +11,21 @@ static bool HasActiveRazorback(C_TFPlayer* pPlayer)
 		return false;
 	}
 
-	for (int i = 1; i <= I::ClientEntityList->GetHighestEntityIndex(); i++)
+	// Walk the player's move-child chain (wearables/weapons) instead of a full
+	// client-entity-list scan. Razorback is always parented to its owner.
+	constexpr int MAX_MOVE_CHILDREN = 64;
+	int nChild = 0;
+
+	for (C_BaseEntity* pAttach = pPlayer->FirstMoveChild();
+		pAttach && nChild < MAX_MOVE_CHILDREN;
+		pAttach = pAttach->NextMovePeer(), ++nChild)
 	{
-		const auto pClient = I::ClientEntityList->GetClientEntity(i);
-
-		if (!pClient || pClient->IsDormant())
+		if (pAttach->GetClassId() != ETFClassIds::CTFWearableRazorback)
 		{
 			continue;
 		}
 
-		const auto pEntity = pClient->As<C_BaseEntity>();
-
-		if (!pEntity || pEntity->GetClassId() != ETFClassIds::CTFWearableRazorback)
-		{
-			continue;
-		}
-
-		if (pEntity->m_hOwnerEntity().Get() != pPlayer)
-		{
-			continue;
-		}
-
-		if (pEntity->ShouldDraw())
+		if (pAttach->ShouldDraw())
 		{
 			return true;
 		}
