@@ -11,12 +11,21 @@ static const Vec3 kPipeAngularVelocity{ 600.0f, 0.0f, 0.0f };
 
 CProjectileSim::~CProjectileSim()
 {
-	if (m_pObj)
+	if (m_pObj && m_pEnv)
 	{
+		m_pEnv->DestroyObject(m_pObj);
 		m_pObj = nullptr;
 	}
-	if (m_pEnv)
+
+	if (m_pCollide && I::PhysicsCollision)
 	{
+		I::PhysicsCollision->DestroyCollide(m_pCollide);
+		m_pCollide = nullptr;
+	}
+
+	if (m_pEnv && I::Physics)
+	{
+		I::Physics->DestroyEnvironment(m_pEnv);
 		m_pEnv = nullptr;
 	}
 }
@@ -145,14 +154,30 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 
 	if (m_bUseVPhysics)
 	{
+		if (!I::Physics || !I::PhysicsCollision)
+			return false;
+
 		if (!m_pEnv)
 		{
 			m_pEnv = I::Physics->CreateEnvironment();
 		}
 
+		if (!m_pEnv)
+		{
+			return false;
+		}
+
 		if (!m_pObj)
 		{
-			auto col{ I::PhysicsCollision->BBoxToCollide({ -2.0f, -2.0f, -2.0f }, { 2.0f, 2.0f, 2.0f }) };
+			if (!m_pCollide)
+			{
+				m_pCollide = I::PhysicsCollision->BBoxToCollide({ -2.0f, -2.0f, -2.0f }, { 2.0f, 2.0f, 2.0f });
+			}
+
+			if (!m_pCollide)
+			{
+				return false;
+			}
 
 			auto params{ g_PhysDefaultObjectParams };
 
@@ -162,9 +187,12 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 			params.rotInertiaLimit = 0.0f;
 			params.enableCollisions = false;
 
-			m_pObj = m_pEnv->CreatePolyObject(col, 0, info.m_pos, info.m_ang, &params);
+			m_pObj = m_pEnv->CreatePolyObject(m_pCollide, 0, info.m_pos, info.m_ang, &params);
 
-			m_pObj->Wake();
+			if (m_pObj)
+			{
+				m_pObj->Wake();
+			}
 		}
 
 		if (!m_pEnv || !m_pObj)

@@ -211,10 +211,10 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 	if (m_vecTargets.empty())
 		return false;
 
-	// Sort by target priority
-	F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Melee_Sort);
+	constexpr std::size_t kTargetsToTrace = 4;
+	F::AimbotCommon->SortFirst(m_vecTargets, kTargetsToTrace, nSortMode);
 
-	const int itEnd = std::min(4, static_cast<int>(m_vecTargets.size()));
+	const int itEnd = std::min(static_cast<int>(kTargetsToTrace), static_cast<int>(m_vecTargets.size()));
 
 	// Find and return the first valid target
 	for (int n = 0; n < itEnd; n++)
@@ -322,11 +322,15 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 		return;
 
 	const bool isFiring = IsFiring(pCmd, pWeapon);
+	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key) || CFG::Aimbot_Melee_Always_Active;
+	const bool manualFireIntent = pCmd->buttons & IN_ATTACK;
+	const bool needsTargetScan = aimKeyDown || manualFireIntent || isFiring;
+	if (!needsTargetScan)
+		return;
 
 	MeleeTarget_t target = {};
 	if (GetTarget(pLocal, pWeapon, target) && target.Entity)
 	{
-		const auto aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key) || CFG::Aimbot_Melee_Always_Active;
 		if (aimKeyDown || isFiring)
 		{
 			G::nTargetIndex = target.Entity->entindex();

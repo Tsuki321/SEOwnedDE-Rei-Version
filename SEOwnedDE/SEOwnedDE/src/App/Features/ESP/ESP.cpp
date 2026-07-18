@@ -260,7 +260,7 @@ void CESP::Run()
 	if (!CFG::ESP_Active || I::EngineVGui->IsGameUIVisible() || SDKUtils::BInEndOfMatch() || F::SpyCamera->IsRendering())
 		return;
 
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}

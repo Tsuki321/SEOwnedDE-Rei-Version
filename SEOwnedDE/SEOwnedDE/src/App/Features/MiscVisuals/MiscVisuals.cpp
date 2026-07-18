@@ -9,7 +9,7 @@
 
 void CMiscVisuals::AimbotFOVCircle()
 {
-	if (I::EngineClient->IsTakingScreenshot())
+	if (F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
@@ -75,7 +75,7 @@ void CMiscVisuals::ShiftBar()
 	if (!CFG::Exploits_Shifting_Draw_Indicator)
 		return;
 
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
@@ -162,7 +162,7 @@ void CMiscVisuals::ShiftBar()
 
 void CMiscVisuals::SniperLines()
 {
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
@@ -253,8 +253,10 @@ void CMiscVisuals::SniperLines()
 
 void CMiscVisuals::ProjectileArc()
 {
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
+		m_vecProjectileArc.clear();
+		m_nProjectileArcTick = -1;
 		return;
 	}
 
@@ -265,6 +267,8 @@ void CMiscVisuals::ProjectileArc()
 
 	if (!CFG::Visuals_Draw_Projectile_Arc)
 	{
+		m_vecProjectileArc.clear();
+		m_nProjectileArcTick = -1;
 		return;
 	}
 
@@ -272,6 +276,8 @@ void CMiscVisuals::ProjectileArc()
 
 	if (!pLocal)
 	{
+		m_vecProjectileArc.clear();
+		m_nProjectileArcTick = -1;
 		return;
 	}
 
@@ -279,79 +285,113 @@ void CMiscVisuals::ProjectileArc()
 
 	if (!pWeapon)
 	{
+		m_vecProjectileArc.clear();
+		m_nProjectileArcTick = -1;
 		return;
 	}
 
-	ProjectileInfo info{};
-	const auto backupOrigin = pLocal->m_vecOrigin();
+	const Vec3 vViewAngles = I::EngineClient->GetViewAngles();
+	const Vec3 vOrigin = pLocal->GetAbsOrigin();
+	const Vec3 vViewOffset = pLocal->m_vecViewOffset();
+	const int nFlags = pLocal->m_fFlags();
+	const int nTickBase = pLocal->m_nTickBase();
+	const int nItemDefinition = pWeapon->m_iItemDefinitionIndex();
+	const int nWeaponID = pWeapon->GetWeaponID();
+	const float flChargeBeginTime = nWeaponID == TF_WEAPON_PIPEBOMBLAUNCHER || nWeaponID == TF_WEAPON_COMPOUND_BOW
+		? pWeapon->As<C_TFPipebombLauncher>()->m_flChargeBeginTime()
+		: 0.0f;
+	const int nTick = I::GlobalVars ? I::GlobalVars->tickcount : -1;
+	const bool bInputChanged = m_pProjectileArcLocal != pLocal
+		|| m_pProjectileArcWeapon != pWeapon
+		|| (m_vProjectileArcOrigin - vOrigin).LengthSqr() > 0.01f
+		|| (m_vProjectileArcAngles - vViewAngles).LengthSqr() > 0.0001f
+		|| (m_vProjectileArcViewOffset - vViewOffset).LengthSqr() > 0.01f
+		|| m_nProjectileArcFlags != nFlags
+		|| m_nProjectileArcTickBase != nTickBase
+		|| m_nProjectileArcItemDefinition != nItemDefinition
+		|| m_flProjectileArcChargeBeginTime != flChargeBeginTime;
 
-	pLocal->m_vecOrigin() = pLocal->GetAbsOrigin();
-
-	if (!F::ProjectileSim->GetInfo(pLocal, pWeapon, I::EngineClient->GetViewAngles(), info))
+	if (m_nProjectileArcTick != nTick || bInputChanged)
 	{
-		pLocal->m_vecOrigin() = backupOrigin;
+		m_nProjectileArcTick = nTick;
+		m_pProjectileArcLocal = pLocal;
+		m_pProjectileArcWeapon = pWeapon;
+		m_vProjectileArcOrigin = vOrigin;
+		m_vProjectileArcAngles = vViewAngles;
+		m_vProjectileArcViewOffset = vViewOffset;
+		m_nProjectileArcFlags = nFlags;
+		m_nProjectileArcTickBase = nTickBase;
+		m_nProjectileArcItemDefinition = nItemDefinition;
+		m_flProjectileArcChargeBeginTime = flChargeBeginTime;
+		m_vecProjectileArc.clear();
 
-		return;
-	}
+		ProjectileInfo info{};
+		const auto backupOrigin = pLocal->m_vecOrigin();
+		pLocal->m_vecOrigin() = vOrigin;
 
-	pLocal->m_vecOrigin() = backupOrigin;
-
-	if (!F::ProjectileSim->Init(info))
-	{
-		return;
-	}
-
-	CTraceFilterArc filter{};
-	auto maxTime = 5.0f;
-
-	if (info.m_type == TF_PROJECTILE_PIPEBOMB)
-	{
-		maxTime = pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheIronBomber ? 1.54f : 2.2f;
-	}
-
-	if (info.m_type == TF_PROJECTILE_CANNONBALL)
-	{
-		maxTime = 1.0f;
-	}
-
-	for (auto n{ 0 }; n < TIME_TO_TICKS(maxTime); n++)
-	{
-		auto pre{ F::ProjectileSim->GetOrigin() };
-
-		F::ProjectileSim->RunTick();
-
-		auto post{ F::ProjectileSim->GetOrigin() };
-
-		auto clr{ F::VisualUtils->RainbowTickOffset(n) };
-
-		if (CFG::Visuals_Draw_Projectile_Arc_Color_Mode == 0)
+		if (!F::ProjectileSim->GetInfo(pLocal, pWeapon, vViewAngles, info))
 		{
-			clr = CFG::Color_Projectile_Arc;
+			pLocal->m_vecOrigin() = backupOrigin;
+			return;
 		}
 
-		trace_t trace{};
+		pLocal->m_vecOrigin() = backupOrigin;
 
-		H::AimUtils->TraceHull(pre, post, { -2.0f, -2.0f, -2.0f }, { 2.0f, 2.0f, 2.0f }, MASK_SOLID, &filter, &trace);
+		if (!F::ProjectileSim->Init(info))
+			return;
 
-		if (trace.DidHit())
+		CTraceFilterArc filter{};
+		auto maxTime = 5.0f;
+
+		if (info.m_type == TF_PROJECTILE_PIPEBOMB)
+			maxTime = pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheIronBomber ? 1.54f : 2.2f;
+
+		if (info.m_type == TF_PROJECTILE_CANNONBALL)
+			maxTime = 1.0f;
+
+		m_vecProjectileArc.reserve(TIME_TO_TICKS(maxTime));
+		for (auto n{ 0 }; n < TIME_TO_TICKS(maxTime); n++)
 		{
-			Vec3 angles{};
+			const auto pre = F::ProjectileSim->GetOrigin();
+			F::ProjectileSim->RunTick();
+			const auto post = F::ProjectileSim->GetOrigin();
 
-			Math::VectorAngles(trace.plane.normal, angles);
+			trace_t trace{};
+			H::AimUtils->TraceHull(pre, post, { -2.0f, -2.0f, -2.0f }, { 2.0f, 2.0f, 2.0f }, MASK_SOLID, &filter, &trace);
 
-			RenderUtils::RenderBox(trace.endpos, angles, { -1.0f, -10.0f, -10.0f }, { 1.0f, 10.0f, 10.0f }, { clr.r, clr.g, clr.b, 50 }, false);
-			RenderUtils::RenderWireframeBox(trace.endpos, angles, { -1.0f, -10.0f, -10.0f }, { 1.0f, 10.0f, 10.0f }, clr, true);
+			if (trace.DidHit())
+			{
+				Vec3 angles{};
+				Math::VectorAngles(trace.plane.normal, angles);
+				m_vecProjectileArc.push_back({ pre, trace.endpos, angles, true });
+				break;
+			}
 
+			m_vecProjectileArc.push_back({ pre, post, {}, false });
+		}
+	}
+
+	for (size_t n = 0; n < m_vecProjectileArc.size(); ++n)
+	{
+		const auto& segment = m_vecProjectileArc[n];
+		const auto clr = CFG::Visuals_Draw_Projectile_Arc_Color_Mode == 0
+			? CFG::Color_Projectile_Arc
+			: F::VisualUtils->RainbowTickOffset(static_cast<int>(n));
+
+		if (segment.Hit)
+		{
+			RenderUtils::RenderBox(segment.End, segment.HitAngles, { -1.0f, -10.0f, -10.0f }, { 1.0f, 10.0f, 10.0f }, { clr.r, clr.g, clr.b, 50 }, false);
+			RenderUtils::RenderWireframeBox(segment.End, segment.HitAngles, { -1.0f, -10.0f, -10.0f }, { 1.0f, 10.0f, 10.0f }, clr, true);
 			break;
 		}
 
-		RenderUtils::RenderLine(pre, post, clr, false);
+		RenderUtils::RenderLine(segment.Start, segment.End, clr, false);
 	}
 }
 
 void CMiscVisuals::CustomFOV(CViewSetup* pSetup)
 {
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}

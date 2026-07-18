@@ -7,6 +7,10 @@ constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Trigge
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/Triggerbot.cpp";
 constexpr const char* kAutoBackstabSource =
     "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoBackstab/AutoBackstab.cpp";
+constexpr const char* kAutoShootSource =
+    "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoShoot/AutoShoot.cpp";
+constexpr const char* kAutoVaccinatorSource =
+    "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoVaccinator/AutoVaccinator.cpp";
 }
 
 TEST(TriggerbotContracts, ContainsExpectedSourceFiles) {
@@ -60,4 +64,29 @@ TEST(TriggerbotContracts, AutoBackstabUsesMoveChildRazorbackWalk) {
     EXPECT_NE(src.find("CTFWearableRazorback"), std::string::npos);
     // Must not scan the full client entity list for razorbacks.
     EXPECT_EQ(src.find("GetHighestEntityIndex()"), std::string::npos);
+}
+
+TEST(TriggerbotContracts, ExpensiveQueriesFollowCheapClassification) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto autoShoot = testhelpers::ReadTextFile(root / kAutoShootSource);
+    const auto autoVaccinator = testhelpers::ReadTextFile(root / kAutoVaccinatorSource);
+    const auto autoBackstab = testhelpers::ReadTextFile(root / kAutoBackstabSource);
+
+    EXPECT_EQ(testhelpers::CountOccurrences(autoShoot, "H::AimUtils->Trace("), 1u);
+    EXPECT_EQ(autoShoot.find("PLAYERS_ENEMIES"), std::string::npos);
+
+    const auto projectileSection = autoVaccinator.find("// Check for dangerous projectiles");
+    const auto distanceCheck = autoVaccinator.find("const float flDistanceSqr", projectileSection);
+    const auto visibilityTrace = autoVaccinator.find("const bool bVisible", distanceCheck);
+    ASSERT_NE(projectileSection, std::string::npos);
+    ASSERT_NE(distanceCheck, std::string::npos);
+    ASSERT_NE(visibilityTrace, std::string::npos);
+    EXPECT_LT(distanceCheck, visibilityTrace);
+    EXPECT_NE(autoVaccinator.find("|| H::AimUtils->TraceEntityAutoDet", visibilityTrace), std::string::npos);
+
+    const auto rangeGate = autoBackstab.find("kMaxBackstabCandidateRangeSqr");
+    const auto razorbackWalk = autoBackstab.find("HasActiveRazorback(pPlayer)", rangeGate);
+    ASSERT_NE(rangeGate, std::string::npos);
+    ASSERT_NE(razorbackWalk, std::string::npos);
+    EXPECT_LT(rangeGate, razorbackWalk);
 }

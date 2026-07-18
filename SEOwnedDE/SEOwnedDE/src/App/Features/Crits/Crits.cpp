@@ -1,6 +1,7 @@
 #include "Crits.h"
 
 #include "../CFG.h"
+#include "../VisualUtils/VisualUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -102,6 +103,7 @@ void CCrits::UpdateWeaponInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 	static auto tf_weapon_criticals_bucket_cap = I::CVar->FindVar("tf_weapon_criticals_bucket_cap");
 	if (!tf_weapon_criticals_bucket_cap)
 	{
+		m_ForecastState.Valid = false;
 		m_flDamage = 0.0f;
 		m_flCost = 0.0f;
 		m_iPotentialCrits = 0;
@@ -146,6 +148,26 @@ void CCrits::UpdateWeaponInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 	const float flRatio = static_cast<float>(iCritSeedRequests + 1) / static_cast<float>(iCritChecks + 1);
 	const float flMult = m_bMelee ? 0.5f : Math::RemapVal(flRatio, 0.1f, 1.0f, 1.0f, 3.0f);
 	const float flCost = flDamage * TF_DAMAGE_CRIT_MULTIPLIER;
+	const float flLastRapidFireCritCheckTime = bRapidFire ? pWeapon->m_flLastRapidFireCritCheckTime() : 0.0f;
+	const int iForecastTimeTick = bRapidFire ? I::GlobalVars->tickcount : 0;
+
+	const auto& forecast = m_ForecastState;
+	if (forecast.Valid
+		&& forecast.Weapon == pWeapon
+		&& forecast.TokenBucket == flBucket
+		&& forecast.BucketCap == flBucketCap
+		&& forecast.BaseDamage == flBaseDamage
+		&& forecast.CritDamage == flDamage
+		&& forecast.FireRate == flFireRate
+		&& forecast.LastRapidFireCheck == flLastRapidFireCritCheckTime
+		&& forecast.CritChecks == iCritChecks
+		&& forecast.SeedRequests == iCritSeedRequests
+		&& forecast.TimeTick == iForecastTimeTick
+		&& forecast.Melee == m_bMelee
+		&& forecast.RapidFire == bRapidFire)
+	{
+		return;
+	}
 
 	int iPotentialCrits = 0;
 	const float flPotentialDenominator = (TF_DAMAGE_CRIT_MULTIPLIER * flDamage / (m_bMelee ? 2.0f : 1.0f)) - flBaseDamage;
@@ -156,13 +178,10 @@ void CCrits::UpdateWeaponInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 		iPotentialCrits = std::max(0, iPotentialCrits);
 	}
 
-	int iAvailableCrits = 0;
+	auto countAffordableCrits = [&](int iTestShots, int iTestCrits, float flTestBucket, int iLimit)
 	{
-		int iTestShots = iCritChecks;
-		int iTestCrits = iCritSeedRequests;
-		float flTestBucket = flBucket;
-
-		for (int i = 0; i < BUCKET_ATTEMPTS; i++)
+		int iCrits = 0;
+		for (int i = 0; i < iLimit; i++)
 		{
 			iTestShots++;
 			iTestCrits++;
@@ -177,53 +196,33 @@ void CCrits::UpdateWeaponInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 			flTestBucket -= flCost * flTestMult;
 
 			if (flTestBucket < 0.0f)
-			{
 				break;
-			}
 
-			iAvailableCrits++;
+			iCrits++;
 		}
-	}
+
+		return iCrits;
+	};
+
+	const int iAvailableCrits = countAffordableCrits(iCritChecks, iCritSeedRequests, flBucket, BUCKET_ATTEMPTS);
 
 	int iNextCrit = 0;
-	if (iAvailableCrits != iPotentialCrits)
+	if (iAvailableCrits != iPotentialCrits && iAvailableCrits >= BUCKET_ATTEMPTS)
+	{
+		iNextCrit = BUCKET_ATTEMPTS;
+	}
+	else if (iAvailableCrits != iPotentialCrits)
 	{
 		int iTestShots = iCritChecks;
 		int iTestCrits = iCritSeedRequests;
 		float flTestBucket = flBucket;
 		float flTickBase = I::GlobalVars->curtime;
-		float flLastRapidFireCritCheckTime = pWeapon->m_flLastRapidFireCritCheckTime();
+		float flTestLastRapidFireCritCheckTime = flLastRapidFireCritCheckTime;
+		const int iProbeLimit = std::min(BUCKET_ATTEMPTS, iAvailableCrits + 1);
 
 		for (int i = 0; i < BUCKET_ATTEMPTS; i++)
 		{
-			int iCrits = 0;
-			{
-				int iTestShots2 = iTestShots;
-				int iTestCrits2 = iTestCrits;
-				float flTestBucket2 = flTestBucket;
-
-				for (int j = 0; j < BUCKET_ATTEMPTS; j++)
-				{
-					iTestShots2++;
-					iTestCrits2++;
-
-					const float flTestMult = m_bMelee ? 0.5f : Math::RemapVal(static_cast<float>(iTestCrits2) / static_cast<float>(std::max(1, iTestShots2)), 0.1f, 1.0f, 1.0f, 3.0f);
-
-					if (flTestBucket2 < flBucketCap)
-					{
-						flTestBucket2 = std::min(flTestBucket2 + flBaseDamage, flBucketCap);
-					}
-
-					flTestBucket2 -= flCost * flTestMult;
-
-					if (flTestBucket2 < 0.0f)
-					{
-						break;
-					}
-
-					iCrits++;
-				}
-			}
+			const int iCrits = countAffordableCrits(iTestShots, iTestCrits, flTestBucket, iProbeLimit);
 
 			if (iAvailableCrits < iCrits)
 			{
@@ -238,10 +237,10 @@ void CCrits::UpdateWeaponInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 			{
 				flTickBase += std::ceilf(flFireRate / TICK_INTERVAL) * TICK_INTERVAL;
 
-				if (flTickBase >= flLastRapidFireCritCheckTime + 1.0f || (!i && flTestBucket == flBucketCap))
+				if (flTickBase >= flTestLastRapidFireCritCheckTime + 1.0f || (!i && flTestBucket == flBucketCap))
 				{
 					iTestShots++;
-					flLastRapidFireCritCheckTime = flTickBase;
+					flTestLastRapidFireCritCheckTime = flTickBase;
 				}
 			}
 
@@ -259,10 +258,36 @@ void CCrits::UpdateWeaponInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 	m_iPotentialCrits = iPotentialCrits;
 	m_iAvailableCrits = iAvailableCrits;
 	m_iNextCrit = iNextCrit;
+
+	m_ForecastState = {
+		pWeapon,
+		flBucket,
+		flBucketCap,
+		flBaseDamage,
+		flDamage,
+		flFireRate,
+		flLastRapidFireCritCheckTime,
+		iCritChecks,
+		iCritSeedRequests,
+		iForecastTimeTick,
+		m_bMelee,
+		bRapidFire,
+		true
+	};
 }
 
 void CCrits::UpdateInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
+	const int iCurrentTick = I::GlobalVars->tickcount;
+	if (m_iLastInfoTick == iCurrentTick
+		&& m_pLastInfoLocal == pLocal
+		&& m_pLastInfoWeapon == pWeapon
+		&& m_ForecastState.Valid
+		&& m_ForecastState.TokenBucket == std::max(0.0f, pWeapon->m_flCritTokenBucket())
+		&& m_ForecastState.CritChecks == std::max(0, pWeapon->m_nCritChecks())
+		&& m_ForecastState.SeedRequests == std::max(0, pWeapon->m_nCritSeedRequests()))
+		return;
+
 	UpdateWeaponInfo(pLocal, pWeapon);
 
 	m_bCritBanned = false;
@@ -310,6 +335,10 @@ void CCrits::UpdateInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 
 		m_iDesyncDamage = m_iRangedDamage + m_iMeleeDamage - m_iResourceDamage;
 	}
+
+	m_pLastInfoLocal = pLocal;
+	m_pLastInfoWeapon = pWeapon;
+	m_iLastInfoTick = iCurrentTick;
 }
 
 CCrits::ECritRequest CCrits::GetCritRequest(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon)
@@ -407,12 +436,12 @@ void CCrits::Run(CUserCmd* pCmd)
 	if (!pWeapon || pWeapon->GetWeaponID() == TF_WEAPON_KNIFE || !IsFiring(pCmd, pWeapon))
 		return;
 
-	UpdateInfo(pLocal, pWeapon);
-
 	if (pLocal->IsCritBoosted() || pLocal->IsMiniCritBoosted() || pWeapon->m_flCritTime() > I::GlobalVars->curtime || !WeaponCanCrit(pWeapon))
 	{
 		return;
 	}
+
+	UpdateInfo(pLocal, pWeapon);
 
 	if (pWeapon->GetWeaponID() == TF_WEAPON_MINIGUN && (pCmd->buttons & IN_ATTACK))
 	{
@@ -442,7 +471,7 @@ void CCrits::Paint()
 		return;
 	}
 
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
@@ -620,6 +649,8 @@ void CCrits::Event(IGameEvent* pEvent, std::uint32_t eventHash)
 			m_iMeleeDamage += iDamage;
 		}
 
+		m_iLastInfoTick = -1;
+
 		return;
 	}
 
@@ -628,6 +659,7 @@ void CCrits::Event(IGameEvent* pEvent, std::uint32_t eventHash)
 		m_iRangedDamage = 0;
 		m_iCritDamage = 0;
 		m_iMeleeDamage = 0;
+		m_iLastInfoTick = -1;
 		return;
 	}
 
@@ -656,4 +688,8 @@ void CCrits::Reset()
 	m_bMelee = false;
 	m_flCritChance = 0.0f;
 	m_flMultCritChance = 1.0f;
+	m_ForecastState = {};
+	m_pLastInfoLocal = nullptr;
+	m_pLastInfoWeapon = nullptr;
+	m_iLastInfoTick = -1;
 }

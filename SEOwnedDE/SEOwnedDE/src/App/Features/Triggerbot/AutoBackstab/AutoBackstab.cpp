@@ -147,6 +147,8 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 	// target (FOV check, angle calc, trace) and pLocal->GetCenter() once.
 	const Vec3 vShootPos = pLocal->GetShootPos();
 	const Vec3 vLocalCenter = pLocal->GetCenter();
+	constexpr float kMaxBackstabCandidateRange = 384.0f;
+	constexpr float kMaxBackstabCandidateRangeSqr = kMaxBackstabCandidateRange * kMaxBackstabCandidateRange;
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
@@ -158,6 +160,12 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		const auto pPlayer = pEntity->As<C_TFPlayer>();
 
 		if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+		{
+			continue;
+		}
+
+		const Vec3 vTargetCenter = pPlayer->GetCenter();
+		if (vShootPos.DistToSqr(vTargetCenter) > kMaxBackstabCandidateRangeSqr)
 		{
 			continue;
 		}
@@ -181,9 +189,6 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		{
 			continue;
 		}
-
-		// GetCenter is a vfunc too; hoist the per-target read once.
-		const Vec3 vTargetCenter = pPlayer->GetCenter();
 
 		auto canKnife = false;
 		if (CFG::Triggerbot_AutoBackstab_Knife_If_Lethal)
@@ -254,6 +259,9 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		const auto record = F::LagRecords->GetRecord(pPlayer, n);
 
 		if (!CLagRecords::IsRecordUsable(record, cachedState))
+			continue;
+
+		if (vShootPos.DistToSqr(record->Center) > kMaxBackstabCandidateRangeSqr)
 			continue;
 
 			if (!bLegitMode)

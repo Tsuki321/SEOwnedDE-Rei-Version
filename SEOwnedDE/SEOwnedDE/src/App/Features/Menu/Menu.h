@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
+#include <initializer_list>
 
 class CMenu
 {
@@ -13,8 +14,18 @@ private:
 	int m_nLastButtonW = 0;
 
 	bool m_bClickConsumed = false;
-	std::map<void *, bool> m_mapStates = {};
+	void* m_pActiveControl = nullptr;
 	std::unordered_map<std::string *, std::string> m_mapTempStrings = {};
+
+	bool IsControlActive(const void* pControl) const { return m_pActiveControl == pControl; }
+	bool CanActivateControl(const void* pControl) const { return !m_pActiveControl || IsControlActive(pControl); }
+	void SetControlActive(void* pControl, bool bActive)
+	{
+		if (bActive)
+			m_pActiveControl = pControl;
+		else if (IsControlActive(pControl))
+			m_pActiveControl = nullptr;
+	}
 
 	//std::string m_strConfigPath = {};
 
@@ -33,7 +44,7 @@ private:
 	bool Button(const char *szLabel, bool bActive = false, int nCustomWidth = 0);
 	bool playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr, bool center_txt);
 	bool InputText(const char *szLabel, const char *szLabel2, std::string &strOutput);
-	bool SelectSingle(const char *szLabel, int &nVar, const std::vector<std::pair<const char *, int>> &vecSelects);
+	bool SelectSingle(const char *szLabel, int &nVar, std::initializer_list<std::pair<const char *, int>> vecSelects);
 	bool SelectMulti(const char *szLabel, std::vector<std::pair<const char *, bool &>> &vecSelects);
 	bool ColorPicker(const char *szLabel, Color_t &colVar);
 	void GroupBoxStart(const char *szLabel, int nWidth);

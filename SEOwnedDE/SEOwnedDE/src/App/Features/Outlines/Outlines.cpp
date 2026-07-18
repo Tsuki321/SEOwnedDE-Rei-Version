@@ -2,12 +2,13 @@
 
 #include "../CFG.h"
 #include "../Materials/Materials.h"
+#include "../Rendering/RenderContextScope.h"
 #include "../SpyCamera/SpyCamera.h"
 #include "../VisualUtils/VisualUtils.h"
 
 #pragma warning (disable : 4244) //possible loss of data (int to float)
 
-void COutlines::Initialize()
+void COutlines::Initialize(bool bCreateBloomResources)
 {
 	if (!m_pMatGlowColor)
 	{
@@ -35,7 +36,7 @@ void COutlines::Initialize()
 		m_pRenderBuffer0->IncrementReferenceCount();
 	}
 
-	if (!m_pRenderBuffer1)
+	if (bCreateBloomResources && !m_pRenderBuffer1)
 	{
 		m_pRenderBuffer1 = I::MaterialSystem->CreateNamedRenderTargetTextureEx(
 			"seo_outline_buffer1",
@@ -60,7 +61,7 @@ void COutlines::Initialize()
 		m_pMatHaloAddToScreen = I::MaterialSystem->CreateMaterial("seo_outline_material", kv);
 	}
 
-	if (!m_pMatBlurX)
+	if (bCreateBloomResources && !m_pMatBlurX)
 	{
 		const auto kv = new KeyValues("BlurFilterX");
 		kv->SetString("$dummy", "dummy");
@@ -68,7 +69,7 @@ void COutlines::Initialize()
 		m_pMatBlurX = I::MaterialSystem->CreateMaterial("seo_outline_material_blurx", kv);
 	}
 
-	if (!m_pMatBlurY)
+	if (bCreateBloomResources && !m_pMatBlurY)
 	{
 		const auto kv = new KeyValues("BlurFilterY");
 		kv->SetString("$dummy", "dummy");
@@ -76,6 +77,32 @@ void COutlines::Initialize()
 		m_pMatBlurY = I::MaterialSystem->CreateMaterial("seo_outline_material_blury", kv);
 		m_pBloomAmount = m_pMatBlurY->FindVar("$bloomamount", nullptr);
 	}
+}
+
+void COutlines::BeginDrawPass()
+{
+	if (++m_nDrawGeneration == 0)
+	{
+		m_arrDrawnGenerations.fill(0);
+		m_nDrawGeneration = 1;
+	}
+
+	m_bHasAnyDrawn = false;
+	m_nDrawFrame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+}
+
+void COutlines::MarkDrawn(C_BaseEntity* pEntity)
+{
+	if (!pEntity)
+		return;
+
+	const int nEntityIndex = pEntity->entindex();
+	if (nEntityIndex < 0 || nEntityIndex >= MAX_EDICTS)
+		return;
+
+	m_arrDrawnGenerations[nEntityIndex] = m_nDrawGeneration;
+	m_arrDrawnHandles[nEntityIndex] = pEntity->GetRefEHandle().ToInt();
+	m_bHasAnyDrawn = true;
 }
 
 void COutlines::DrawEntity(C_BaseEntity* pEntity, bool bModel)
@@ -106,7 +133,7 @@ void COutlines::DrawEntity(C_BaseEntity* pEntity, bool bModel)
 	}
 
 	if (bModel)
-		m_setDrawnEntities.insert(pEntity);
+		MarkDrawn(pEntity);
 
 	if (!bModel)
 		m_bRenderingOutlines = false;
@@ -114,17 +141,20 @@ void COutlines::DrawEntity(C_BaseEntity* pEntity, bool bModel)
 	m_bRendering = false;
 }
 
-void COutlines::RunModels()
+void COutlines::RunModels(IMatRenderContext* pRenderContext)
 {
-	Initialize();
-
-	if (!m_setDrawnEntities.empty())
-		m_setDrawnEntities.clear();
+	BeginDrawPass();
 
 	if (!m_vecOutlineEntities.empty())
 		m_vecOutlineEntities.clear();
 
 	if (!CFG::Outlines_Active || I::EngineVGui->IsGameUIVisible() || F::SpyCamera->IsRendering())
+		return;
+
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
+		return;
+
+	if (!CFG::Outlines_Players_Active && !CFG::Outlines_Buildings_Active && !CFG::Outlines_World_Active)
 		return;
 
 	const int w = H::Draw->GetScreenW();
@@ -133,15 +163,18 @@ void COutlines::RunModels()
 	if (w < 1 || h < 1 || w > 4096 || h > 2160)
 		return;
 
-	const auto pRC = I::MaterialSystem->GetRenderContext();
-
-	if (!pRC)
-		return;
-
 	const auto pLocal = H::Entities->GetLocal();
 
 	if (!pLocal)
 		return;
+
+	if (!pRenderContext)
+		return;
+
+	auto* pRC = pRenderContext;
+
+	if (m_vecOutlineEntities.capacity() == 0)
+		m_vecOutlineEntities.reserve(128);
 
 	ShaderStencilState_t stencilStateDisable = {};
 	stencilStateDisable.m_bEnable = false;
@@ -325,10 +358,13 @@ void COutlines::Run()
 	if (!CFG::Outlines_Active || I::EngineVGui->IsGameUIVisible() || F::SpyCamera->IsRendering())
 		return;
 
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
+
+	if (m_vecOutlineEntities.empty())
+		return;
 
 	const int w = H::Draw->GetScreenW();
 	const int h = H::Draw->GetScreenH();
@@ -336,12 +372,16 @@ void COutlines::Run()
 	if (w < 1 || h < 1 || w > 4096 || h > 2160)
 		return;
 
-	const auto pRC = I::MaterialSystem->GetRenderContext();
+	const bool bBloom = CFG::Outlines_Style == 0;
+	Initialize(bBloom);
 
-	if (!pRC)
+	CRenderContextScope renderContext(I::MaterialSystem);
+	if (!renderContext)
 		return;
 
-	if (CFG::Outlines_Style == 0)
+	auto* pRC = renderContext.Get();
+
+	if (bBloom)
 		m_pBloomAmount->SetIntValue(CFG::Outlines_Bloom_Amount);
 
 	ShaderStencilState_t stencilStateDisable = {};
@@ -350,9 +390,6 @@ void COutlines::Run()
 	float flOriginalColor[3] = {};
 	I::RenderView->GetColorModulation(flOriginalColor);
 	const float flOriginalBlend = I::RenderView->GetBlend();
-
-	if (m_vecOutlineEntities.empty())
-		return;
 
 	I::ModelRender->ForcedMaterialOverride(m_pMatGlowColor);
 
@@ -374,7 +411,7 @@ void COutlines::Run()
 	}
 	pRC->PopRenderTargetAndViewport();
 
-	if (CFG::Outlines_Style == 0)
+	if (bBloom)
 	{
 		pRC->PushRenderTargetAndViewport();
 		{

@@ -1,7 +1,10 @@
 #include "Paint.h"
 
 #include "../CFG.h"
+#include "../Rendering/RenderContextScope.h"
+#include "../VisualUtils/VisualUtils.h"
 #include <algorithm>
+#include <cmath>
 
 #pragma warning (disable : 4244) //possible loss of data (int to float)
 
@@ -73,30 +76,131 @@ void CPaint::Initialize()
 	}
 }
 
-void CPaint::Run()
+void CPaint::ClearPoints(bool bReleaseStorage)
 {
-	auto Rainbow = [&](int nTick)
+	m_nOldestPaintPoint = 0;
+	m_nPaintPointCount = 0;
+	m_nPaintStrokeCount = 0;
+
+	if (bReleaseStorage)
 	{
-		constexpr float rate = 3.0f;
-		const float t = TICKS_TO_TIME(nTick);
+		m_pStorage.reset();
+		m_nRainbowColorCount = 0;
+		m_nRainbowFrame = -1;
+	}
+}
 
-		const int r = std::lround(std::cosf(I::GlobalVars->realtime + t * rate + 0.0f) * 127.5f + 127.5f);
-		const int g = std::lround(std::cosf(I::GlobalVars->realtime + t * rate + 2.0f) * 127.5f + 127.5f);
-		const int b = std::lround(std::cosf(I::GlobalVars->realtime + t * rate + 4.0f) * 127.5f + 127.5f);
+const CPaint::PaintRecord_t& CPaint::GetPoint(size_t nOffset) const
+{
+	return m_pStorage->Points[(m_nOldestPaintPoint + nOffset) % MAX_PAINT_POINTS];
+}
 
-		return Color_t{static_cast<byte>(r), static_cast<byte>(g), static_cast<byte>(b), static_cast<byte>(255)};
-	};
-
-	int w = H::Draw->GetScreenW(), h = H::Draw->GetScreenH();
-
-	if (w < 1 || h < 1 || w > 4096 || h > 2160)
+void CPaint::PopOldestPoint()
+{
+	if (!m_nPaintPointCount)
 		return;
 
-	Initialize();
+	const int nRemovedStroke = m_pStorage->Points[m_nOldestPaintPoint].StartTick;
+	m_nOldestPaintPoint = (m_nOldestPaintPoint + 1) % MAX_PAINT_POINTS;
+	--m_nPaintPointCount;
 
+	if ((!m_nPaintPointCount || GetPoint(0).StartTick != nRemovedStroke) && m_nPaintStrokeCount)
+		--m_nPaintStrokeCount;
+}
+
+void CPaint::AddPoint(const Vec3& vPosition, float flTimeAdded, int nStartTick)
+{
+	if (!m_pStorage)
+		m_pStorage = std::make_unique<PaintStorage_t>();
+
+	const bool bNewStroke = !m_nPaintPointCount || GetPoint(m_nPaintPointCount - 1).StartTick != nStartTick;
+	if (bNewStroke)
+	{
+		while (m_nPaintPointCount && m_nPaintStrokeCount >= MAX_PAINT_STROKES)
+		{
+			const int nOldestStroke = GetPoint(0).StartTick;
+			do
+			{
+				PopOldestPoint();
+			}
+			while (m_nPaintPointCount && GetPoint(0).StartTick == nOldestStroke);
+		}
+
+		++m_nPaintStrokeCount;
+	}
+
+	if (m_nPaintPointCount == MAX_PAINT_POINTS)
+		PopOldestPoint();
+
+	const size_t nInsertIndex = (m_nOldestPaintPoint + m_nPaintPointCount) % MAX_PAINT_POINTS;
+	m_pStorage->Points[nInsertIndex] = { vPosition, flTimeAdded, nStartTick };
+	++m_nPaintPointCount;
+}
+
+void CPaint::PrunePoints()
+{
+	const float flLifeTime = CFG::Visuals_Paint_LifeTime;
+	if (flLifeTime > 0.0f)
+	{
+		const float flCutoff = I::GlobalVars->curtime - flLifeTime;
+
+		while (m_nPaintPointCount && GetPoint(0).TimeAdded < flCutoff)
+			PopOldestPoint();
+	}
+}
+
+void CPaint::PrepareRainbowColors(size_t nColorCount)
+{
+	nColorCount = std::min(nColorCount, MAX_PAINT_POINTS);
+	const int nFrame = I::GlobalVars ? I::GlobalVars->framecount : 0;
+	if (m_nRainbowFrame == nFrame && m_nRainbowColorCount >= nColorCount)
+		return;
+
+	m_nRainbowFrame = nFrame;
+	m_nRainbowColorCount = nColorCount;
+
+	constexpr float flRate = 3.0f;
+	const float flStep = TICKS_TO_TIME(1) * flRate;
+	const float flStepCos = std::cosf(flStep);
+	const float flStepSin = std::sinf(flStep);
+	float flCos[3] = {};
+	float flSin[3] = {};
+
+	for (int nChannel = 0; nChannel < 3; ++nChannel)
+	{
+		const float flPhase = I::GlobalVars->realtime + static_cast<float>(nChannel * 2);
+		flCos[nChannel] = std::cosf(flPhase);
+		flSin[nChannel] = std::sinf(flPhase);
+	}
+
+	auto ToByte = [](float flValue)
+	{
+		return static_cast<byte>(std::clamp(std::lround(flValue * 127.5f + 127.5f), 0L, 255L));
+	};
+
+	for (size_t n = 0; n < nColorCount; ++n)
+	{
+		m_pStorage->RainbowColors[n] = {
+			ToByte(flCos[0]),
+			ToByte(flCos[1]),
+			ToByte(flCos[2]),
+			255
+		};
+
+		for (int nChannel = 0; nChannel < 3; ++nChannel)
+		{
+			const float flNextCos = flCos[nChannel] * flStepCos - flSin[nChannel] * flStepSin;
+			flSin[nChannel] = flSin[nChannel] * flStepCos + flCos[nChannel] * flStepSin;
+			flCos[nChannel] = flNextCos;
+		}
+	}
+}
+
+void CPaint::Run()
+{
 	if (!CFG::Visuals_Paint_Active)
 	{
-		m_mapPositions.clear();
+		ClearPoints(true);
 		return;
 	}
 
@@ -104,21 +208,13 @@ void CPaint::Run()
 
 	if (!pLocal)
 	{
-		m_mapPositions.clear();
+		ClearPoints(true);
 		return;
 	}
 
-	auto pRenderContext = I::MaterialSystem->GetRenderContext();
+	const bool bCleanScreenshot = CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached();
 
-	if (!pRenderContext)
-	{
-		m_mapPositions.clear();
-		return;
-	}
-
-	m_pBloomAmount->SetIntValue(CFG::Visuals_Paint_Bloom_Amount);
-
-	if (!pLocal->deadflag() && !I::EngineVGui->IsGameUIVisible() && !I::MatSystemSurface->IsCursorVisible() && !SDKUtils::BInEndOfMatch())
+	if (!bCleanScreenshot && !pLocal->deadflag() && !I::EngineVGui->IsGameUIVisible() && !I::MatSystemSurface->IsCursorVisible() && !SDKUtils::BInEndOfMatch())
 	{
 		static int nOldTick = I::GlobalVars->tickcount;
 
@@ -144,7 +240,7 @@ void CPaint::Run()
 
 				I::EngineTrace->TraceRay(ray, MASK_SOLID, &filter, &trace);
 
-				m_mapPositions[nTick].push_back({trace.endpos, I::GlobalVars->curtime});
+				AddPoint(trace.endpos, I::GlobalVars->curtime, nTick);
 			}
 
 			else
@@ -154,15 +250,56 @@ void CPaint::Run()
 
 			if (H::Input->IsPressed(CFG::Visuals_Paint_Erase_Key))
 			{
-				if (!m_mapPositions.empty())
-					m_mapPositions.clear();
+				ClearPoints();
 			}
 
 			nOldTick = I::GlobalVars->tickcount;
 		}
 	}
 
+	PrunePoints();
+
+	if (bCleanScreenshot)
+		return;
+
+	size_t nLongestStroke = 0;
+	size_t nCurrentStrokeLength = 0;
+	int nCurrentStroke = 0;
 	bool bDrewSomething = false;
+	for (size_t n = 0; n < m_nPaintPointCount; ++n)
+	{
+		const auto& point = GetPoint(n);
+		if (!n || point.StartTick != nCurrentStroke)
+		{
+			nCurrentStroke = point.StartTick;
+			nCurrentStrokeLength = 1;
+		}
+		else
+		{
+			++nCurrentStrokeLength;
+			bDrewSomething = true;
+		}
+
+		nLongestStroke = std::max(nLongestStroke, nCurrentStrokeLength);
+	}
+
+	if (!bDrewSomething)
+		return;
+
+	const int w = H::Draw->GetScreenW();
+	const int h = H::Draw->GetScreenH();
+	if (w < 1 || h < 1 || w > 4096 || h > 2160)
+		return;
+
+	Initialize();
+	PrepareRainbowColors(nLongestStroke);
+
+	CRenderContextScope renderContext(I::MaterialSystem);
+	if (!renderContext)
+		return;
+
+	auto* pRenderContext = renderContext.Get();
+	m_pBloomAmount->SetIntValue(CFG::Visuals_Paint_Bloom_Amount);
 
 	pRenderContext->PushRenderTargetAndViewport();
 	{
@@ -173,46 +310,22 @@ void CPaint::Run()
 
 		I::ModelRender->ForcedMaterialOverride(m_pMatGlowColor);
 
-		for (auto it = m_mapPositions.begin(); it != m_mapPositions.end(); )
+		const PaintRecord_t* pPreviousPoint = nullptr;
+		size_t nStrokePoint = 0;
+		for (size_t n = 0; n < m_nPaintPointCount; ++n)
 		{
-			auto& v = it->second;
-
-			if (v.empty())
+			const auto& point = GetPoint(n);
+			if (pPreviousPoint && point.StartTick == pPreviousPoint->StartTick)
 			{
-				it = m_mapPositions.erase(it);
-				continue;
+				++nStrokePoint;
+				RenderUtils::RenderLine(point.Position, pPreviousPoint->Position, m_pStorage->RainbowColors[nStrokePoint], false);
+			}
+			else
+			{
+				nStrokePoint = 0;
 			}
 
-			const float flLifeTime = CFG::Visuals_Paint_LifeTime;
-			if (flLifeTime > 0.0f)
-			{
-				const float flCutoff = I::GlobalVars->curtime - flLifeTime;
-				v.erase(
-					std::remove_if(v.begin(), v.end(), [flCutoff](const PaintRecord_t& record)
-					{
-						return record.TimeAdded < flCutoff;
-					}),
-					v.end()
-				);
-
-				if (v.empty())
-				{
-					it = m_mapPositions.erase(it);
-					continue;
-				}
-			}
-
-			if (v.size() > 1)
-			{
-				for (size_t n = 1; n < v.size(); ++n)
-				{
-					RenderUtils::RenderLine(v[n].Position, v[n - 1].Position, Rainbow(int(n)), false);
-				}
-
-				bDrewSomething = true;
-			}
-
-			++it;
+			pPreviousPoint = &point;
 		}
 
 		I::ModelRender->ForcedMaterialOverride(nullptr);
@@ -252,7 +365,7 @@ void CPaint::Run()
 
 void CPaint::CleanUp()
 {
-	m_mapPositions.clear();
+	ClearPoints(true);
 
 	if (m_pMatHaloAddToScreen)
 	{

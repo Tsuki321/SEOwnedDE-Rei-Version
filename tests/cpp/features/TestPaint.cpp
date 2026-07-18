@@ -5,6 +5,7 @@
 namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Paint";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Paint/Paint.cpp";
+constexpr const char* kHeaderSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Paint/Paint.h";
 }
 
 TEST(PaintContracts, ContainsExpectedSourceFiles) {
@@ -29,10 +30,29 @@ TEST(PaintContracts, MainSourceContainsFeatureTokens) {
     ASSERT_FALSE(cppFiles.empty());
 
     const auto mainSource = testhelpers::ReadTextFile(mainPath);
+    const auto headerSource = testhelpers::ReadTextFile(root / kHeaderSource);
     EXPECT_NE(mainSource.find("CFG::Visuals_Paint_Active"), std::string::npos);
     EXPECT_NE(mainSource.find("H::Draw"), std::string::npos);
     EXPECT_NE(mainSource.find("CPaint::Initialize("), std::string::npos);
-    EXPECT_NE(mainSource.find("std::remove_if("), std::string::npos);
+    EXPECT_NE(headerSource.find("MAX_PAINT_POINTS"), std::string::npos);
+    EXPECT_NE(headerSource.find("MAX_PAINT_STROKES"), std::string::npos);
+    EXPECT_NE(headerSource.find("std::array<PaintRecord_t, MAX_PAINT_POINTS>"), std::string::npos);
+    EXPECT_NE(headerSource.find("std::unique_ptr<PaintStorage_t>"), std::string::npos);
+    EXPECT_EQ(headerSource.find("std::deque"), std::string::npos);
+    EXPECT_NE(mainSource.find("CPaint::PrunePoints("), std::string::npos);
+    EXPECT_NE(mainSource.find("CPaint::PopOldestPoint("), std::string::npos);
+    EXPECT_NE(mainSource.find("CPaint::AddPoint("), std::string::npos);
+    EXPECT_NE(mainSource.find("std::make_unique<PaintStorage_t>()"), std::string::npos);
+    EXPECT_NE(mainSource.find("ClearPoints(true)"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nPaintStrokeCount >= MAX_PAINT_STROKES"), std::string::npos);
+    EXPECT_NE(mainSource.find("PrepareRainbowColors("), std::string::npos);
+    EXPECT_NE(mainSource.find("CRenderContextScope renderContext"), std::string::npos);
+
+    const auto activeGuard = mainSource.find("if (!CFG::Visuals_Paint_Active)");
+    const auto initializeCall = mainSource.find("\tInitialize();", activeGuard);
+    ASSERT_NE(activeGuard, std::string::npos);
+    ASSERT_NE(initializeCall, std::string::npos);
+    EXPECT_GT(initializeCall, activeGuard);
     EXPECT_GE(testhelpers::CountTokenAcrossFiles(cppFiles, "CFG::"), 1u);
 }
 

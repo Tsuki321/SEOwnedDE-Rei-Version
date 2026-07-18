@@ -5,6 +5,7 @@
 namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Radar";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Radar/Radar.cpp";
+constexpr const char* kDrawSource = "SEOwnedDE/SEOwnedDE/src/SDK/Helpers/Draw/Draw.cpp";
 }
 
 TEST(RadarContracts, ContainsExpectedSourceFiles) {
@@ -51,4 +52,15 @@ TEST(RadarContracts, UsesGuardClausesAndReturns) {
 
     EXPECT_GE(totalIfs, static_cast<std::size_t>(8));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(1));
+}
+
+TEST(RadarContracts, FixedCircleGeometryIsCached) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto drawSource = testhelpers::ReadTextFile(root / kDrawSource);
+
+    EXPECT_NE(drawSource.find("kCachedCircleSegments = 100"), std::string::npos);
+    EXPECT_NE(drawSource.find("GetCachedUnitCircle"), std::string::npos);
+    EXPECT_NE(drawSource.find("if (segments == 20)"), std::string::npos);
+    EXPECT_NE(drawSource.find("if (segments == 100)"), std::string::npos);
+    EXPECT_NE(drawSource.find("BuildCachedCircleVertices"), std::string::npos);
 }

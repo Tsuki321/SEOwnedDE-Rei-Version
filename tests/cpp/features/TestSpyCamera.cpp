@@ -47,3 +47,18 @@ TEST(SpyCameraContracts, UsesGuardClausesAndReturns) {
     EXPECT_GE(totalIfs, static_cast<std::size_t>(3));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(1));
 }
+
+TEST(SpyCameraContracts, ReusesValidatedTargetBetweenBoundedScans) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto mainSource = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(mainSource.find("SPY_SCAN_INTERVAL_TICKS = 3"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nCachedSpyIndex"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nCachedSpyHandle"), std::string::npos);
+    EXPECT_NE(mainSource.find("bTickRolledBack"), std::string::npos);
+    EXPECT_NE(mainSource.find("pPlayer->m_iTeamNum() == pLocal->m_iTeamNum()"), std::string::npos);
+    EXPECT_NE(mainSource.find("pPlayer->IsDormant()"), std::string::npos);
+    EXPECT_NE(mainSource.find("TraceEntityAutoDet(pCachedSpy, vLocalShootPos, pCachedSpy->GetShootPos())"),
+              std::string::npos);
+    EXPECT_EQ(mainSource.find("std::vector<C_TFPlayer*> vecSpies"), std::string::npos);
+}

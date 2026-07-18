@@ -4,6 +4,7 @@
 #include "../Features/Outlines/Outlines.h"
 
 #include "../Features/CFG.h"
+#include "../Features/Rendering/RenderPassState.h"
 #include "../Features/SpyCamera/SpyCamera.h"
 #include "../Features/VisualUtils/VisualUtils.h"
 
@@ -131,9 +132,9 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 				return;
 			}
 
-			if (!bTakingScreenshot)
+			if (!bTakingScreenshot && RenderPassState::g_bDrawingMainWorld)
 			{
-				// Skip the two hash-set lookups entirely when neither feature drew
+				// Skip the two generation-array lookups entirely when neither feature drew
 				// anything this frame (the common case with Materials/Outlines off).
 				if (F::Materials->HasAnyDrawn() || F::Outlines->HasAnyDrawn())
 				{

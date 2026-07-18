@@ -715,5 +715,21 @@ TEST(MathVectorRotate, Rotate90YawAroundZ) {
 // -----------------------------------------------------------------------------
 
 TEST(VMatrix, DefaultConstruction) {
-    VMatrix mat;
+    VMatrix mat{};
+    EXPECT_EQ(sizeof(mat), sizeof(float) * 16);
+    EXPECT_EQ(alignof(VMatrix), alignof(float));
+
+    for (std::size_t row = 0; row < 4; ++row) {
+        for (std::size_t column = 0; column < 4; ++column) {
+            EXPECT_FLOAT_EQ(mat[row][column], 0.0f);
+        }
+    }
+}
+
+TEST(VMatrix, As3x4AliasesLeadingRows) {
+    VMatrix mat{};
+    mat[2][3] = 42.0f;
+
+    const matrix3x4_t& leadingRows = mat.As3x4();
+    EXPECT_FLOAT_EQ(leadingRows[2][3], 42.0f);
 }

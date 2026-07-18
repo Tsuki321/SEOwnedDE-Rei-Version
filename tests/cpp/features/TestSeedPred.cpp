@@ -32,6 +32,12 @@ TEST(SeedPredContracts, MainSourceContainsFeatureTokens) {
     EXPECT_NE(mainSource.find("CFG::Exploits_SeedPred_Active"), std::string::npos);
     EXPECT_NE(mainSource.find("H::Entities"), std::string::npos);
     EXPECT_NE(mainSource.find("std::nextafter("), std::string::npos);
+    EXPECT_NE(mainSource.find("std::from_chars("), std::string::npos);
+    EXPECT_NE(mainSource.find("kPlayerPerfResponseTimeout"), std::string::npos);
+    EXPECT_NE(mainSource.find("F::VisualUtils->IsTakingScreenshotCached()"), std::string::npos);
+    EXPECT_EQ(mainSource.find("std::regex"), std::string::npos);
+    EXPECT_EQ(mainSource.find("I::EngineClient->IsTakingScreenshot()"), std::string::npos);
+    EXPECT_EQ(testhelpers::CountOccurrences(mainSource, "Math::AngleVectors(cmd->viewangles"), 1u);
     EXPECT_GE(testhelpers::CountTokenAcrossFiles(cppFiles, "CFG::"), 1u);
 }
 

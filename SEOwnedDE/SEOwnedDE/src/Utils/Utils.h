@@ -19,28 +19,45 @@
 #include <filesystem>
 #include <deque>
 #include <regex>
+#include <limits>
 
 namespace Utils
 {
-    static std::wstring ConvertUtf8ToWide(const std::string& ansi)
-    {
-        const int size = MultiByteToWideChar(CP_UTF8, 0, ansi.c_str(), -1, nullptr, 0);
-		if (size <= 1)
+	inline std::wstring ConvertUtf8ToWide(const std::string &utf8)
+	{
+		if (utf8.empty() || utf8.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
 			return {};
-		std::wstring result(size - 1, L'\0');
-		MultiByteToWideChar(CP_UTF8, 0, ansi.c_str(), -1, result.data(), size);
-		return result;
-    }
 
-    static std::string ConvertWideToUTF8(const std::wstring& unicode)
-    {
-        const int size = WideCharToMultiByte(CP_UTF8, 0, unicode.c_str(), -1, nullptr, 0, nullptr, nullptr);
-		if (size <= 1)
+		const int sourceSize = static_cast<int>(utf8.size());
+		const int resultSize = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), sourceSize, nullptr, 0);
+
+		if (resultSize <= 0)
 			return {};
-		std::string result(size - 1, '\0');
-		WideCharToMultiByte(CP_UTF8, 0, unicode.c_str(), -1, result.data(), size, nullptr, nullptr);
+
+		std::wstring result(static_cast<std::size_t>(resultSize), L'\0');
+		if (MultiByteToWideChar(CP_UTF8, 0, utf8.data(), sourceSize, result.data(), resultSize) != resultSize)
+			return {};
+
 		return result;
-    }
+	}
+
+	inline std::string ConvertWideToUTF8(const std::wstring &unicode)
+	{
+		if (unicode.empty() || unicode.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+			return {};
+
+		const int sourceSize = static_cast<int>(unicode.size());
+		const int resultSize = WideCharToMultiByte(CP_UTF8, 0, unicode.data(), sourceSize, nullptr, 0, nullptr, nullptr);
+
+		if (resultSize <= 0)
+			return {};
+
+		std::string result(static_cast<std::size_t>(resultSize), '\0');
+		if (WideCharToMultiByte(CP_UTF8, 0, unicode.data(), sourceSize, result.data(), resultSize, nullptr, nullptr) != resultSize)
+			return {};
+
+		return result;
+	}
 
     static int RandInt(int min, int max)
     {

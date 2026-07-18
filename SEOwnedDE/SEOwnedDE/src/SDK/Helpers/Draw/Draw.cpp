@@ -2,7 +2,65 @@
 #include "../../TF2/cdll_int.h"
 #include "../../TF2/ivrenderview.h"
 
+#include <array>
+
 #pragma warning (disable : 6385)
+
+namespace
+{
+	constexpr std::size_t kCachedCircleSegments = 100;
+
+	template <std::size_t SegmentCount>
+	const std::array<Vec2, SegmentCount> &GetCachedUnitCircle()
+	{
+		static const auto unitCircle = []
+		{
+			std::array<Vec2, SegmentCount> points = {};
+			const float step = static_cast<float>(PI) * 2.0f / static_cast<float>(SegmentCount);
+
+			for (std::size_t i = 0; i < points.size(); ++i)
+			{
+				const float angle = step * static_cast<float>(i);
+				points[i].Set(cosf(angle), sinf(angle));
+			}
+
+			return points;
+		}();
+
+		return unitCircle;
+	}
+
+	template <std::size_t SegmentCount>
+	void BuildCachedCircleVertices(std::array<Vertex_t, SegmentCount> &vertices, int x, int y, int radius)
+	{
+		static_assert(SegmentCount == 20 || SegmentCount == kCachedCircleSegments);
+
+		const auto &unitCircle = GetCachedUnitCircle<SegmentCount>();
+
+		for (std::size_t i = 0; i < SegmentCount; ++i)
+		{
+			const auto &point = unitCircle[i];
+			vertices[i].Init({ x + radius * point.x, y + radius * point.y });
+		}
+	}
+
+	int GetPolygonTextureId()
+	{
+		static int id = 0;
+
+		if (!I::MatSystemSurface->IsTextureIDValid(id))
+			id = I::MatSystemSurface->CreateNewTextureID();
+
+		return id;
+	}
+
+	void PreparePolygonState(Color_t clr)
+	{
+		const int textureId = GetPolygonTextureId();
+		I::MatSystemSurface->DrawSetColor(clr.r, clr.g, clr.b, clr.a);
+		I::MatSystemSurface->DrawSetTexture(textureId);
+	}
+}
 
 void CDraw::UpdateScreenSize()
 {
@@ -27,7 +85,7 @@ void CDraw::UpdateW2SMatrix()
 
 bool CDraw::W2S(const Vec3 &vOrigin, Vec3 &vScreen)
 {
-	const matrix3x4_t &w2s = m_WorldToProjection.As3x4();
+	const VMatrix &w2s = m_WorldToProjection;
 
 	float w = w2s[3][0] * vOrigin[0] + w2s[3][1] * vOrigin[1] + w2s[3][2] * vOrigin[2] + w2s[3][3];
 
@@ -46,7 +104,7 @@ bool CDraw::W2S(const Vec3 &vOrigin, Vec3 &vScreen)
 	return false;
 }
 
-bool CDraw::ClipTransformWithProjection(const matrix3x4_t &worldToScreen, const Vec3 &point, Vec3 *pClip)
+bool CDraw::ClipTransformWithProjection(const VMatrix &worldToScreen, const Vec3 &point, Vec3 *pClip)
 {
 	pClip->x = worldToScreen[0][0] * point[0] + worldToScreen[0][1] * point[1] + worldToScreen[0][2] * point[2] + worldToScreen[0][3];
 	pClip->y = worldToScreen[1][0] * point[0] + worldToScreen[1][1] * point[1] + worldToScreen[1][2] * point[2] + worldToScreen[1][3];
@@ -74,8 +132,7 @@ bool CDraw::ClipTransformWithProjection(const matrix3x4_t &worldToScreen, const 
 
 bool CDraw::ClipTransform(const Vector &point, Vector *pClip)
 {
-	const matrix3x4_t &worldToScreen = m_WorldToProjection.As3x4();
-	return ClipTransformWithProjection(worldToScreen, point, pClip);
+	return ClipTransformWithProjection(m_WorldToProjection, point, pClip);
 }
 
 bool CDraw::ScreenPosition(const Vec3 &vPoint, Vec3 &vScreen)
@@ -193,16 +250,39 @@ void CDraw::OutlinedCircle(int x, int y, int radius, int segments, Color_t clr)
 
 void CDraw::FilledCircle(int x, int y, int radius, int segments, Color_t clr)
 {
+	if (segments < 3)
+		return;
+
+	if (segments == 20)
+	{
+		std::array<Vertex_t, 20> vertices;
+		BuildCachedCircleVertices(vertices, x, y, radius);
+		Polygon(static_cast<int>(vertices.size()), vertices.data(), clr);
+		return;
+	}
+
+	if (segments == 100)
+	{
+		std::array<Vertex_t, 100> vertices;
+		BuildCachedCircleVertices(vertices, x, y, radius);
+		Polygon(static_cast<int>(vertices.size()), vertices.data(), clr);
+		return;
+	}
+
 	static std::vector<Vertex_t> vertices = {};
+	vertices.clear();
+	if (vertices.capacity() < static_cast<size_t>(segments))
+		vertices.reserve(segments);
 
 	const float step = static_cast<float>(PI) * 2.0f / segments;
 
-	for (float a = 0; a < PI * 2.0f; a += step)
+	for (int i = 0; i < segments; ++i)
+	{
+		const float a = step * i;
 		vertices.emplace_back(Vertex_t{ { radius * cosf(a) + x, radius * sinf(a) + y } });
+	}
 
-	Polygon(segments, vertices.data(), clr);
-	
-	vertices.clear();
+	Polygon(static_cast<int>(vertices.size()), vertices.data(), clr);
 }
 
 void CDraw::Texture(int x, int y, int w, int h, int id, short pos)
@@ -229,13 +309,7 @@ void CDraw::Texture(int x, int y, int w, int h, int id, short pos)
 
 void CDraw::Polygon(int count, Vertex_t *vertices, Color_t clr)
 {
-	static int id = 0;
-
-	if (!I::MatSystemSurface->IsTextureIDValid(id))
-		id = I::MatSystemSurface->CreateNewTextureID();
-
-	I::MatSystemSurface->DrawSetColor(clr.r, clr.g, clr.b, clr.a);
-	I::MatSystemSurface->DrawSetTexture(id);
+	PreparePolygonState(clr);
 	I::MatSystemSurface->DrawTexturedPolygon(count, vertices);
 }
 
@@ -250,15 +324,20 @@ void CDraw::Arc(int x, int y, int radius, float thickness, float start, float en
 	static const float flPercision = 7.2f;
 	static const float flStep = static_cast<float>(PI / 180.0f);
 
+	if (!(end > 0.0f))
+		return;
+
 	float flInner = radius - thickness;
+	float flRad = start * flStep;
+	float flRadCos = std::cosf(flRad);
+	float flRadSin = std::sinf(flRad);
+
+	PreparePolygonState(clr);
 
 	for (float flAngle = start; flAngle < start + end; flAngle += flPercision)
 	{
-		float flRad = flAngle * flStep;
 		float flRad2 = (flAngle + flPercision) * flStep;
 
-		float flRadCos = std::cosf(flRad);
-		float flRadSin = std::sinf(flRad);
 		float flRad2Cos = std::cosf(flRad2);
 		float flRad2Sin = std::sinf(flRad2);
 
@@ -269,10 +348,13 @@ void CDraw::Arc(int x, int y, int radius, float thickness, float start, float en
 		Vec2 vecOuter2 = { x + flRad2Cos * radius, y + flRad2Sin * radius };
 
 		Vertex_t polys1[3] = { Vertex_t{ vecOuter1 }, Vertex_t{ vecOuter2 }, Vertex_t{ vecInner1 } };
-		Polygon(sizeof(polys1) / sizeof(Vertex_t), polys1, clr);
+		I::MatSystemSurface->DrawTexturedPolygon(3, polys1);
 
 		Vertex_t polys2[3] = { Vertex_t{ vecInner1 }, Vertex_t{ vecOuter2 }, Vertex_t{ vecInner2 } };
-		Polygon(sizeof(polys2) / sizeof(Vertex_t), polys2, clr);
+		I::MatSystemSurface->DrawTexturedPolygon(3, polys2);
+
+		flRadCos = flRad2Cos;
+		flRadSin = flRad2Sin;
 	}
 }
 

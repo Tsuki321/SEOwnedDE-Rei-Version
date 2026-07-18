@@ -1,6 +1,84 @@
 #include "SeedPred.h"
 
 #include "../CFG.h"
+#include "../VisualUtils/VisualUtils.h"
+
+#include <array>
+#include <charconv>
+#include <string_view>
+
+namespace
+{
+	constexpr float kPlayerPerfRequestInterval = 0.25f;
+	constexpr float kPlayerPerfResponseTimeout = 2.0f;
+
+	bool IsWhitespace(char ch)
+	{
+		return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+	}
+
+	std::size_t TokenizePlayerPerf(std::string_view message, std::array<std::string_view, 8>& tokens)
+	{
+		std::size_t count = 0;
+		std::size_t pos = 0;
+
+		while (pos < message.size())
+		{
+			while (pos < message.size() && IsWhitespace(message[pos]))
+				pos++;
+
+			if (pos == message.size())
+				break;
+
+			if (count == tokens.size())
+				return tokens.size() + 1;
+
+			const std::size_t start = pos;
+			while (pos < message.size() && !IsWhitespace(message[pos]))
+				pos++;
+
+			tokens[count++] = message.substr(start, pos - start);
+		}
+
+		return count;
+	}
+
+	template <typename T>
+	bool ParseNumber(std::string_view token, T& value)
+	{
+		const auto result = std::from_chars(token.data(), token.data() + token.size(), value);
+		return result.ec == std::errc{} && result.ptr == token.data() + token.size();
+	}
+
+	bool ParseDetailedPlayerPerf(std::string_view message, float& serverTime)
+	{
+		std::array<std::string_view, 8> tokens = {};
+		if (TokenizePlayerPerf(message, tokens) != 7 || tokens[5] != "vel")
+			return false;
+
+		int integerValue = 0;
+		float floatValue = 0.0f;
+		return ParseNumber(tokens[0], serverTime)
+			&& ParseNumber(tokens[1], integerValue)
+			&& ParseNumber(tokens[2], integerValue)
+			&& ParseNumber(tokens[3], floatValue)
+			&& ParseNumber(tokens[4], floatValue)
+			&& ParseNumber(tokens[6], floatValue);
+	}
+
+	bool IsBasicPlayerPerf(std::string_view message)
+	{
+		std::array<std::string_view, 8> tokens = {};
+		if (TokenizePlayerPerf(message, tokens) != 3)
+			return false;
+
+		float floatValue = 0.0f;
+		int integerValue = 0;
+		return ParseNumber(tokens[0], floatValue)
+			&& ParseNumber(tokens[1], integerValue)
+			&& ParseNumber(tokens[2], integerValue);
+	}
+}
 
 float CalcMantissaStep(float val)
 {
@@ -9,18 +87,10 @@ float CalcMantissaStep(float val)
 	float mantissaStep = nextValue - val;
 	mantissaStep *= 1000.f;
 
-	// Calculate a lookup table for the steps
-	static const std::vector<float> MANTISSAS = []
-	{
-		std::vector<float> result;
-		result.reserve(16);
-		for (int i = 0; i < 16; i++)
-		{
-			result.push_back(std::powf(2, i));
-		}
-
-		return result;
-	}();
+	static constexpr std::array MANTISSAS = {
+		1.0f, 2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f,
+		256.0f, 512.0f, 1024.0f, 2048.0f, 4096.0f, 8192.0f, 16384.0f, 32768.0f
+	};
 
 	// Get the closest mantissa
 	const auto it = std::ranges::lower_bound(MANTISSAS, mantissaStep);
@@ -55,15 +125,22 @@ void CSeedPred::AskForPlayerPerf()
 		}
 	}
 
-	// Are we already waiting? | TODO: Add timer so it doesn't eat CPU...
+	const float flNow = static_cast<float>(Plat_FloatTime());
+
 	if (m_WaitingForPP)
 	{
-		return;
+		if (flNow - m_AskTime < kPlayerPerfResponseTimeout)
+			return;
+
+		m_WaitingForPP = false;
 	}
+
+	if (m_AskTime > 0.0f && flNow - m_AskTime < kPlayerPerfRequestInterval)
+		return;
 
 	// Request perf data
 	I::ClientState->SendStringCmd("playerperf");
-	m_AskTime = static_cast<float>(Plat_FloatTime());
+	m_AskTime = flNow;
 	m_WaitingForPP = true;
 }
 
@@ -79,19 +156,16 @@ bool CSeedPred::ParsePlayerPerf(bf_read& msgData)
 	msgData.ReadString(rawMsg, sizeof(rawMsg), true);
 	msgData.Seek(0);
 
-	std::string msg(rawMsg);
-	msg.erase(msg.begin()); //STX
+	std::string_view message(rawMsg);
+	if (!message.empty() && static_cast<unsigned char>(message.front()) < 0x20)
+		message.remove_prefix(1); // STX/color prefix
 
-	std::smatch matches{};
-	std::regex_match(msg, matches, std::regex(R"((\d+.\d+)\s\d+\s\d+\s\d+.\d+\s\d+.\d+\svel\s\d+.\d+)"));
-
-	if (matches.size() == 2)
+	float newServerTime = 0.0f;
+	if (ParseDetailedPlayerPerf(message, newServerTime))
 	{
 		m_WaitingForPP = false;
 
 		//credits to kgb for idea
-
-		const float newServerTime{std::stof(matches[1].str())};
 
 		if (newServerTime > m_ServerTime)
 		{
@@ -125,7 +199,7 @@ bool CSeedPred::ParsePlayerPerf(bf_read& msgData)
 		return true;
 	}
 
-	return std::regex_match(msg, std::regex(R"(\d+.\d+\s\d+\s\d+)"));
+	return IsBasicPlayerPerf(message);
 }
 
 int CSeedPred::GetSeed()
@@ -170,11 +244,14 @@ void CSeedPred::AdjustAngles(CUserCmd* cmd)
 
 	auto bulletsPerShot{weapon->GetWeaponInfo()->GetWeaponData(TF_WEAPON_PRIMARY_MODE).m_nBulletsPerShot};
 	bulletsPerShot = static_cast<int>(SDKUtils::AttribHookValue(static_cast<float>(bulletsPerShot), "mult_bullets_per_shot", weapon));
+	if (bulletsPerShot <= 0)
+		return;
 
 	//credits to cathook for average spread stuff
 
 	std::vector<Vec3> bulletCorrections{};
 	Vec3 averageSpread{};
+	Vec3 forward{}, right{}, up{};
 	int seed = GetSeed();
 
 	for (int bullet = 0; bullet < bulletsPerShot; bullet++)
@@ -190,14 +267,14 @@ void CSeedPred::AdjustAngles(CUserCmd* cmd)
 			{
 				return;
 			}
+
+			bulletCorrections.reserve(static_cast<std::size_t>(bulletsPerShot));
+			Math::AngleVectors(cmd->viewangles, &forward, &right, &up);
 		}
 
 		// No perfect shot. Let's guess the spread!
 		const auto x{SDKUtils::RandomFloat(-0.5f, 0.5f) + SDKUtils::RandomFloat(-0.5f, 0.5f)};
 		const auto y{SDKUtils::RandomFloat(-0.5f, 0.5f) + SDKUtils::RandomFloat(-0.5f, 0.5f)};
-
-		Vec3 forward{}, right{}, up{};
-		Math::AngleVectors(cmd->viewangles, &forward, &right, &up);
 
 		// Calculate the spread vector
 		Vec3 fixedSpread = forward + (right * x * spread) + (up * y * spread);
@@ -241,7 +318,7 @@ void CSeedPred::Paint()
 	}
 
 	// Anti-Screenshot
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}

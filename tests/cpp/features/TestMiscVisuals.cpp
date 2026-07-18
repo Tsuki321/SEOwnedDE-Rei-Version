@@ -47,3 +47,17 @@ TEST(MiscVisualsContracts, UsesGuardClausesAndReturns) {
     EXPECT_GE(totalIfs, static_cast<std::size_t>(9));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(6));
 }
+
+TEST(MiscVisualsContracts, ProjectileArcCachesSimulationButRedrawsSegments) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto mainSource = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(mainSource.find("m_nProjectileArcTick != nTick || bInputChanged"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_vecProjectileArc.clear()"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_vProjectileArcViewOffset - vViewOffset"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nProjectileArcFlags != nFlags"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nProjectileArcTickBase != nTickBase"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nProjectileArcItemDefinition != nItemDefinition"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_flProjectileArcChargeBeginTime != flChargeBeginTime"), std::string::npos);
+    EXPECT_NE(mainSource.find("for (size_t n = 0; n < m_vecProjectileArc.size(); ++n)"), std::string::npos);
+}

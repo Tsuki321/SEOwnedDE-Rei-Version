@@ -2,46 +2,31 @@
 
 #include <math.h>
 
+#include <cstddef>
+#include <type_traits>
+
 class Vec3
 {
 public:
 	float x = 0.0f, y = 0.0f, z = 0.0f;
 
 public:
-	Vec3(void)
-	{
-		x = y = z = 0.0f;
-	}
+	Vec3() noexcept = default;
 
 	void Zero() noexcept
 	{
 		x = y = z = 0.f;
 	}
 
-	Vec3(float X, float Y, float Z) noexcept
-	{
-		x = X; y = Y; z = Z;
-	}
+	Vec3(float X, float Y, float Z) noexcept : x(X), y(Y), z(Z) {}
 
-	Vec3(float *v) noexcept
-	{
-		x = v[0]; y = v[1]; z = v[2];
-	}
+	Vec3(float *v) noexcept : x(v[0]), y(v[1]), z(v[2]) {}
 
-	Vec3(const float *v) noexcept
-	{
-		x = v[0]; y = v[1]; z = v[2];
-	}
+	Vec3(const float *v) noexcept : x(v[0]), y(v[1]), z(v[2]) {}
 
-	Vec3(const Vec3 &v) noexcept
-	{
-		x = v.x; y = v.y; z = v.z;
-	}
+	Vec3(const Vec3 &v) noexcept : x(v.x), y(v.y), z(v.z) {}
 
-	Vec3 &operator=(const Vec3 &v) noexcept
-	{
-		x = v.x; y = v.y; z = v.z; return *this;
-	}
+	Vec3 &operator=(const Vec3 &v) noexcept = default;
 
 	float &operator[](int i) noexcept
 	{
@@ -224,35 +209,17 @@ public:
 	float x = 0.0f, y = 0.0f;
 
 public:
-	Vec2(void)
-	{
-		x = y = 0.0f;
-	}
+	Vec2() noexcept = default;
 
-	Vec2(float X, float Y)
-	{
-		x = X; y = Y;
-	}
+	Vec2(float X, float Y) noexcept : x(X), y(Y) {}
 
-	Vec2(float *v)
-	{
-		x = v[0]; y = v[1];
-	}
+	Vec2(float *v) noexcept : x(v[0]), y(v[1]) {}
 
-	Vec2(const float *v)
-	{
-		x = v[0]; y = v[1];
-	}
+	Vec2(const float *v) noexcept : x(v[0]), y(v[1]) {}
 
-	Vec2(const Vec2 &v)
-	{
-		x = v.x; y = v.y;
-	}
+	Vec2(const Vec2 &v) noexcept : x(v.x), y(v.y) {}
 
-	Vec2 &operator=(const Vec2 &v)
-	{
-		x = v.x; y = v.y; return *this;
-	}
+	Vec2 &operator=(const Vec2 &v) noexcept = default;
 
 	float &operator[](int i)
 	{
@@ -380,3 +347,11 @@ public:
 			y > -0.01f && y < 0.01f);
 	}
 };
+
+static_assert(sizeof(Vec3) == sizeof(float) * 3 && alignof(Vec3) == alignof(float));
+static_assert(offsetof(Vec3, x) == 0 && offsetof(Vec3, y) == sizeof(float) && offsetof(Vec3, z) == sizeof(float) * 2);
+static_assert(std::is_standard_layout_v<Vec3>);
+
+static_assert(sizeof(Vec2) == sizeof(float) * 2 && alignof(Vec2) == alignof(float));
+static_assert(offsetof(Vec2, x) == 0 && offsetof(Vec2, y) == sizeof(float));
+static_assert(std::is_standard_layout_v<Vec2>);

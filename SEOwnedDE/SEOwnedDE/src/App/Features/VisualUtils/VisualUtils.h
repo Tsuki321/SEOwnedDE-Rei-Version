@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
-#include <unordered_map>
+#include <array>
 #include <vector>
 
 class CVisualUtils
@@ -11,16 +11,24 @@ private:
 	{
 		int Frame = -1;
 		const C_TFPlayer* Local = nullptr;
+		const C_BaseEntity* Entity = nullptr;
 		bool OwnedByLocalValid = false;
 		bool OwnedByLocal = false;
 		bool ColorValid = false;
 		Color_t Color = { 255, 255, 255, 255 };
 		bool OnScreenValid = false;
 		bool OnScreen = false;
-		bool NameValid = false;
-		std::wstring Name;
 		bool FriendValid = false;
 		bool IsFriend = false;
+	};
+
+	struct NameCacheEntry
+	{
+		int Frame = -1;
+		const C_TFPlayer* Local = nullptr;
+		const C_TFPlayer* Player = nullptr;
+		bool Valid = false;
+		std::wstring Name;
 	};
 
 	int m_nCachedFrame = -1;
@@ -35,22 +43,34 @@ private:
 	// call after the first access in a new frame.
 	int m_nScreenshotFrame = -1;
 	bool m_bTakingScreenshot = false;
-	std::unordered_map<const C_BaseEntity*, FrameCacheEntry> m_mapFrameCache = {};
-	bool m_bEntityCandidatesPrepared = false;
+	std::array<FrameCacheEntry, MAX_EDICTS> m_arrFrameCache = {};
+	std::array<NameCacheEntry, MAX_PLAYERS> m_arrNameCache = {};
+	FrameCacheEntry m_FallbackFrameCache = {};
+	NameCacheEntry m_FallbackNameCache = {};
+	bool m_bPlayerCandidatesPrepared = false;
+	bool m_bBuildingCandidatesPrepared = false;
+	bool m_bProjectileCandidatesPrepared = false;
 	std::vector<C_TFPlayer*> m_vecPlayerCandidates = {};
 	std::vector<C_BaseObject*> m_vecBuildingCandidates = {};
 	std::vector<C_BaseEntity*> m_vecProjectileCandidates = {};
-	bool m_bModelCandidatesPrepared = false;
+	bool m_bModelPlayerCandidatesPrepared = false;
+	bool m_bModelBuildingCandidatesPrepared = false;
+	bool m_bModelProjectileCandidatesPrepared = false;
 	std::vector<C_TFPlayer*> m_vecModelPlayerCandidates = {};
 	std::vector<C_BaseObject*> m_vecModelBuildingCandidates = {};
 	std::vector<C_BaseEntity*> m_vecModelProjectileCandidates = {};
 
 	void ResetFrameCacheIfNeeded(const C_TFPlayer* pLocal);
 	FrameCacheEntry& GetFrameCacheEntry(const C_BaseEntity* pEntity, const C_TFPlayer* pLocal);
+	NameCacheEntry& GetNameCacheEntry(const C_TFPlayer* pPlayer, const C_TFPlayer* pLocal);
 	bool IsOwnedByLocalCached(const C_TFPlayer* pLocal, const C_BaseEntity* pEntity);
 	bool GetCachedIsFriend(const C_TFPlayer* pLocal, C_TFPlayer* pPlayer);
-	void BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal);
-	void BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal);
+	void BuildPlayerCandidatesIfNeeded(C_TFPlayer* pLocal);
+	void BuildBuildingCandidatesIfNeeded(C_TFPlayer* pLocal);
+	void BuildProjectileCandidatesIfNeeded(C_TFPlayer* pLocal);
+	void BuildModelPlayerCandidatesIfNeeded(C_TFPlayer* pLocal);
+	void BuildModelBuildingCandidatesIfNeeded(C_TFPlayer* pLocal);
+	void BuildModelProjectileCandidatesIfNeeded(C_TFPlayer* pLocal);
 
 public:
 	bool IsEntityOwnedBy(C_BaseEntity* pEntity, C_BaseEntity* pWho);

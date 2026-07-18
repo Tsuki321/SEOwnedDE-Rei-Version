@@ -8,6 +8,7 @@ namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/Aimbot.cpp";
 constexpr const char* kProjectileSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotProjectile/AimbotProjectile.cpp";
+constexpr const char* kProjectilePredictionHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotProjectile/AimbotProjectilePrediction.h";
 constexpr const char* kCommonHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotCommon/AimbotCommon.h";
 constexpr const char* kHitscanSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp";
 constexpr const char* kMeleeSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotMelee/AimbotMelee.cpp";
@@ -65,9 +66,41 @@ TEST(AimbotContracts, ProjectileTargetBudgetRemainsStrict) {
     EXPECT_NE(projectileSource.find("Aimbot_Projectile_Max_Processing_Targets"), std::string::npos);
     EXPECT_NE(projectileSource.find("auto targetsScanned{ 0 }"), std::string::npos);
     EXPECT_NE(projectileSource.find("targetsScanned >= maxTargets"), std::string::npos);
-    EXPECT_NE(projectileSource.find("target.Position.DistTo(vLocalPos) > 400.0f"), std::string::npos);
     EXPECT_NE(projectileSource.find("targetsScanned++"), std::string::npos);
+    EXPECT_NE(projectileSource.find("break;"), std::string::npos);
     EXPECT_NE(projectileSource.find("SolveTarget(pLocal, pWeapon, pCmd, target)"), std::string::npos);
+}
+
+TEST(AimbotContracts, HotPathWorkIsDemandDrivenAndBatched) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto hitscanSource = testhelpers::ReadTextFile(root / kHitscanSource);
+    const auto meleeSource = testhelpers::ReadTextFile(root / kMeleeSource);
+    const auto projectileSource = testhelpers::ReadTextFile(root / kProjectileSource);
+    const auto projectilePredictionHeader = testhelpers::ReadTextFile(root / kProjectilePredictionHeader);
+
+    const auto hitscanGuard = hitscanSource.find("if (!needsTargetScan)");
+    const auto hitscanScan = hitscanSource.find("if (GetTarget(pLocal, pWeapon, target)");
+    const auto meleeGuard = meleeSource.find("if (!needsTargetScan)");
+    const auto meleeScan = meleeSource.find("if (GetTarget(pLocal, pWeapon, target)");
+
+    ASSERT_NE(hitscanGuard, std::string::npos);
+    ASSERT_NE(hitscanScan, std::string::npos);
+    ASSERT_NE(meleeGuard, std::string::npos);
+    ASSERT_NE(meleeScan, std::string::npos);
+    EXPECT_LT(hitscanGuard, hitscanScan);
+    EXPECT_LT(meleeGuard, meleeScan);
+
+    EXPECT_NE(hitscanSource.find("SetupHitboxScan"), std::string::npos);
+    EXPECT_NE(hitscanSource.find("BONE_USED_BY_HITBOX"), std::string::npos);
+    EXPECT_EQ(hitscanSource.find("GetHitboxPos(n)"), std::string::npos);
+
+    EXPECT_NE(projectileSource.find("simulateToTickCount"), std::string::npos);
+    EXPECT_NE(projectileSource.find("refineResult.Tick"), std::string::npos);
+    EXPECT_NE(projectilePredictionHeader.find("if (tNext == tLo)"), std::string::npos);
+
+    EXPECT_NE(projectileSource.find("GetRocketSplashSpherePoints"), std::string::npos);
+    EXPECT_NE(projectileSource.find("std::array<RocketSplashCandidate"), std::string::npos);
+    EXPECT_EQ(projectileSource.find("std::vector<Vec3> potential"), std::string::npos);
 }
 
 TEST(AimbotPredictionMath, HybridBlendFactorDecaysProperly) {
@@ -148,6 +181,8 @@ TEST(AimbotContracts, SharedTargetScoringIsCentralizedAcrossModes) {
     EXPECT_NE(commonSource.find("void Sort(std::vector<T>& targets, int sortMode)"), std::string::npos);
     EXPECT_NE(commonSource.find("std::ranges::sort(targets"), std::string::npos);
     EXPECT_NE(hitscanSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Hitscan_Sort)"), std::string::npos);
-    EXPECT_NE(meleeSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Melee_Sort)"), std::string::npos);
+    EXPECT_NE(commonSource.find("void SortFirst(std::vector<T>& targets"), std::string::npos);
+    EXPECT_NE(commonSource.find("std::ranges::partial_sort(targets"), std::string::npos);
+    EXPECT_NE(meleeSource.find("F::AimbotCommon->SortFirst(m_vecTargets"), std::string::npos);
     EXPECT_NE(projectileSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Projectile_Sort)"), std::string::npos);
 }

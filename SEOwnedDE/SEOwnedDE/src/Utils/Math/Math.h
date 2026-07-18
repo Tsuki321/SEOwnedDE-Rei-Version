@@ -6,6 +6,8 @@
 #include <cfloat>
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <type_traits>
 
 #undef min
 #undef max
@@ -31,13 +33,26 @@ using Quaternion = Vector4D;
 class VMatrix
 {
 public:
-	Vector m[4][4];
+	float m[4][4] = {};
 
 public:
+	inline float *operator[](std::size_t row) noexcept {
+		return m[row];
+	}
+
+	inline const float *operator[](std::size_t row) const noexcept {
+		return m[row];
+	}
+
 	inline const matrix3x4_t &As3x4() const {
-		return *((const matrix3x4_t *)this);
+		return *reinterpret_cast<const matrix3x4_t *>(m);
 	}
 };
+
+static_assert(sizeof(VMatrix) == sizeof(float) * 16, "VMatrix must match Source's 4x4 float ABI");
+static_assert(alignof(VMatrix) == alignof(float), "VMatrix must preserve Source's float alignment");
+static_assert(std::is_standard_layout_v<VMatrix> && std::is_trivially_copyable_v<VMatrix>,
+	"VMatrix must remain safe for engine-owned matrix writes");
 
 #pragma warning (push)
 #pragma warning (disable : 26451)
@@ -307,15 +322,15 @@ namespace Math
 	inline void RotateTriangle(std::array<Vec2, 3> &points, float rotation) noexcept
 	{
 		Vec2 points_center = (points[0] + points[1] + points[2]) / 3;
+		const float theta = DEG2RAD(rotation);
+		float s = 0.0f, c = 0.0f;
+		SinCos(theta, &s, &c);
 
 		for (auto &point : points)
 		{
 			point -= points_center;
 			float temp_x = point.x;
 			float temp_y = point.y;
-			float theta = DEG2RAD(rotation);
-			float c = cosf(theta);
-			float s = sinf(theta);
 			point.x = temp_x * c - temp_y * s;
 			point.y = temp_x * s + temp_y * c;
 			point += points_center;

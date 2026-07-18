@@ -5,6 +5,7 @@
 namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Outlines";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Outlines/Outlines.cpp";
+constexpr const char* kHeaderSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Outlines/Outlines.h";
 }
 
 TEST(OutlinesContracts, ContainsExpectedSourceFiles) {
@@ -29,10 +30,17 @@ TEST(OutlinesContracts, MainSourceContainsFeatureTokens) {
     ASSERT_FALSE(cppFiles.empty());
 
     const auto mainSource = testhelpers::ReadTextFile(mainPath);
+    const auto headerSource = testhelpers::ReadTextFile(root / kHeaderSource);
     EXPECT_NE(mainSource.find("CFG::Outlines_Active"), std::string::npos);
     EXPECT_NE(mainSource.find("H::Draw"), std::string::npos);
     EXPECT_NE(mainSource.find("COutlines::Initialize("), std::string::npos);
-    EXPECT_NE(mainSource.find("m_setDrawnEntities.insert("), std::string::npos);
+    EXPECT_NE(mainSource.find("COutlines::MarkDrawn("), std::string::npos);
+    EXPECT_NE(headerSource.find("m_arrDrawnGenerations"), std::string::npos);
+    EXPECT_NE(headerSource.find("m_arrDrawnHandles"), std::string::npos);
+    EXPECT_NE(headerSource.find("m_nDrawFrame"), std::string::npos);
+    EXPECT_NE(headerSource.find("return pMaterial && (pMaterial == m_pMatGlowColor"), std::string::npos);
+    EXPECT_NE(mainSource.find("bCreateBloomResources && !m_pRenderBuffer1"), std::string::npos);
+    EXPECT_NE(mainSource.find("CRenderContextScope renderContext"), std::string::npos);
     EXPECT_NE(mainSource.find("GetModelPlayerCandidates("), std::string::npos);
     EXPECT_NE(mainSource.find("GetModelBuildingCandidates("), std::string::npos);
     EXPECT_NE(mainSource.find("GetModelProjectileCandidates("), std::string::npos);

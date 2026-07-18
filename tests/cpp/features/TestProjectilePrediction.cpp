@@ -447,6 +447,8 @@ TEST(NewtonRefine, ConvergesOnStationaryPath) {
 
 	EXPECT_TRUE(r.Valid);
 	EXPECT_GT(r.Time, 0.0f);
+	EXPECT_GE(r.Tick, 0);
+	EXPECT_LT(r.Tick, static_cast<int>(path.size()));
 }
 
 TEST(NewtonRefine, ConvergesOnMovingPath) {
@@ -467,6 +469,8 @@ TEST(NewtonRefine, ConvergesOnMovingPath) {
 		path, 0.015f, startTick, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, false, 3);
 
 	EXPECT_TRUE(r.Valid);
+	EXPECT_GE(r.Tick, 0);
+	EXPECT_LT(r.Tick, static_cast<int>(path.size()));
 }
 
 TEST(NewtonRefine, InvalidStartTick_ReturnsInvalid) {
@@ -477,6 +481,7 @@ TEST(NewtonRefine, InvalidStartTick_ReturnsInvalid) {
 		path, 0.015f, -1, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, false, 3);
 
 	EXPECT_FALSE(r.Valid);
+	EXPECT_EQ(r.Tick, -1);
 }
 
 // =============================================================================

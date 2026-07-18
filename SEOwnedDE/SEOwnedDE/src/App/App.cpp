@@ -13,13 +13,21 @@
 
 void CApp::Start()
 {
-	while (!Memory::FindSignature("client.dll", "48 8B 0D ? ? ? ? 48 8B 10 48 8B 19 48 8B C8 FF 92"))
+	// The readiness pattern is static code.  Wait for the module to be mapped,
+	// then scan it once so a stale pattern cannot burn CPU forever.
+	while (!GetModuleHandleA("client.dll"))
 	{
 		bUnload = GetAsyncKeyState(VK_F11) & 0x8000;
 		if (bUnload)
 			return;
 
 		Sleep(500);
+	}
+
+	if (!Memory::FindSignature("client.dll", "48 8B 0D ? ? ? ? 48 8B 10 48 8B 19 48 8B C8 FF 92"))
+	{
+		bUnload = true;
+		return;
 	}
 
 	U::Storage->Init("SEOwnedDE");

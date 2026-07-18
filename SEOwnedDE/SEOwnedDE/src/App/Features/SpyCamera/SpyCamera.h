@@ -6,6 +6,9 @@ class CSpyCamera
 {
 	bool m_IsRendering = false;
 	CViewSetup m_ViewSetup = {};
+	int m_nCachedSpyIndex = -1;
+	int m_nCachedSpyHandle = -1;
+	int m_nNextSpyScanTick = -1;
 
 	void Drag();
 

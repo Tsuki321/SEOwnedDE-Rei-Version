@@ -40,10 +40,14 @@ class CProjectileSim
 {
 	IPhysicsEnvironment* m_pEnv = nullptr;
 	IPhysicsObject* m_pObj = nullptr;
+	CPhysCollide* m_pCollide = nullptr;
 	AnalyticalState m_Analytical{};
 	bool m_bUseVPhysics = true;
 
 public:
+	CProjectileSim() = default;
+	CProjectileSim(const CProjectileSim &) = delete;
+	CProjectileSim &operator=(const CProjectileSim &) = delete;
 	~CProjectileSim();
 	bool GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const Vec3 &angles, ProjectileInfo &out);
 	bool Init(const ProjectileInfo &info, bool no_vec_up = false);

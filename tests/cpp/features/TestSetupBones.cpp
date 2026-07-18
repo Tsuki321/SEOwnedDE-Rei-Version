@@ -36,7 +36,7 @@ TEST(SetupBonesContracts, OnlyAppliesToRemoteCTFPlayers) {
 
     EXPECT_NE(src.find("ETFClassIds::CTFPlayer"), std::string::npos);
     // Local player must be excluded.
-    EXPECT_NE(src.find("ent != H::Entities->GetLocal()"), std::string::npos);
+    EXPECT_NE(src.find("ent != pLocal"), std::string::npos);
 }
 
 TEST(SetupBonesContracts, CopiesCachedBonesAndAppliesDelta) {
@@ -83,7 +83,7 @@ TEST(SetupBonesContracts, AppliesYawRotationalDelta) {
 
     EXPECT_NE(src.find("NormalizeYawDelta"), std::string::npos);
     EXPECT_NE(src.find("RotateBoneAroundOriginYaw"), std::string::npos);
-    EXPECT_NE(src.find("ent->GetAbsAngles().y - pRecord->AbsAngles.y"), std::string::npos);
+    EXPECT_NE(src.find("flLiveYaw - pRecord->AbsAngles.y"), std::string::npos);
     // Sin/Cos must be computed once per frame, not per bone.
     EXPECT_NE(src.find("Math::SinCos(DEG2RAD(deltaYaw)"), std::string::npos);
 }
@@ -98,10 +98,41 @@ TEST(SetupBonesContracts, BlendsTranslationAcrossTwoRecords) {
     EXPECT_NE(src.find("F::LagRecords->GetRecord(pPlayer, 1)"), std::string::npos);
     EXPECT_NE(src.find("pRecord->SimulationTime - pPrev->SimulationTime"), std::string::npos);
     EXPECT_NE(src.find("std::clamp"), std::string::npos);
-    // Only the position columns of each bone are blended; rotation columns keep
-    // the freshest record so the live yaw correction above is preserved.
-    EXPECT_NE(src.find("pBoneToWorldOut[i][0][3]"), std::string::npos);
-    EXPECT_NE(src.find("pBoneToWorldOut[i][2][3]"), std::string::npos);
+    // Only the position columns of each cached bone are blended; rotation
+    // columns keep the freshest record so the live yaw correction is preserved.
+    EXPECT_NE(src.find("cache.BoneData[i][0][3]"), std::string::npos);
+    EXPECT_NE(src.find("cache.BoneData[i][2][3]"), std::string::npos);
+}
+
+TEST(SetupBonesContracts, AdjustedMatricesUseConservativeFrameLocalCacheKeys) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kHookSource);
+
+    EXPECT_NE(src.find("g_AdjustedBoneCache"), std::string::npos);
+    EXPECT_NE(src.find("cache.Frame == frame"), std::string::npos);
+    EXPECT_NE(src.find("cache.SourceBones == sourceBones"), std::string::npos);
+    EXPECT_NE(src.find("cache.RecordSimulationTime == record->SimulationTime"), std::string::npos);
+    EXPECT_NE(src.find("SameVector(cache.LiveOrigin, liveOrigin)"), std::string::npos);
+    EXPECT_NE(src.find("cache.LiveYaw == liveYaw"), std::string::npos);
+    EXPECT_NE(src.find("cache.CurrentTime == currentTime"), std::string::npos);
+    EXPECT_NE(src.find("cache.BoneMask == boneMask"), std::string::npos);
+    EXPECT_NE(src.find("std::memcpy(pBoneToWorldOut, cache.BoneData.data()"), std::string::npos);
+}
+
+TEST(SetupBonesContracts, NullOutputFallsThroughToEngine) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kHookSource);
+
+    const auto nullGuard = src.find("if (!pBoneToWorldOut)");
+    ASSERT_NE(nullGuard, std::string::npos);
+
+    const auto bonesLookup = src.find("const auto bones", nullGuard);
+    ASSERT_NE(bonesLookup, std::string::npos);
+
+    const auto nullBranch = src.substr(nullGuard, bonesLookup - nullGuard);
+    EXPECT_NE(nullBranch.find("return CALL_ORIGINAL(ecx, pBoneToWorldOut, nMaxBones, boneMask, currentTime);"),
+              std::string::npos);
+    EXPECT_EQ(nullBranch.find("return true"), std::string::npos);
 }
 
 // Phase 2: failed-wearable bypass. If a child SetupBones failed during

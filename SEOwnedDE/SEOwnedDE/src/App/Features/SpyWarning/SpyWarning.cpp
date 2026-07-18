@@ -15,7 +15,7 @@ void CSpyWarning::Run()
 		return;
 
 	// Anti screenshot?
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}

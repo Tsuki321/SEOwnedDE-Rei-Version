@@ -5,11 +5,9 @@
 #include "../LagRecords/LagRecords.h"
 #include "../SpyCamera/SpyCamera.h"
 
-void SetModelStencilForOutlines(C_BaseEntity* pEntity)
+void SetModelStencilForOutlines(C_BaseEntity* pEntity, IMatRenderContext* pRenderContext, C_TFPlayer* pPlayerOwner)
 {
-	IMatRenderContext* pRenderContext = I::MaterialSystem->GetRenderContext();
-
-	if (!pRenderContext)
+	if (!pEntity || !pRenderContext || !CFG::Outlines_Active)
 		return;
 
 	const auto pLocal = H::Entities->GetLocal();
@@ -19,12 +17,12 @@ void SetModelStencilForOutlines(C_BaseEntity* pEntity)
 
 	auto IsEntGoingToBeGlowed = [&]()
 	{
-		if (pEntity->GetClassId() == ETFClassIds::CTFPlayer)
+		if (pPlayerOwner || pEntity->GetClassId() == ETFClassIds::CTFPlayer)
 		{
 			if (!CFG::Outlines_Players_Active)
 				return false;
 
-			const auto pPlayer = pEntity->As<C_TFPlayer>();
+			const auto pPlayer = pPlayerOwner ? pPlayerOwner : pEntity->As<C_TFPlayer>();
 
 			return F::VisualUtils->ShouldRenderPlayer(
 				pLocal,
@@ -54,9 +52,7 @@ void SetModelStencilForOutlines(C_BaseEntity* pEntity)
 			);
 		}
 
-		//fuck rest
-
-		return true;
+		return CFG::Outlines_World_Active;
 	};
 
 	if (!IsEntGoingToBeGlowed())
@@ -207,9 +203,35 @@ void CMaterials::Initialize()
 	}
 }
 
-void CMaterials::DrawEntity(C_BaseEntity* pEntity)
+void CMaterials::BeginDrawPass()
 {
-	SetModelStencilForOutlines(pEntity);
+	if (++m_nDrawGeneration == 0)
+	{
+		m_arrDrawnGenerations.fill(0);
+		m_nDrawGeneration = 1;
+	}
+
+	m_bHasAnyDrawn = false;
+	m_nDrawFrame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+}
+
+void CMaterials::MarkDrawn(C_BaseEntity* pEntity)
+{
+	if (!pEntity)
+		return;
+
+	const int nEntityIndex = pEntity->entindex();
+	if (nEntityIndex < 0 || nEntityIndex >= MAX_EDICTS)
+		return;
+
+	m_arrDrawnGenerations[nEntityIndex] = m_nDrawGeneration;
+	m_arrDrawnHandles[nEntityIndex] = pEntity->GetRefEHandle().ToInt();
+	m_bHasAnyDrawn = true;
+}
+
+void CMaterials::DrawEntity(C_BaseEntity* pEntity, IMatRenderContext* pRenderContext, C_TFPlayer* pPlayerOwner)
+{
+	SetModelStencilForOutlines(pEntity, pRenderContext, pPlayerOwner);
 
 	m_bRendering = true;
 
@@ -229,15 +251,13 @@ void CMaterials::DrawEntity(C_BaseEntity* pEntity)
 		I::RenderView->SetBlend(1.0f);
 	}
 
-	m_setDrawnEntities.insert(pEntity);
+	MarkDrawn(pEntity);
 
 	m_bRendering = false;
 }
 
-void CMaterials::RunLagRecords()
+void CMaterials::RunLagRecords(IMatRenderContext* pRenderContext)
 {
-	const auto pRenderContext = I::MaterialSystem->GetRenderContext();
-
 	if (!pRenderContext || !CFG::Materials_Players_Active || CFG::Materials_Players_Ignore_LagRecords)
 		return;
 
@@ -370,34 +390,30 @@ void CMaterials::RunLagRecords()
 	I::RenderView->SetBlend(1.0f);
 }
 
-void CMaterials::Run()
+void CMaterials::Run(IMatRenderContext* pRenderContext)
 {
 	Initialize();
-
-	if (!m_setDrawnEntities.empty())
-		m_setDrawnEntities.clear();
+	BeginDrawPass();
 
 	if (!CFG::Materials_Active || I::EngineVGui->IsGameUIVisible() || F::SpyCamera->IsRendering())
 		return;
 
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
-
-	const auto pRenderContext = I::MaterialSystem->GetRenderContext();
-
-	if (!pRenderContext)
-		return;
 
 	const auto pLocal = H::Entities->GetLocal();
 
 	if (!pLocal)
 		return;
 
+	if (!pRenderContext)
+		return;
+
 	m_pGlowSelfillumTint->SetVecValue(0.03f, 0.03f, 0.03f);
 
-	RunLagRecords();
+	RunLagRecords(pRenderContext);
 
 	auto GetMaterial = [&](int nIndex) -> IMaterial* {
 		//don't forget to change me if more materials are added!
@@ -451,7 +467,7 @@ void CMaterials::Run()
 			if (pMaterial == m_pGlow)
 				m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(entColor.r), ColorUtils::ToFloat(entColor.g), ColorUtils::ToFloat(entColor.b));
 
-			DrawEntity(pPlayer);
+			DrawEntity(pPlayer, pRenderContext);
 
 			C_BaseEntity* pAttach = pPlayer->FirstMoveChild();
 
@@ -461,7 +477,7 @@ void CMaterials::Run()
 					break;
 
 				if (pAttach->ShouldDraw())
-					DrawEntity(pAttach);
+					DrawEntity(pAttach, pRenderContext, pPlayer);
 
 				pAttach = pAttach->NextMovePeer();
 			}
@@ -512,7 +528,7 @@ void CMaterials::Run()
 			if (pMaterial == m_pGlow)
 				m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(entColor.r), ColorUtils::ToFloat(entColor.g), ColorUtils::ToFloat(entColor.b));
 
-			DrawEntity(pBuilding);
+			DrawEntity(pBuilding, pRenderContext);
 		}
 
 		if (pMaterial)
@@ -559,7 +575,7 @@ void CMaterials::Run()
 				if (!pEntity || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
 
-				DrawEntity(pEntity);
+				DrawEntity(pEntity, pRenderContext);
 			}
 		}
 
@@ -573,7 +589,7 @@ void CMaterials::Run()
 				if (!pEntity || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
 
-				DrawEntity(pEntity);
+				DrawEntity(pEntity, pRenderContext);
 			}
 		}
 
@@ -587,7 +603,7 @@ void CMaterials::Run()
 				if (!pEntity || !pEntity->ShouldDraw() || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
 
-				DrawEntity(pEntity);
+				DrawEntity(pEntity, pRenderContext);
 			}
 		}
 
@@ -601,7 +617,7 @@ void CMaterials::Run()
 				if (!pEntity || !pEntity->ShouldDraw() || !F::VisualUtils->IsOnScreen(pLocal, pEntity))
 					continue;
 
-				DrawEntity(pEntity);
+				DrawEntity(pEntity, pRenderContext);
 			}
 		}
 
@@ -630,7 +646,7 @@ void CMaterials::Run()
 				if (pMaterial == m_pGlow)
 					m_pGlowEnvmapTint->SetVecValue(ColorUtils::ToFloat(color.r), ColorUtils::ToFloat(color.g), ColorUtils::ToFloat(color.b));
 
-				DrawEntity(pEntity);
+				DrawEntity(pEntity, pRenderContext);
 			}
 		}
 

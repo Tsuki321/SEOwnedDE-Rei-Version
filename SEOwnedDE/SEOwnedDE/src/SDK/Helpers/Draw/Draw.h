@@ -23,7 +23,7 @@ public:
 	int GetScreenH() { return m_nScreenH; }
 
 	bool W2S(const Vec3 &vOrigin, Vec3 &vScreen);
-	bool ClipTransformWithProjection(const matrix3x4_t &worldToScreen, const Vec3 &point, Vec3 *pClip);
+	bool ClipTransformWithProjection(const VMatrix &worldToScreen, const Vec3 &point, Vec3 *pClip);
 	bool ClipTransform(const Vector &point, Vector *pClip);
 	bool ScreenPosition(const Vec3 &vPoint, Vec3 &vScreen);
 	void String(const CFont &font, int x, int y, Color_t clr, short pos, const char *str, ...);

@@ -17,6 +17,14 @@ CFGVAR(test_cfg_string, std::string{ "hello_config" });
 CFGVAR_NOSAVE(test_cfg_nosave_bool, false);
 CFGVAR_NOSAVE(test_cfg_nosave_int, 999);
 
+TEST(ConfigTypeDispatch, SupportedTypesUseCompactTags) {
+    EXPECT_EQ(Config::GetConfigVarType<bool>(), Config::EConfigVarType::Boolean);
+    EXPECT_EQ(Config::GetConfigVarType<int>(), Config::EConfigVarType::Integer);
+    EXPECT_EQ(Config::GetConfigVarType<float>(), Config::EConfigVarType::Float);
+    EXPECT_EQ(Config::GetConfigVarType<const Color_t&>(), Config::EConfigVarType::Color);
+    EXPECT_EQ(Config::GetConfigVarType<std::string>(), Config::EConfigVarType::String);
+}
+
 // -----------------------------------------------------------------------------
 // Config Save/Load Round-Trip
 // -----------------------------------------------------------------------------
@@ -93,6 +101,24 @@ TEST_F(ConfigTest, SaveThenLoadRoundTripColor) {
     test_cfg_color = Color_t{ 0, 0, 0, 0 };
     Config::Load(m_tempPath);
 
+    EXPECT_EQ(test_cfg_color.r, 10u);
+    EXPECT_EQ(test_cfg_color.g, 20u);
+    EXPECT_EQ(test_cfg_color.b, 30u);
+    EXPECT_EQ(test_cfg_color.a, 40u);
+}
+
+TEST_F(ConfigTest, MalformedColorDoesNotPartiallyUpdate) {
+    test_cfg_color = Color_t{ 10, 20, 30, 40 };
+
+    nlohmann::json j;
+    j["test_cfg_color"] = { 1, 2 };
+    {
+        std::ofstream file(m_tempPath);
+        ASSERT_TRUE(file.is_open());
+        file << j;
+    }
+
+    EXPECT_NO_THROW(Config::Load(m_tempPath));
     EXPECT_EQ(test_cfg_color.r, 10u);
     EXPECT_EQ(test_cfg_color.g, 20u);
     EXPECT_EQ(test_cfg_color.b, 30u);

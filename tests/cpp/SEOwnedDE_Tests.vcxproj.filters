@@ -117,6 +117,9 @@
     <ClCompile Include="features\TestProjectileSim.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="features\TestProjectilePrediction.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="features\TestRadar.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

@@ -312,7 +312,12 @@ namespace BallisticSolver
 					{
 						if (tLo <= 0.001f)
 							break;
-						tLo = SolveQuarticNewton(a4, a3, a2, a1, a0, tLo * 1.5f);
+
+						const float tNext = SolveQuarticNewton(a4, a3, a2, a1, a0, tLo * 1.5f);
+						if (tNext == tLo)
+							break;
+
+						tLo = tNext;
 					}
 					if (tLo > t)
 						t = tLo;
@@ -475,6 +480,7 @@ namespace BallisticSolver
 	{
 		Vec3  AimPoint = {};
 		float Time     = 0.0f;
+		int   Tick     = -1;
 		bool  Valid    = false;
 	};
 
@@ -492,6 +498,7 @@ namespace BallisticSolver
 		int tick = startTick;
 		float bestResidual = std::numeric_limits<float>::max();
 		Vec3 bestAimPoint = {};
+		int bestTick = -1;
 		bool found = false;
 
 		for (int iter = 0; iter < maxIters; ++iter)
@@ -521,6 +528,7 @@ namespace BallisticSolver
 			{
 				bestResidual = absResidual;
 				bestAimPoint = path[tick];
+				bestTick = tick;
 				found = true;
 			}
 
@@ -538,6 +546,7 @@ namespace BallisticSolver
 		if (found)
 		{
 			result.AimPoint = bestAimPoint;
+			result.Tick = bestTick;
 			result.Valid = true;
 
 			SolverParams params;

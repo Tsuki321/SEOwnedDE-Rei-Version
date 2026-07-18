@@ -42,6 +42,44 @@ TEST(MemoryFindSignature, FindsMatchAtLastPossibleOffset)
 	EXPECT_EQ(result, reinterpret_cast<std::uintptr_t>(bytes.data() + 3));
 }
 
+TEST(MemoryFindSignature, MatchesWildcardsWithAnchoredScan)
+{
+	const std::array<std::byte, 6> bytes = {
+		std::byte{0x10}, std::byte{0x20}, std::byte{0x30},
+		std::byte{0x40}, std::byte{0x50}, std::byte{0x60}
+	};
+
+	const auto result = Memory::FindSignature(bytes.data(), bytes.size(), "20 ? 40");
+
+	ASSERT_NE(result, 0u);
+	EXPECT_EQ(result, reinterpret_cast<std::uintptr_t>(bytes.data() + 1));
+}
+
+TEST(MemoryFindSignature, SkipsFalseAnchorCandidates)
+{
+	const std::array<std::byte, 6> bytes = {
+		std::byte{0xAA}, std::byte{0x11}, std::byte{0xCC},
+		std::byte{0xAA}, std::byte{0xBB}, std::byte{0xCC}
+	};
+
+	const auto result = Memory::FindSignature(bytes.data(), bytes.size(), "AA BB CC");
+
+	ASSERT_NE(result, 0u);
+	EXPECT_EQ(result, reinterpret_cast<std::uintptr_t>(bytes.data() + 3));
+}
+
+TEST(MemoryFindSignature, MatchesAllWildcardPatternAtStart)
+{
+	const std::array<std::byte, 3> bytes = {
+		std::byte{0x10}, std::byte{0x20}, std::byte{0x30}
+	};
+
+	const auto result = Memory::FindSignature(bytes.data(), bytes.size(), "? ?");
+
+	ASSERT_NE(result, 0u);
+	EXPECT_EQ(result, reinterpret_cast<std::uintptr_t>(bytes.data()));
+}
+
 TEST(MemoryFindSignature, ReturnsZeroWhenPatternIsMissing)
 {
 	const std::array<std::byte, 4> bytes = {

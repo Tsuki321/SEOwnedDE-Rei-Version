@@ -491,6 +491,7 @@
     <ClInclude Include="src\App\Features\Aimbot\AimbotHitscan\AimbotHitscan.h" />
     <ClInclude Include="src\App\Features\Aimbot\AimbotMelee\AimbotMelee.h" />
     <ClInclude Include="src\App\Features\Aimbot\AimbotProjectile\AimbotProjectile.h" />
+    <ClInclude Include="src\App\Features\Aimbot\AimbotProjectile\AimbotProjectilePrediction.h" />
     <ClInclude Include="src\App\Features\Crits\Crits.h" />
     <ClInclude Include="src\App\Features\VisualUtils\Icons.h" />
     <ClInclude Include="src\SDK\TF2\iviewrender.h" />
@@ -516,6 +517,8 @@
     <ClInclude Include="src\App\Features\ProjectileSim\ProjectileSim.h" />
     <ClInclude Include="src\App\Features\Radar\Radar.h" />
     <ClInclude Include="src\App\Features\RapidFire\RapidFire.h" />
+    <ClInclude Include="src\App\Features\Rendering\RenderContextScope.h" />
+    <ClInclude Include="src\App\Features\Rendering\RenderPassState.h" />
     <ClInclude Include="src\App\Features\SeedPred\SeedPred.h" />
     <ClInclude Include="src\App\Features\SpectatorList\SpectatorList.h" />
     <ClInclude Include="src\App\Features\SpyCamera\SpyCamera.h" />

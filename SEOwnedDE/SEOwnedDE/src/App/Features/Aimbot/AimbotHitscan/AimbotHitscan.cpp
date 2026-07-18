@@ -2,6 +2,23 @@
 
 #include "../../CFG.h"
 
+namespace
+{
+	bool SetupHitboxScan(C_BaseAnimating* pAnimating, mstudiohitboxset_t*& pSet, matrix3x4_t (&boneMatrix)[128])
+	{
+		const auto pModel = pAnimating->GetModel();
+		if (!pModel)
+			return false;
+
+		const auto pHDR = I::ModelInfoClient->GetStudiomodel(pModel);
+		if (!pHDR)
+			return false;
+
+		pSet = pHDR->pHitboxSet(pAnimating->m_nHitboxSet());
+		return pSet && pAnimating->SetupBones(boneMatrix, 128, BONE_USED_BY_HITBOX, I::GlobalVars->curtime);
+	}
+}
+
 int CAimbotHitscan::GetAimHitbox(C_TFWeaponBase* pWeapon)
 {
 	switch (CFG::Aimbot_Hitscan_Hitbox)
@@ -28,24 +45,13 @@ bool CAimbotHitscan::ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target)
 	if (!pPlayer)
 		return false;
 
-	const auto pModel = pPlayer->GetModel();
-	if (!pModel)
-		return false;
-
-	const auto pHDR = I::ModelInfoClient->GetStudiomodel(pModel);
-	if (!pHDR)
-		return false;
-
-	const auto pSet = pHDR->pHitboxSet(pPlayer->m_nHitboxSet());
-	if (!pSet)
+	mstudiohitboxset_t* pSet = nullptr;
+	matrix3x4_t boneMatrix[128];
+	if (!SetupHitboxScan(pPlayer, pSet, boneMatrix))
 		return false;
 
 	const auto pBox = pSet->pHitbox(HITBOX_HEAD);
-	if (!pBox)
-		return false;
-
-	matrix3x4_t boneMatrix[128] = {};
-	if (!pPlayer->SetupBones(boneMatrix, 128, 0x100, I::GlobalVars->curtime))
+	if (!pBox || pBox->bone < 0 || pBox->bone >= 128)
 		return false;
 
 	const Vec3 vMins = pBox->bbmin;
@@ -102,13 +108,22 @@ bool CAimbotHitscan::ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target)
 	if (!pPlayer)
 		return false;
 
+	mstudiohitboxset_t* pSet = nullptr;
+	matrix3x4_t boneMatrix[128];
+	if (!SetupHitboxScan(pPlayer, pSet, boneMatrix))
+		return false;
+
 	const Vec3 vLocalPos = pLocal->GetShootPos();
-	for (int n = 1; n < pPlayer->GetNumOfHitboxes(); n++)
+	for (int n = 1; n < pSet->numhitboxes; n++)
 	{
 		if (n == target.AimedHitbox)
 			continue;
 
-		const int nHitboxGroup = pPlayer->GetHitboxGroup(n);
+		const auto pBox = pSet->pHitbox(n);
+		if (!pBox || pBox->bone < 0 || pBox->bone >= 128)
+			continue;
+
+		const int nHitboxGroup = pBox->group;
 
 		if (!bScanningBody && (nHitboxGroup == HITGROUP_CHEST || nHitboxGroup == HITGROUP_STOMACH))
 			continue;
@@ -119,7 +134,8 @@ bool CAimbotHitscan::ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target)
 		if (!bScanningLegs && (nHitboxGroup == HITGROUP_LEFTLEG || nHitboxGroup == HITGROUP_RIGHTLEG))
 			continue;
 
-		Vec3 vHitbox = pPlayer->GetHitboxPos(n);
+		Vec3 vHitbox = {};
+		Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, boneMatrix[pBox->bone], vHitbox);
 
 		if (!H::AimUtils->TraceEntityBullet(pPlayer, vLocalPos, vHitbox))
 			continue;
@@ -146,9 +162,19 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target)
 
 	if (pObject->GetClassId() == ETFClassIds::CObjectSentrygun)
 	{
-		for (int n = 0; n < pObject->GetNumOfHitboxes(); n++)
+		mstudiohitboxset_t* pSet = nullptr;
+		matrix3x4_t boneMatrix[128];
+		if (!SetupHitboxScan(pObject, pSet, boneMatrix))
+			return false;
+
+		for (int n = 0; n < pSet->numhitboxes; n++)
 		{
-			Vec3 vHitbox = pObject->GetHitboxPos(n);
+			const auto pBox = pSet->pHitbox(n);
+			if (!pBox || pBox->bone < 0 || pBox->bone >= 128)
+				continue;
+
+			Vec3 vHitbox = {};
+			Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, boneMatrix[pBox->bone], vHitbox);
 
 			if (!H::AimUtils->TraceEntityBullet(pObject, vLocalPos, vHitbox))
 				continue;
@@ -744,13 +770,18 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 		return;
 
 	const bool isFiring = IsFiring(pCmd, pWeapon);
+	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
+	const bool manualFireIntent = pCmd->buttons & IN_ATTACK;
+	const bool rapidFirePretracking = CFG::Exploits_RapidFire_Key && H::Input->IsDown(CFG::Exploits_RapidFire_Key);
+	const bool needsTargetScan = aimKeyDown || manualFireIntent || isFiring || rapidFirePretracking;
+	if (!needsTargetScan)
+		return;
 
 	HitscanTarget_t target = {};
 	if (GetTarget(pLocal, pWeapon, target) && target.Entity)
 	{
 		G::nTargetIndexEarly = target.Entity->entindex();
 
-		const auto aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
 		if (aimKeyDown || isFiring)
 		{
 			G::nTargetIndex = target.Entity->entindex();

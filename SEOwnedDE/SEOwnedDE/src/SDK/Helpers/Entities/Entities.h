@@ -38,6 +38,7 @@ private:
 	std::array<std::vector<C_BaseEntity*>, static_cast<size_t>(EEntGroup::COUNT)> m_arrGroups = {};
 	std::unordered_set<int> m_setHealthPacks = {};
 	std::unordered_set<int> m_setAmmoPacks = {};
+	bool m_bGroupsReserved = false;
 
 	bool IsHealthPack(C_BaseEntity* pEntity)
 	{

@@ -13,37 +13,59 @@ void CVisualUtils::ResetFrameCacheIfNeeded(const C_TFPlayer* pLocal)
 	{
 		m_nCachedFrame = nFrame;
 		m_pCachedLocal = pLocal;
-		m_mapFrameCache.clear();
-		m_bEntityCandidatesPrepared = false;
+		m_bPlayerCandidatesPrepared = false;
+		m_bBuildingCandidatesPrepared = false;
+		m_bProjectileCandidatesPrepared = false;
 		m_vecPlayerCandidates.clear();
 		m_vecBuildingCandidates.clear();
 		m_vecProjectileCandidates.clear();
-		m_bModelCandidatesPrepared = false;
+		m_bModelPlayerCandidatesPrepared = false;
+		m_bModelBuildingCandidatesPrepared = false;
+		m_bModelProjectileCandidatesPrepared = false;
 		m_vecModelPlayerCandidates.clear();
 		m_vecModelBuildingCandidates.clear();
 		m_vecModelProjectileCandidates.clear();
-	}
 
-	if (pLocal)
-	{
-		m_vCachedLocalOrigin = pLocal->GetAbsOrigin();
-	}
+		if (pLocal)
+			m_vCachedLocalOrigin = pLocal->GetAbsOrigin();
 
-	m_nCachedScreenW = H::Draw->GetScreenW();
-	m_nCachedScreenH = H::Draw->GetScreenH();
+		m_nCachedScreenW = H::Draw->GetScreenW();
+		m_nCachedScreenH = H::Draw->GetScreenH();
+	}
 }
 
 CVisualUtils::FrameCacheEntry& CVisualUtils::GetFrameCacheEntry(const C_BaseEntity* pEntity, const C_TFPlayer* pLocal)
 {
-	auto [it, inserted] = m_mapFrameCache.try_emplace(pEntity);
-	auto& entry = it->second;
+	const int nEntityIndex = pEntity ? pEntity->entindex() : -1;
+	auto& entry = nEntityIndex >= 0 && nEntityIndex < MAX_EDICTS
+		? m_arrFrameCache[nEntityIndex]
+		: m_FallbackFrameCache;
 
-	if (entry.Frame != m_nCachedFrame || entry.Local != pLocal)
-	{
-		entry = {};
-		entry.Frame = m_nCachedFrame;
-		entry.Local = pLocal;
-	}
+	if (entry.Frame == m_nCachedFrame && entry.Local == pLocal && entry.Entity == pEntity)
+		return entry;
+
+	entry = {};
+	entry.Frame = m_nCachedFrame;
+	entry.Local = pLocal;
+	entry.Entity = pEntity;
+
+	return entry;
+}
+
+CVisualUtils::NameCacheEntry& CVisualUtils::GetNameCacheEntry(const C_TFPlayer* pPlayer, const C_TFPlayer* pLocal)
+{
+	const int nPlayerIndex = pPlayer ? pPlayer->entindex() : -1;
+	auto& entry = nPlayerIndex >= 0 && nPlayerIndex < MAX_PLAYERS
+		? m_arrNameCache[nPlayerIndex]
+		: m_FallbackNameCache;
+
+	if (entry.Frame == m_nCachedFrame && entry.Local == pLocal && entry.Player == pPlayer)
+		return entry;
+
+	entry.Frame = m_nCachedFrame;
+	entry.Local = pLocal;
+	entry.Player = pPlayer;
+	entry.Valid = false;
 
 	return entry;
 }
@@ -76,9 +98,9 @@ const std::wstring& CVisualUtils::GetCachedWideName(C_TFPlayer* pLocal, C_TFPlay
 		return sEmpty;
 
 	ResetFrameCacheIfNeeded(pLocal);
-	auto& cache = GetFrameCacheEntry(pPlayer, pLocal);
+	auto& cache = GetNameCacheEntry(pPlayer, pLocal);
 
-	if (!cache.NameValid)
+	if (!cache.Valid)
 	{
 		if (utf8Name)
 		{
@@ -89,8 +111,10 @@ const std::wstring& CVisualUtils::GetCachedWideName(C_TFPlayer* pLocal, C_TFPlay
 			player_info_t info = {};
 			if (I::EngineClient->GetPlayerInfo(pPlayer->entindex(), &info))
 				cache.Name = Utils::ConvertUtf8ToWide(info.name);
+			else
+				cache.Name.clear();
 		}
-		cache.NameValid = true;
+		cache.Valid = true;
 	}
 
 	return cache.Name;
@@ -113,14 +137,14 @@ bool CVisualUtils::GetCachedIsFriend(const C_TFPlayer* pLocal, C_TFPlayer* pPlay
 	return cache.IsFriend;
 }
 
-void CVisualUtils::BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal)
+void CVisualUtils::BuildPlayerCandidatesIfNeeded(C_TFPlayer* pLocal)
 {
 	ResetFrameCacheIfNeeded(pLocal);
 
-	if (!pLocal || m_bEntityCandidatesPrepared)
+	if (!pLocal || m_bPlayerCandidatesPrepared)
 		return;
 
-	m_bEntityCandidatesPrepared = true;
+	m_bPlayerCandidatesPrepared = true;
 
 	const auto& players = H::Entities->GetGroup(EEntGroup::PLAYERS_ALL);
 	m_vecPlayerCandidates.reserve(players.size());
@@ -137,6 +161,16 @@ void CVisualUtils::BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal)
 
 		m_vecPlayerCandidates.push_back(pPlayer);
 	}
+}
+
+void CVisualUtils::BuildBuildingCandidatesIfNeeded(C_TFPlayer* pLocal)
+{
+	ResetFrameCacheIfNeeded(pLocal);
+
+	if (!pLocal || m_bBuildingCandidatesPrepared)
+		return;
+
+	m_bBuildingCandidatesPrepared = true;
 
 	const auto& buildings = H::Entities->GetGroup(EEntGroup::BUILDINGS_ALL);
 	m_vecBuildingCandidates.reserve(buildings.size());
@@ -153,6 +187,16 @@ void CVisualUtils::BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal)
 
 		m_vecBuildingCandidates.push_back(pBuilding);
 	}
+}
+
+void CVisualUtils::BuildProjectileCandidatesIfNeeded(C_TFPlayer* pLocal)
+{
+	ResetFrameCacheIfNeeded(pLocal);
+
+	if (!pLocal || m_bProjectileCandidatesPrepared)
+		return;
+
+	m_bProjectileCandidatesPrepared = true;
 
 	const auto& projectiles = H::Entities->GetGroup(EEntGroup::PROJECTILES_ALL);
 	m_vecProjectileCandidates.reserve(projectiles.size());
@@ -166,16 +210,16 @@ void CVisualUtils::BuildEntityCandidatesIfNeeded(C_TFPlayer* pLocal)
 	}
 }
 
-void CVisualUtils::BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal)
+void CVisualUtils::BuildModelPlayerCandidatesIfNeeded(C_TFPlayer* pLocal)
 {
 	ResetFrameCacheIfNeeded(pLocal);
 
-	if (!pLocal || m_bModelCandidatesPrepared)
+	if (!pLocal || m_bModelPlayerCandidatesPrepared)
 		return;
 
-	BuildEntityCandidatesIfNeeded(pLocal);
+	BuildPlayerCandidatesIfNeeded(pLocal);
 
-	m_bModelCandidatesPrepared = true;
+	m_bModelPlayerCandidatesPrepared = true;
 
 	m_vecModelPlayerCandidates.reserve(m_vecPlayerCandidates.size());
 
@@ -186,6 +230,18 @@ void CVisualUtils::BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal)
 
 		m_vecModelPlayerCandidates.push_back(pPlayer);
 	}
+}
+
+void CVisualUtils::BuildModelBuildingCandidatesIfNeeded(C_TFPlayer* pLocal)
+{
+	ResetFrameCacheIfNeeded(pLocal);
+
+	if (!pLocal || m_bModelBuildingCandidatesPrepared)
+		return;
+
+	BuildBuildingCandidatesIfNeeded(pLocal);
+
+	m_bModelBuildingCandidatesPrepared = true;
 
 	m_vecModelBuildingCandidates.reserve(m_vecBuildingCandidates.size());
 
@@ -196,6 +252,18 @@ void CVisualUtils::BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal)
 
 		m_vecModelBuildingCandidates.push_back(pBuilding);
 	}
+}
+
+void CVisualUtils::BuildModelProjectileCandidatesIfNeeded(C_TFPlayer* pLocal)
+{
+	ResetFrameCacheIfNeeded(pLocal);
+
+	if (!pLocal || m_bModelProjectileCandidatesPrepared)
+		return;
+
+	BuildProjectileCandidatesIfNeeded(pLocal);
+
+	m_bModelProjectileCandidatesPrepared = true;
 
 	m_vecModelProjectileCandidates.reserve(m_vecProjectileCandidates.size());
 
@@ -210,37 +278,37 @@ void CVisualUtils::BuildModelCandidatesIfNeeded(C_TFPlayer* pLocal)
 
 const std::vector<C_TFPlayer*>& CVisualUtils::GetPlayerCandidates(C_TFPlayer* pLocal)
 {
-	BuildEntityCandidatesIfNeeded(pLocal);
+	BuildPlayerCandidatesIfNeeded(pLocal);
 	return m_vecPlayerCandidates;
 }
 
 const std::vector<C_BaseObject*>& CVisualUtils::GetBuildingCandidates(C_TFPlayer* pLocal)
 {
-	BuildEntityCandidatesIfNeeded(pLocal);
+	BuildBuildingCandidatesIfNeeded(pLocal);
 	return m_vecBuildingCandidates;
 }
 
 const std::vector<C_BaseEntity*>& CVisualUtils::GetProjectileCandidates(C_TFPlayer* pLocal)
 {
-	BuildEntityCandidatesIfNeeded(pLocal);
+	BuildProjectileCandidatesIfNeeded(pLocal);
 	return m_vecProjectileCandidates;
 }
 
 const std::vector<C_TFPlayer*>& CVisualUtils::GetModelPlayerCandidates(C_TFPlayer* pLocal)
 {
-	BuildModelCandidatesIfNeeded(pLocal);
+	BuildModelPlayerCandidatesIfNeeded(pLocal);
 	return m_vecModelPlayerCandidates;
 }
 
 const std::vector<C_BaseObject*>& CVisualUtils::GetModelBuildingCandidates(C_TFPlayer* pLocal)
 {
-	BuildModelCandidatesIfNeeded(pLocal);
+	BuildModelBuildingCandidatesIfNeeded(pLocal);
 	return m_vecModelBuildingCandidates;
 }
 
 const std::vector<C_BaseEntity*>& CVisualUtils::GetModelProjectileCandidates(C_TFPlayer* pLocal)
 {
-	BuildModelCandidatesIfNeeded(pLocal);
+	BuildModelProjectileCandidatesIfNeeded(pLocal);
 	return m_vecModelProjectileCandidates;
 }
 

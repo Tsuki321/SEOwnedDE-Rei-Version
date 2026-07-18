@@ -1,6 +1,7 @@
 #include "../../SDK/SDK.h"
 
 #include "../Features/CFG.h"
+#include "../Features/VisualUtils/VisualUtils.h"
 
 MAKE_SIGNATURE(COPRenderSprites_RenderSpriteCard, "client.dll", "48 8B C4 48 89 58 ? 57 41 54", 0x0);
 
@@ -36,13 +37,16 @@ struct SpriteRenderInfo_t
 MAKE_HOOK(COPRenderSprites_RenderSpriteCard, Signatures::COPRenderSprites_RenderSpriteCard.Get(), void, __fastcall,
 	void* ecx, void* meshBuilder, void* pCtx, SpriteRenderInfo_t& info, int hParticle, void* pSortList, void* pCamera)
 {
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	// The original path is the common case. Check the particle mode before any
+	// screenshot or color work, then use the frame-stamped screenshot cache so
+	// this per-particle hook does not call into the engine repeatedly.
+	const auto mode = CFG::Visuals_Particles_Mode;
+	if (!mode || (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached()))
 	{
-		CALL_ORIGINAL(ecx, meshBuilder, pCtx, info, hParticle, pSortList, pCamera);;
+		CALL_ORIGINAL(ecx, meshBuilder, pCtx, info, hParticle, pSortList, pCamera);
 		return;
 	}
 
-	if (const auto mode = CFG::Visuals_Particles_Mode)
 	{
 		Color_t color = {};
 
@@ -58,7 +62,23 @@ MAKE_HOOK(COPRenderSprites_RenderSpriteCard, Signatures::COPRenderSprites_Render
 			// Rainbow
 			case 2:
 			{
-				color = ColorUtils::Rainbow(I::GlobalVars->realtime, CFG::Visuals_Particles_Rainbow_Rate);
+				// Rainbow is shared by every particle in a frame. Cache it locally;
+				// the source color is deliberately refreshed when the configured rate
+				// changes so menu edits take effect immediately.
+				static int nRainbowFrame = -1;
+				static float flRainbowRate = -1.0f;
+				static Color_t cachedRainbow = {};
+				const int nFrame = I::GlobalVars ? I::GlobalVars->framecount : 0;
+				const float flRate = CFG::Visuals_Particles_Rainbow_Rate;
+
+				if (nRainbowFrame != nFrame || flRainbowRate != flRate)
+				{
+					nRainbowFrame = nFrame;
+					flRainbowRate = flRate;
+					cachedRainbow = ColorUtils::Rainbow(I::GlobalVars->realtime, flRate);
+				}
+
+				color = cachedRainbow;
 				break;
 			}
 		}

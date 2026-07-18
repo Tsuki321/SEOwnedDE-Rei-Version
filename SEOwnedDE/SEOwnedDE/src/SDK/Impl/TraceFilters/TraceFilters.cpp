@@ -1,15 +1,29 @@
 #include "TraceFilters.h"
 #include "../../SDK.h"
 
+CTraceFilterHitscan::CTraceFilterHitscan()
+{
+	// A trace can visit dozens of entities.  Snapshot the invariant inputs once
+	// when the filter is created instead of resolving them for every candidate.
+	const auto pLocal = H::Entities->GetLocal();
+	const auto pWeaponEntity = pLocal ? pLocal->m_hActiveWeapon().Get() : nullptr;
+	const auto pWeapon = pWeaponEntity ? pWeaponEntity->As<C_TFWeaponBase>() : nullptr;
+
+	if (pLocal && pWeapon)
+	{
+		m_pLocal = pLocal;
+		m_nLocalTeam = pLocal->m_iTeamNum();
+		m_nWeaponID = pWeapon->GetWeaponID();
+		m_bValid = true;
+	}
+}
+
 bool CTraceFilterHitscan::ShouldHitEntity(IHandleEntity *pServerEntity, int contentsMask)
 {
-	auto pLocal = H::Entities->GetLocal();
-	auto pWeapon = H::Entities->GetWeapon();
-
-	if (!pLocal || !pWeapon)
+	if (!m_bValid)
 		return false;
 
-	if (!pServerEntity || pServerEntity == m_pIgnore || pServerEntity == pLocal)
+	if (!pServerEntity || pServerEntity == m_pIgnore || pServerEntity == m_pLocal)
 		return false;
 
 	if (auto pEntity = static_cast<IClientEntity *>(pServerEntity)->As<C_BaseEntity>())
@@ -23,7 +37,7 @@ bool CTraceFilterHitscan::ShouldHitEntity(IHandleEntity *pServerEntity, int cont
 
 			case ETFClassIds::CTFMedigunShield:
 			{
-				if (pEntity->m_iTeamNum() == pLocal->m_iTeamNum())
+				if (pEntity->m_iTeamNum() == m_nLocalTeam)
 					return false;
 
 				break;
@@ -34,13 +48,13 @@ bool CTraceFilterHitscan::ShouldHitEntity(IHandleEntity *pServerEntity, int cont
 			case ETFClassIds::CObjectDispenser:
 			case ETFClassIds::CObjectTeleporter:
 			{
-				switch (pWeapon->GetWeaponID())
+				switch (m_nWeaponID)
 				{
 					case TF_WEAPON_SNIPERRIFLE:
 					case TF_WEAPON_SNIPERRIFLE_CLASSIC:
 					case TF_WEAPON_SNIPERRIFLE_DECAP:
 					{
-						if (pEntity->m_iTeamNum() == pLocal->m_iTeamNum())
+						if (pEntity->m_iTeamNum() == m_nLocalTeam)
 							return false;
 
 						break;

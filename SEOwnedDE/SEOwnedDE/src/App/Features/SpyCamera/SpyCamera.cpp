@@ -43,10 +43,15 @@ void CSpyCamera::Drag()
 void CSpyCamera::Run()
 {
 	if (!CFG::Visuals_SpyCamera_Active)
+	{
+		m_nCachedSpyIndex = -1;
+		m_nCachedSpyHandle = -1;
+		m_nNextSpyScanTick = -1;
 		return;
+	}
 
 	// Anti screenshot?
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
@@ -90,42 +95,92 @@ void CSpyCamera::Run()
 
 	const auto pLocal = H::Entities->GetLocal();
 	if (!pLocal || pLocal->deadflag() || !I::ViewRender)
-		return;
-
-	// Get all potential spies
-	std::vector<C_TFPlayer*> vecSpies = {};
-	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
-		if (!pEntity)
-			continue;
-
-		auto pPlayer = pEntity->As<C_TFPlayer>();
-
-		if (!pPlayer || pPlayer->deadflag() || pPlayer->m_iClass() != TF_CLASS_SPY || pPlayer->InCond(TF_COND_STEALTHED))
-			continue;
-
-		if (pPlayer->GetCenter().DistTo(pLocal->GetCenter()) > 400.0f)
-			continue;
-
-		Vec3 vEngineAngles = I::EngineClient->GetViewAngles();
-
-		if (Math::CalcFov({0.0f, vEngineAngles.y, 0.0f}, Math::CalcAngle(pLocal->GetShootPos(), pPlayer->GetCenter())) < 80.0f)
-			continue;
-
-		if (!H::AimUtils->TraceEntityAutoDet(pPlayer, pLocal->GetShootPos(), pPlayer->GetShootPos()))
-			continue;
-
-		vecSpies.push_back(pPlayer);
+		m_nCachedSpyIndex = -1;
+		m_nCachedSpyHandle = -1;
+		m_nNextSpyScanTick = -1;
+		return;
 	}
 
-	if (vecSpies.empty())
+	const Vec3 vLocalCenter = pLocal->GetCenter();
+	const Vec3 vLocalShootPos = pLocal->GetShootPos();
+	const Vec3 vEngineAngles = I::EngineClient->GetViewAngles();
+	const int nCurrentTick = I::GlobalVars ? I::GlobalVars->tickcount : 0;
+
+	auto IsCandidate = [&](C_TFPlayer* pPlayer)
+	{
+		if (!pPlayer
+			|| pPlayer == pLocal
+			|| pPlayer->m_iTeamNum() == pLocal->m_iTeamNum()
+			|| pPlayer->IsDormant()
+			|| pPlayer->deadflag()
+			|| pPlayer->m_iClass() != TF_CLASS_SPY
+			|| pPlayer->InCond(TF_COND_STEALTHED))
+			return false;
+
+		const Vec3 vSpyCenter = pPlayer->GetCenter();
+		if (vSpyCenter.DistToSqr(vLocalCenter) > 400.0f * 400.0f)
+			return false;
+
+		return Math::CalcFov(
+			{ 0.0f, vEngineAngles.y, 0.0f },
+			Math::CalcAngle(vLocalShootPos, vSpyCenter)) >= 80.0f;
+	};
+
+	C_TFPlayer* pSpy = nullptr;
+	if (m_nCachedSpyIndex > 0)
+	{
+		if (const auto pEntity = I::ClientEntityList->GetClientEntity(m_nCachedSpyIndex))
+		{
+			if (pEntity->GetClassId() == ETFClassIds::CTFPlayer
+				&& pEntity->GetRefEHandle().ToInt() == m_nCachedSpyHandle)
+			{
+				auto pCachedSpy = pEntity->As<C_TFPlayer>();
+				if (IsCandidate(pCachedSpy)
+					&& H::AimUtils->TraceEntityAutoDet(pCachedSpy, vLocalShootPos, pCachedSpy->GetShootPos()))
+					pSpy = pCachedSpy;
+			}
+		}
+	}
+
+	constexpr int SPY_SCAN_INTERVAL_TICKS = 3;
+	const bool bTickRolledBack = m_nNextSpyScanTick >= 0
+		&& nCurrentTick + SPY_SCAN_INTERVAL_TICKS < m_nNextSpyScanTick;
+	const bool bCachedCandidateInvalid = m_nCachedSpyIndex > 0 && !pSpy;
+	if (bTickRolledBack || bCachedCandidateInvalid || nCurrentTick >= m_nNextSpyScanTick || (!pSpy && m_nNextSpyScanTick < 0))
+	{
+		pSpy = nullptr;
+		float flBestDistanceSqr = 400.0f * 400.0f;
+
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+		{
+			if (!pEntity)
+				continue;
+
+			auto pPlayer = pEntity->As<C_TFPlayer>();
+			if (!IsCandidate(pPlayer))
+				continue;
+
+			const float flDistanceSqr = pPlayer->GetCenter().DistToSqr(vLocalCenter);
+			if (flDistanceSqr >= flBestDistanceSqr)
+				continue;
+
+			if (!H::AimUtils->TraceEntityAutoDet(pPlayer, vLocalShootPos, pPlayer->GetShootPos()))
+				continue;
+
+			flBestDistanceSqr = flDistanceSqr;
+			pSpy = pPlayer;
+		}
+
+		m_nCachedSpyIndex = pSpy ? pSpy->entindex() : -1;
+		m_nCachedSpyHandle = pSpy ? pSpy->GetRefEHandle().ToInt() : -1;
+		m_nNextSpyScanTick = nCurrentTick + SPY_SCAN_INTERVAL_TICKS;
+	}
+
+	if (!pSpy)
 		return;
 
-	// Draw the target spy
-	if (const auto pSpy = *std::ranges::min_element(vecSpies, [&](C_TFPlayer* a, C_TFPlayer* b)
-	{
-		return a->GetCenter().DistTo(pLocal->GetCenter()) < b->GetCenter().DistTo(pLocal->GetCenter());
-	}))
+	// Draw the target spy.
 	{
 		auto& setup = m_ViewSetup;
 

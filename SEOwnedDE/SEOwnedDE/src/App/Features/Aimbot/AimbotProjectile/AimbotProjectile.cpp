@@ -17,6 +17,33 @@ namespace
 	constexpr int kRocketSplashPointsDefault = 50;
 	constexpr int kRocketSplashPointsReduced = 30;
 
+	template <std::size_t N>
+	const std::array<Vec3, N>& GetRocketSplashSpherePoints()
+	{
+		static const std::array<Vec3, N> points = []
+		{
+			std::array<Vec3, N> result = {};
+			const float flGoldenAngle = static_cast<float>(PI) * (3.0f - Simd::FastSqrt(5.0f));
+
+			for (std::size_t n = 0; n < N; n++)
+			{
+				const float a1 = acosf(1.0f - 2.0f * (static_cast<float>(n) / static_cast<float>(N)));
+				const float a2 = flGoldenAngle * static_cast<float>(n);
+				result[n] = { sinf(a1) * cosf(a2), sinf(a1) * sinf(a2), cosf(a1) };
+			}
+
+			return result;
+		}();
+
+		return points;
+	}
+
+	struct RocketSplashCandidate
+	{
+		Vec3 Position = {};
+		float Score = 0.0f;
+	};
+
 	BallisticSolver::WeaponClass GetWeaponDragClass(C_TFWeaponBase* pWeapon)
 	{
 		if (!pWeapon)
@@ -557,27 +584,26 @@ bool CAimbotProjectile::RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 	const Vec3 vShooterDir = (vLocalPos - center).Normalized();
 
-	const auto numPoints{ CFG::Aimbot_Projectile_Rocket_Splash == 2 ? kRocketSplashPointsReduced : kRocketSplashPointsDefault };
+	const int numPoints = CFG::Aimbot_Projectile_Rocket_Splash == 2 ? kRocketSplashPointsReduced : kRocketSplashPointsDefault;
+	const Vec3* pSpherePoints = CFG::Aimbot_Projectile_Rocket_Splash == 2
+		? GetRocketSplashSpherePoints<kRocketSplashPointsReduced>().data()
+		: GetRocketSplashSpherePoints<kRocketSplashPointsDefault>().data();
 	auto radius{ isRocketLauncher ? 180.0f : 80.0f };
 	if (isAirStrike)
 		radius = 130.0f;
 
-	std::vector<Vec3> potential{};
-	potential.reserve(numPoints);
+	std::array<RocketSplashCandidate, kRocketSplashPointsDefault> potential = {};
+	std::size_t potentialCount = 0;
 
 	CTraceFilterWorldCustom filterGen{};
 	trace_t traceGen{};
 
-	const float kGoldenAngle = static_cast<float>(PI) * (3.0f - Simd::FastSqrt(5.0f));
-
 	for (int n = 0; n < numPoints; n++)
 	{
-		const auto a1{ acosf(1.0f - 2.0f * (static_cast<float>(n) / static_cast<float>(numPoints))) };
-		const auto a2{ kGoldenAngle * static_cast<float>(n) };
-
-		Vec3 spherePoint{ sinf(a1) * cosf(a2), sinf(a1) * sinf(a2), cosf(a1) };
-		if (spherePoint.Dot(vShooterDir) < 0.0f)
-			spherePoint = spherePoint - vShooterDir.Scale(2.0f * spherePoint.Dot(vShooterDir));
+		Vec3 spherePoint = pSpherePoints[n];
+		const float flFacing = spherePoint.Dot(vShooterDir);
+		if (flFacing < 0.0f)
+			spherePoint = spherePoint - vShooterDir.Scale(2.0f * flFacing);
 
 		auto point{ center + spherePoint.Scale(radius) };
 
@@ -586,27 +612,35 @@ bool CAimbotProjectile::RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 		if (traceGen.fraction > 0.99f)
 			continue;
 
-		potential.push_back(traceGen.endpos);
+		const Vec3 vPosition = traceGen.endpos;
+		potential[potentialCount++] = {
+			vPosition,
+			vPosition.DistTo(center) + vPosition.DistTo(vLocalPos) * 0.3f
+		};
 	}
 
-	std::ranges::sort(potential, [&](const Vec3& a, const Vec3& b)
+	if (potentialCount == 0)
+		return false;
+
+	std::sort(potential.begin(), potential.begin() + potentialCount, [](const RocketSplashCandidate& a, const RocketSplashCandidate& b)
 	{
-		const float flScoreA = a.DistTo(center) + a.DistTo(vLocalPos) * 0.3f;
-		const float flScoreB = b.DistTo(center) + b.DistTo(vLocalPos) * 0.3f;
-		return flScoreA < flScoreB;
+		return a.Score < b.Score;
 	});
 
 	trace_t traceVal{};
 	CTraceFilterWorldCustom filterVal{};
+	const Vec3 vOffsetShootPos = GetOffsetShootPos(pLocal, pWeapon, pCmd);
 
-	for (auto& point : potential)
+	for (std::size_t n = 0; n < potentialCount; n++)
 	{
+		const Vec3& point = potential[n].Position;
+
 		if (!CalcProjAngle(vLocalPos, point, target.AngleTo, target.TimeToTarget))
 			continue;
 
 		H::AimUtils->TraceHull
 		(
-			GetOffsetShootPos(pLocal, pWeapon, pCmd),
+			vOffsetShootPos,
 			point,
 			{ -4.0f, -4.0f, -4.0f },
 			{ 4.0f, 4.0f, 4.0f },
@@ -664,23 +698,11 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 		if (!simScope)
 			return false;
 
-		const int maxTicks = TIME_TO_TICKS(CFG::Aimbot_Projectile_Max_Simulation_Time);
-		m_TargetPath.reserve(maxTicks);
-
-		for (int nTick = 0; nTick < maxTicks; nTick++)
-		{
-			m_TargetPath.push_back(F::MovementSimulation->GetOrigin());
-			F::MovementSimulation->RunTick(TICKS_TO_TIME(nTick));
-		}
-
-		if (m_TargetPath.empty())
-			return false;
-
 		const Vec3 targetVel = pPlayer->m_vecVelocity();
 
 		BallisticSolver::SolverParams initParams;
 		initParams.ShootPos   = vLocalPos;
-		initParams.TargetPos  = m_TargetPath[0];
+		initParams.TargetPos  = F::MovementSimulation->GetOrigin();
 		initParams.TargetVel  = targetVel;
 		initParams.Speed      = m_CurProjInfo.Speed;
 		initParams.Gravity    = gravity;
@@ -690,32 +712,71 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 		initParams.DragIters   = 3;
 
 		BallisticSolver::SolveResult initResult = BallisticSolver::SolveBallistic(initParams);
+		const float flMaxSimulationTime = std::max(TICK_INTERVAL, CFG::Aimbot_Projectile_Max_Simulation_Time);
+		const int hardMaxTicks = std::max(1, TIME_TO_TICKS(flMaxSimulationTime));
+		const float flTimingBias = ProjectilePredictionMath::ComputeTimingBias(SDKUtils::GetLatency(), SDKUtils::GetLerp());
 
-		int startTick;
+		int simulationTicks = hardMaxTicks;
 		if (initResult.Valid && initResult.Time > 0.0f)
 		{
-			startTick = static_cast<int>(initResult.Time / TICK_INTERVAL);
-			startTick = std::max(0, std::min(startTick, static_cast<int>(m_TargetPath.size()) - 1));
+			const float flMargin = std::max(0.2f, initResult.Time * 0.2f);
+			const float flEstimatedHorizon = std::min(flMaxSimulationTime, initResult.Time + flTimingBias + flMargin);
+			simulationTicks = std::clamp(TIME_TO_TICKS(flEstimatedHorizon) + 1, 1, hardMaxTicks);
 		}
-		else
+
+		m_TargetPath.reserve(simulationTicks);
+		auto simulateToTickCount = [&](int tickCount)
 		{
-			startTick = BallisticSolver::BinarySearchMeetingTick(
-				m_TargetPath, TICK_INTERVAL, vLocalPos, m_CurProjInfo.Speed,
-				gravity, muzzleUpZ, dragCoeff,
-				CFG::Aimbot_Projectile_Max_Simulation_Time, useHighArc);
+			while (static_cast<int>(m_TargetPath.size()) < tickCount)
+			{
+				const int nTick = static_cast<int>(m_TargetPath.size());
+				m_TargetPath.push_back(F::MovementSimulation->GetOrigin());
+				F::MovementSimulation->RunTick(TICKS_TO_TIME(nTick));
+			}
+		};
 
-			if (startTick < 0)
-				return false;
-		}
+		simulateToTickCount(simulationTicks);
+		if (m_TargetPath.empty())
+			return false;
 
-		BallisticSolver::NewtonRefineResult refineResult = BallisticSolver::NewtonRefineOverPath(
-			m_TargetPath, TICK_INTERVAL, startTick, vLocalPos,
-			m_CurProjInfo.Speed, gravity, muzzleUpZ, dragCoeff, useHighArc, 3);
+		auto refinePath = [&]()
+		{
+			int startTick = -1;
+			if (initResult.Valid && initResult.Time > 0.0f)
+			{
+				startTick = std::clamp(TIME_TO_TICKS(initResult.Time), 0, static_cast<int>(m_TargetPath.size()) - 1);
+			}
+			else
+			{
+				startTick = BallisticSolver::BinarySearchMeetingTick(
+					m_TargetPath, TICK_INTERVAL, vLocalPos, m_CurProjInfo.Speed,
+					gravity, muzzleUpZ, dragCoeff, flMaxSimulationTime, useHighArc);
+			}
+
+			return BallisticSolver::NewtonRefineOverPath(
+				m_TargetPath, TICK_INTERVAL, startTick, vLocalPos,
+				m_CurProjInfo.Speed, gravity, muzzleUpZ, dragCoeff, useHighArc, 3);
+		};
+
+		BallisticSolver::NewtonRefineResult refineResult = refinePath();
 
 		if (!refineResult.Valid)
 			return false;
 
-		int meetingTick = std::max(0, std::min(startTick, static_cast<int>(m_TargetPath.size()) - 1));
+		for (int nExtension = 0; nExtension < 2; nExtension++)
+		{
+			const float flRequiredHorizon = refineResult.Time + flTimingBias + TICKS_TO_TIME(4);
+			const int requiredTicks = std::clamp(TIME_TO_TICKS(flRequiredHorizon) + 1, 1, hardMaxTicks);
+			if (requiredTicks <= static_cast<int>(m_TargetPath.size()))
+				break;
+
+			simulateToTickCount(requiredTicks);
+			refineResult = refinePath();
+			if (!refineResult.Valid)
+				return false;
+		}
+
+		const int meetingTick = std::clamp(refineResult.Tick, 0, static_cast<int>(m_TargetPath.size()) - 1);
 
 		const bool bDucked = pPlayer->m_fFlags() & FL_DUCKING;
 		const bool bOnGround = pPlayer->m_fFlags() & FL_ONGROUND;
@@ -944,14 +1005,13 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 	for (auto& target : m_vecTargets)
 	{
-		if (target.Position.DistTo(vLocalPos) > 400.0f && targetsScanned >= maxTargets)
-			continue;
+		if (targetsScanned >= maxTargets)
+			break;
+
+		targetsScanned++;
 
 		if (!SolveTarget(pLocal, pWeapon, pCmd, target))
-		{
-			targetsScanned++;
 			continue;
-		}
 
 		if (CFG::Aimbot_Projectile_Sort == 0 && Math::CalcFov(vLocalAngles, target.AngleTo) > CFG::Aimbot_Projectile_FOV)
 			continue;

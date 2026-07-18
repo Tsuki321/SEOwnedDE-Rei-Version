@@ -4,18 +4,53 @@
 #include "../Color/Color.h"
 
 #include <vector>
-#include <typeinfo>
+#include <type_traits>
 #include <fstream>
 #include <iomanip>
 #include <filesystem>
+#include <string>
 
 namespace Config
 {
+	enum class EConfigVarType : unsigned char
+	{
+		Boolean,
+		Integer,
+		Float,
+		Color,
+		String
+	};
+
+	template <typename>
+	inline constexpr bool UnsupportedConfigVarType = false;
+
+	template <typename T>
+	constexpr EConfigVarType GetConfigVarType() noexcept
+	{
+		using Type = std::remove_cv_t<std::remove_reference_t<T>>;
+
+		if constexpr (std::is_same_v<Type, bool>)
+			return EConfigVarType::Boolean;
+		else if constexpr (std::is_same_v<Type, int>)
+			return EConfigVarType::Integer;
+		else if constexpr (std::is_same_v<Type, float>)
+			return EConfigVarType::Float;
+		else if constexpr (std::is_same_v<Type, Color_t>)
+			return EConfigVarType::Color;
+		else if constexpr (std::is_same_v<Type, std::string>)
+			return EConfigVarType::String;
+		else
+		{
+			static_assert(UnsupportedConfigVarType<Type>, "CFGVAR only supports bool, int, float, Color_t, and std::string");
+			return EConfigVarType::Boolean;
+		}
+	}
+
 	struct ConfigVarInitializer
 	{
 		const char *m_name{ nullptr };
 		void *m_ptr{ nullptr };
-		size_t m_type_hash{ 0 };
+		EConfigVarType m_type{ EConfigVarType::Boolean };
 		bool m_no_save{ false };
 	};
 
@@ -39,31 +74,28 @@ namespace Config
 				continue;
 			}
 
-			if (var.m_type_hash == typeid(bool).hash_code())
-			{
-				j[var.m_name] = *static_cast<bool *>(var.m_ptr);
-			}
+			auto &value = j[var.m_name];
 
-			if (var.m_type_hash == typeid(int).hash_code())
+			switch (var.m_type)
 			{
-				j[var.m_name] = *static_cast<int *>(var.m_ptr);
-			}
-
-			if (var.m_type_hash == typeid(float).hash_code())
-			{
-				j[var.m_name] = *static_cast<float *>(var.m_ptr);
-			}
-
-			if (var.m_type_hash == typeid(Color_t).hash_code())
-			{
-				auto clr{ *static_cast<Color_t *>(var.m_ptr) };
-
-				j[var.m_name] = { clr.r, clr.g, clr.b, clr.a };
-			}
-
-			if (var.m_type_hash == typeid(std::string).hash_code())
-			{
-				j[var.m_name] = *static_cast<std::string *>(var.m_ptr);
+				case EConfigVarType::Boolean:
+					value = *static_cast<bool *>(var.m_ptr);
+					break;
+				case EConfigVarType::Integer:
+					value = *static_cast<int *>(var.m_ptr);
+					break;
+				case EConfigVarType::Float:
+					value = *static_cast<float *>(var.m_ptr);
+					break;
+				case EConfigVarType::Color:
+				{
+					const auto &clr = *static_cast<Color_t *>(var.m_ptr);
+					value = { clr.r, clr.g, clr.b, clr.a };
+					break;
+				}
+				case EConfigVarType::String:
+					value = *static_cast<std::string *>(var.m_ptr);
+					break;
 			}
 		}
 
@@ -100,38 +132,38 @@ namespace Config
 				continue;
 			}
 
-			if (j.find(var.m_name) == j.end())
+			const auto valueIt = j.find(var.m_name);
+			if (valueIt == j.end())
 			{
 				continue;
 			}
 
+			const auto &value = *valueIt;
+
 			try
 			{
-				if (var.m_type_hash == typeid(bool).hash_code())
+				switch (var.m_type)
 				{
-					*static_cast<bool *>(var.m_ptr) = j[var.m_name];
-				}
-
-				if (var.m_type_hash == typeid(int).hash_code())
-				{
-					*static_cast<int *>(var.m_ptr) = j[var.m_name];
-				}
-
-				if (var.m_type_hash == typeid(float).hash_code())
-				{
-					*static_cast<float *>(var.m_ptr) = j[var.m_name];
-				}
-
-				if (var.m_type_hash == typeid(Color_t).hash_code())
-				{
-					Color_t clr{ j[var.m_name][0], j[var.m_name][1], j[var.m_name][2], j[var.m_name][3] };
-
-					*static_cast<Color_t *>(var.m_ptr) = clr;
-				}
-
-				if (var.m_type_hash == typeid(std::string).hash_code())
-				{
-					*static_cast<std::string *>(var.m_ptr) = j[var.m_name];
+					case EConfigVarType::Boolean:
+						*static_cast<bool *>(var.m_ptr) = value.get<bool>();
+						break;
+					case EConfigVarType::Integer:
+						*static_cast<int *>(var.m_ptr) = value.get<int>();
+						break;
+					case EConfigVarType::Float:
+						*static_cast<float *>(var.m_ptr) = value.get<float>();
+						break;
+					case EConfigVarType::Color:
+						*static_cast<Color_t *>(var.m_ptr) = Color_t{
+							value.at(0).get<unsigned char>(),
+							value.at(1).get<unsigned char>(),
+							value.at(2).get<unsigned char>(),
+							value.at(3).get<unsigned char>()
+						};
+						break;
+					case EConfigVarType::String:
+						*static_cast<std::string *>(var.m_ptr) = value.get<std::string>();
+						break;
 				}
 			}
 			catch (const nlohmann::json::exception&)
@@ -149,7 +181,7 @@ namespace configvar_initializers\
 {\
 	inline auto var##_initializer = []()\
 	{\
-		Config::vars.push_back(Config::ConfigVarInitializer{#var, &var, typeid(var).hash_code(), false });\
+		Config::vars.push_back(Config::ConfigVarInitializer{#var, &var, Config::GetConfigVarType<decltype(var)>(), false });\
 		return true;\
 	}();\
 }
@@ -159,7 +191,7 @@ namespace configvar_initializers\
 {\
 	inline auto var##_initializer = []()\
 	{\
-		Config::vars.push_back(Config::ConfigVarInitializer{#var, &var, typeid(var).hash_code(), true });\
+		Config::vars.push_back(Config::ConfigVarInitializer{#var, &var, Config::GetConfigVarType<decltype(var)>(), true });\
 		return true;\
 	}();\
 }

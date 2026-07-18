@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "Utils/Color/Color.h"
+#include "Utils/Utils.h"
 
 #include <cmath>
 #include <string>
@@ -53,6 +54,23 @@ TEST(ColorStruct, ToHexStrWIsSameAsHexStrContent) {
     const Color_t c{ 170, 187, 204, 221 }; // AA, BB, CC, DD
     const std::wstring expected(L"AABBCCDD");
     EXPECT_EQ(c.toHexStrW(), expected);
+}
+
+TEST(UtilsStringConversion, Utf8RoundTripPreservesContent) {
+    const std::string utf8 = "prefix \xE4\xBD\xA0\xE5\xA5\xBD";
+    const auto wide = Utils::ConvertUtf8ToWide(utf8);
+
+    EXPECT_EQ(wide, std::wstring(L"prefix \u4F60\u597D"));
+    EXPECT_EQ(Utils::ConvertWideToUTF8(wide), utf8);
+}
+
+TEST(UtilsStringConversion, EmbeddedNullsDoNotTruncate) {
+    const std::string utf8{ 'A', '\0', 'B' };
+    const std::wstring expectedWide{ L'A', L'\0', L'B' };
+    const auto wide = Utils::ConvertUtf8ToWide(utf8);
+
+    EXPECT_EQ(wide, expectedWide);
+    EXPECT_EQ(Utils::ConvertWideToUTF8(wide), utf8);
 }
 
 // -----------------------------------------------------------------------------

@@ -182,7 +182,7 @@ void CRadar::Run()
 	if (!CFG::Radar_Active || ((I::EngineVGui->IsGameUIVisible() || SDKUtils::BInEndOfMatch()) && !F::Menu->IsOpen()))
 		return;
 
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}

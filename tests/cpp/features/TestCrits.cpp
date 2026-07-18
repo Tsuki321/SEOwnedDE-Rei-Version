@@ -5,6 +5,7 @@
 namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Crits";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Crits/Crits.cpp";
+constexpr const char* kMainHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Crits/Crits.h";
 constexpr const char* kConfigSource = "SEOwnedDE/SEOwnedDE/src/App/Features/CFG.h";
 constexpr const char* kMenuSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Menu/Menu.cpp";
 constexpr const char* kPaintHookSource = "SEOwnedDE/SEOwnedDE/src/App/Hooks/IEngineVGuiInternal_Paint.cpp";
@@ -67,4 +68,32 @@ TEST(CritsContracts, UsesGuardClausesAndReturns) {
 
     EXPECT_GE(totalIfs, static_cast<std::size_t>(3));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(1));
+}
+
+TEST(CritsContracts, ForecastIsCachedAndProbeWorkIsBounded) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kMainSource);
+    const auto header = testhelpers::ReadTextFile(root / kMainHeader);
+
+    EXPECT_NE(header.find("ForecastState_t"), std::string::npos);
+    EXPECT_NE(header.find("m_iLastInfoTick"), std::string::npos);
+    EXPECT_NE(source.find("m_ForecastState"), std::string::npos);
+    EXPECT_NE(source.find("countAffordableCrits"), std::string::npos);
+    EXPECT_NE(source.find("iAvailableCrits + 1"), std::string::npos);
+    EXPECT_NE(source.find("iAvailableCrits >= BUCKET_ATTEMPTS"), std::string::npos);
+    EXPECT_EQ(source.find("for (int j = 0; j < BUCKET_ATTEMPTS; j++)"), std::string::npos);
+
+    const auto cheapRejects = source.find("pLocal->IsCritBoosted()");
+    const auto updateInfo = source.find("UpdateInfo(pLocal, pWeapon);", cheapRejects);
+    ASSERT_NE(cheapRejects, std::string::npos);
+    ASSERT_NE(updateInfo, std::string::npos);
+    EXPECT_LT(cheapRejects, updateInfo);
+}
+
+TEST(CritsContracts, ScreenshotStateUsesTheFrameCache) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(source.find("F::VisualUtils->IsTakingScreenshotCached()"), std::string::npos);
+    EXPECT_EQ(source.find("I::EngineClient->IsTakingScreenshot()"), std::string::npos);
 }

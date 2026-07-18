@@ -1,19 +1,26 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
-#include <unordered_set>
+#include <array>
+#include <cstdint>
 
 class CMaterials
 {
 	void Initialize();
 
-	std::unordered_set<C_BaseEntity*> m_setDrawnEntities = {};
+	std::array<uint32_t, MAX_EDICTS> m_arrDrawnGenerations = {};
+	std::array<int, MAX_EDICTS> m_arrDrawnHandles = {};
+	uint32_t m_nDrawGeneration = 1;
+	int m_nDrawFrame = -1;
+	bool m_bHasAnyDrawn = false;
 	bool m_bRendering = false;
 	bool m_bRenderingOriginalMat = false;
 	bool m_bCleaningUp = false;
 
-	void DrawEntity(C_BaseEntity* pEntity);
-	void RunLagRecords();
+	void BeginDrawPass();
+	void MarkDrawn(C_BaseEntity* pEntity);
+	void DrawEntity(C_BaseEntity* pEntity, IMatRenderContext* pRenderContext, C_TFPlayer* pPlayerOwner = nullptr);
+	void RunLagRecords(IMatRenderContext* pRenderContext);
 
 public:
 	IMaterial* m_pFlat = nullptr;
@@ -26,19 +33,28 @@ public:
 	IMaterial* m_pFlatNoInvis = nullptr;
 	IMaterial* m_pShadedNoInvis = nullptr;
 
-	void Run();
+	void Run(IMatRenderContext* pRenderContext);
 	void CleanUp();
 
 	bool HasDrawn(C_BaseEntity* pEntity)
 	{
-		return m_setDrawnEntities.contains(pEntity);
+		if (!pEntity)
+			return false;
+
+		const int nEntityIndex = pEntity->entindex();
+		const int nFrame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+		return m_nDrawFrame == nFrame
+			&& nEntityIndex >= 0 && nEntityIndex < MAX_EDICTS
+			&& m_arrDrawnGenerations[nEntityIndex] == m_nDrawGeneration
+			&& m_arrDrawnHandles[nEntityIndex] == pEntity->GetRefEHandle().ToInt();
 	}
 
-	// Cheap gate for the per-draw hot path: when nothing was drawn this frame the
-	// set is empty, so callers can skip the hash lookup entirely.
+	// Cheap gate for the per-draw hot path: when nothing was drawn this pass the
+	// boolean is false, so callers can skip the indexed lookup entirely.
 	bool HasAnyDrawn()
 	{
-		return !m_setDrawnEntities.empty();
+		const int nFrame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+		return m_bHasAnyDrawn && m_nDrawFrame == nFrame;
 	}
 
 	bool IsRendering()
@@ -53,13 +69,13 @@ public:
 
 	bool IsUsedMaterial(const IMaterial* pMaterial)
 	{
-		return pMaterial == m_pFlat
+		return pMaterial && (pMaterial == m_pFlat
 			|| pMaterial == m_pShaded
 			|| pMaterial == m_pGlossy
 			|| pMaterial == m_pGlow
 			|| pMaterial == m_pPlastic
 			|| pMaterial == m_pFlatNoInvis
-			|| pMaterial == m_pShadedNoInvis;
+			|| pMaterial == m_pShadedNoInvis);
 	}
 
 	bool IsCleaningUp() { return m_bCleaningUp; }

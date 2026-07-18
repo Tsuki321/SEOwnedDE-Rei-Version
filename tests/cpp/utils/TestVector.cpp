@@ -2,8 +2,10 @@
 
 #include "Utils/Vector/Vector.h"
 
+#include <cstddef>
 #include <cmath>
 #include <cfloat>
+#include <type_traits>
 
 // -----------------------------------------------------------------------------
 // Vec3 — Construction & Assignment
@@ -62,6 +64,18 @@ TEST(Vec3Construction, ZeroSetsAllComponentsToZero) {
     EXPECT_FLOAT_EQ(v.x, 0.0f);
     EXPECT_FLOAT_EQ(v.y, 0.0f);
     EXPECT_FLOAT_EQ(v.z, 0.0f);
+}
+
+TEST(Vec3ABI, PreservesSourceThreeFloatLayout) {
+    EXPECT_EQ(sizeof(Vec3), sizeof(float) * 3);
+    EXPECT_EQ(alignof(Vec3), alignof(float));
+    EXPECT_EQ(offsetof(Vec3, x), static_cast<std::size_t>(0));
+    EXPECT_EQ(offsetof(Vec3, y), sizeof(float));
+    EXPECT_EQ(offsetof(Vec3, z), sizeof(float) * 2);
+    EXPECT_TRUE(std::is_standard_layout_v<Vec3>);
+    EXPECT_TRUE(std::is_nothrow_default_constructible_v<Vec3>);
+    EXPECT_TRUE(std::is_nothrow_copy_constructible_v<Vec3>);
+    EXPECT_TRUE(std::is_nothrow_copy_assignable_v<Vec3>);
 }
 
 // -----------------------------------------------------------------------------
@@ -528,6 +542,17 @@ TEST(Vec2Construction, CopyAssignmentReturnsSelf) {
     v = other;
     EXPECT_FLOAT_EQ(v.x, 100.0f);
     EXPECT_FLOAT_EQ(v.y, 200.0f);
+}
+
+TEST(Vec2ABI, PreservesSourceTwoFloatLayout) {
+    EXPECT_EQ(sizeof(Vec2), sizeof(float) * 2);
+    EXPECT_EQ(alignof(Vec2), alignof(float));
+    EXPECT_EQ(offsetof(Vec2, x), static_cast<std::size_t>(0));
+    EXPECT_EQ(offsetof(Vec2, y), sizeof(float));
+    EXPECT_TRUE(std::is_standard_layout_v<Vec2>);
+    EXPECT_TRUE(std::is_nothrow_default_constructible_v<Vec2>);
+    EXPECT_TRUE(std::is_nothrow_copy_constructible_v<Vec2>);
+    EXPECT_TRUE(std::is_nothrow_copy_assignable_v<Vec2>);
 }
 
 // -----------------------------------------------------------------------------

@@ -5,6 +5,8 @@
 #include "../CFG.h"
 #include "../VisualUtils/VisualUtils.h"
 #include "../Players/Players.h"
+#include <algorithm>
+#include <ranges>
 
 #define multiselect(label, unique, ...) static std::vector<std::pair<const char *, bool &>> unique##multiselect = __VA_ARGS__; \
 SelectMulti(label, unique##multiselect)
@@ -55,23 +57,8 @@ bool CMenu::IsHovered(int x, int y, int w, int h, void *pVar, bool bStrict)
 	/*if (H::Input->IsHeld(VK_LBUTTON))
 		return false;*/
 
-	if (pVar == nullptr)
-	{
-		for (const auto &State : m_mapStates)
-		{
-			if (State.second)
-				return false;
-		}
-	}
-
-	else
-	{
-		for (const auto &State : m_mapStates)
-		{
-			if (State.second && State.first != pVar)
-				return false;
-		}
-	}
+	if ((pVar == nullptr && m_pActiveControl) || (pVar != nullptr && !CanActivateControl(pVar)))
+		return false;
 
 	int mx = H::Input->GetMouseX();
 	int my = H::Input->GetMouseY();
@@ -214,16 +201,7 @@ bool CMenu::SliderFloat(const char *szLabel, float &flVar, float flMin, float fl
 
 	bool bHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, &flVar, true);
 
-	bool bAcceptsInput = [&]() -> bool
-	{
-		for (const auto &State : m_mapStates)
-		{
-			if (State.second && State.first != &flVar)
-				return false;
-		}
-
-		return true;
-	}();
+	const bool bAcceptsInput = CanActivateControl(&flVar);
 
 	if (!m_bClickConsumed && bAcceptsInput)
 	{
@@ -244,18 +222,18 @@ bool CMenu::SliderFloat(const char *szLabel, float &flVar, float flMin, float fl
 		{
 			if (bHovered) {
 				m_bClickConsumed = true;
-				m_mapStates[&flVar] = true;
+				SetControlActive(&flVar, true);
 			}
 		}
 
 		else
 		{
 			if (!H::Input->IsHeld(VK_LBUTTON))
-				m_mapStates[&flVar] = false;
+				SetControlActive(&flVar, false);
 		}
 	}
 
-	if (m_mapStates[&flVar])
+	if (IsControlActive(&flVar))
 	{
 		flVar = Math::RemapValClamped(
 			static_cast<float>(H::Input->GetMouseX()),
@@ -281,7 +259,7 @@ bool CMenu::SliderFloat(const char *szLabel, float &flVar, float flMin, float fl
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
 		x, y,
-		(bHovered || m_mapStates[&flVar]) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		(bHovered || IsControlActive(&flVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
 		szLabel
 	);
@@ -298,7 +276,7 @@ bool CMenu::SliderFloat(const char *szLabel, float &flVar, float flMin, float fl
 		H::Fonts->Get(EFonts::Menu),
 		x + (w + CFG::Menu_Spacing_X),
 		y + (nTextH - 1),
-		(bHovered || m_mapStates[&flVar]) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		(bHovered || IsControlActive(&flVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
 		szFormat, flVar
 	);
@@ -321,16 +299,7 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 
 	bool bHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, &nVar, true);
 
-	bool bAcceptsInput = [&]() -> bool
-	{
-		for (const auto &State : m_mapStates)
-		{
-			if (State.second && State.first != &nVar)
-				return false;
-		}
-
-		return true;
-	}();
+	const bool bAcceptsInput = CanActivateControl(&nVar);
 
 	if (!m_bClickConsumed && bAcceptsInput)
 	{
@@ -351,18 +320,18 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 		{
 			if (bHovered) {
 				m_bClickConsumed = true;
-				m_mapStates[&nVar] = true;
+				SetControlActive(&nVar, true);
 			}
 		}
 
 		else
 		{
 			if (!H::Input->IsHeld(VK_LBUTTON))
-				m_mapStates[&nVar] = false;
+				SetControlActive(&nVar, false);
 		}
 	}
 
-	if (m_mapStates[&nVar])
+	if (IsControlActive(&nVar))
 	{
 		nVar = static_cast<int>(Math::RemapValClamped(
 			static_cast<float>(H::Input->GetMouseX()),
@@ -387,7 +356,7 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
 		x, y,
-		(bHovered || m_mapStates[&nVar]) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
 		szLabel
 	);
@@ -404,7 +373,7 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 		H::Fonts->Get(EFonts::Menu),
 		x + (w + CFG::Menu_Spacing_X),
 		y + (nTextH - 1),
-		(bHovered || m_mapStates[&nVar]) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
 		"%d", nVar
 	);
@@ -457,12 +426,15 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 	int h = CFG::Menu_InputKey_Height;
 
 	bool bHovered = IsHovered(x, y, w, h, &nKeyOut);
-	bool bActive = m_mapStates[&nKeyOut] || bHovered;
+	bool bActive = IsControlActive(&nKeyOut) || bHovered;
 
-	if (!m_mapStates[&nKeyOut] && bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
-		m_mapStates[&nKeyOut] = m_bClickConsumed = true;
+	if (!IsControlActive(&nKeyOut) && bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
+	{
+		SetControlActive(&nKeyOut, true);
+		m_bClickConsumed = true;
+	}
 
-	if (m_mapStates[&nKeyOut])
+	if (IsControlActive(&nKeyOut))
 	{
 		m_bInKeybind = true;
 
@@ -478,13 +450,13 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 				if (H::Input->IsPressed(n))
 				{
 					if (n == VK_INSERT || n == VK_F3) {
-						m_mapStates[&nKeyOut] = false;
+						SetControlActive(&nKeyOut, false);
 						break;
 					}
 
 					else if (n == VK_ESCAPE) {
 						nKeyOut = 0x0;
-						m_mapStates[&nKeyOut] = false;
+						SetControlActive(&nKeyOut, false);
 						break;
 					}
 
@@ -499,7 +471,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 						}
 
 						nKeyOut = n;
-						m_mapStates[&nKeyOut] = false;
+						SetControlActive(&nKeyOut, false);
 					}
 
 					break;
@@ -520,7 +492,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 		y + (h / 2),
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERXY,
-		m_mapStates[&nKeyOut] ? "..." : VK2STR(nKeyOut).c_str());
+		IsControlActive(&nKeyOut) ? "..." : VK2STR(nKeyOut).c_str());
 
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
@@ -556,28 +528,19 @@ bool CMenu::InputText(const char *szLabel, const char *szLabel2, std::string &st
 
 	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
 	{
-		bool bCanOpen = true;
-		for (const auto &State : m_mapStates)
+		if (CanActivateControl(&strOutput))
 		{
-			if (State.second && State.first != &strOutput)
-			{
-				bCanOpen = false;
-				break;
-			}
-		}
-
-		if (bCanOpen)
-		{
-			m_bClickConsumed = m_mapStates[&strOutput] = true;
+			SetControlActive(&strOutput, true);
+			m_bClickConsumed = true;
 		}
 	}
 
 	if (H::Input->IsPressed(VK_ESCAPE) || H::Input->IsPressed(VK_INSERT) || H::Input->IsPressed(VK_F3))
 	{
-		m_mapStates[&strOutput] = false;
+		SetControlActive(&strOutput, false);
 	}
 
-	if (m_mapStates[&strOutput])
+	if (IsControlActive(&strOutput))
 	{
 		m_bWantTextInput = true;
 
@@ -625,7 +588,7 @@ bool CMenu::InputText(const char *szLabel, const char *szLabel2, std::string &st
 		if (H::Input->IsPressed(VK_RETURN)) {
 			bCallback = strTemp.length() > 0;
 			strOutput = std::string(strTemp.begin(), strTemp.end());
-			m_mapStates[&strOutput] = false;
+			SetControlActive(&strOutput, false);
 			strTemp.clear();
 		}
 
@@ -741,7 +704,7 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 	return bCallback;
 }
 
-bool CMenu::SelectSingle(const char *szLabel, int &nVar, const std::vector<std::pair<const char *, int>> &vecSelects)
+bool CMenu::SelectSingle(const char *szLabel, int &nVar, std::initializer_list<std::pair<const char *, int>> vecSelects)
 {
 	bool bCallback = false;
 
@@ -753,10 +716,10 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, const std::vector<std::
 	int nTextH = H::Fonts->Get(EFonts::Menu).m_nTall;
 
 	bool bHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, &nVar);
-	bool bActive = bHovered || m_mapStates[&nVar];
+	bool bActive = bHovered || IsControlActive(&nVar);
 
 	if (!m_bClickConsumed && bHovered && H::Input->IsPressed(VK_LBUTTON)) {
-		m_mapStates[&nVar] = !m_mapStates[&nVar];
+		SetControlActive(&nVar, !IsControlActive(&nVar));
 		m_bClickConsumed = true;
 	}
 
@@ -777,7 +740,7 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, const std::vector<std::
 
 	H::Draw->Rect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, clr_dim);
 
-	if (!m_mapStates[&nVar])
+	if (!IsControlActive(&nVar))
 		H::Draw->OutlinedRect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, clr);
 
 	H::Draw->String(
@@ -791,31 +754,29 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, const std::vector<std::
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
 		x, y,
-		(bHovered || m_mapStates[&nVar]) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
 		szLabel
 	);
 
-	if (m_mapStates[&nVar])
+	if (IsControlActive(&nVar))
 	{
 		bool bSelectRegionHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size()), &nVar);
 
 		if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bSelectRegionHovered) {
 			m_bClickConsumed = true;
-			m_mapStates[&nVar] = false;
+			SetControlActive(&nVar, false);
 		}
 	}
 
-	if (m_mapStates[&nVar])
+	if (IsControlActive(&nVar))
 	{
 		H::LateRender->OutlinedRect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size()), clr);
 
 		int real_n{ 0 };
 
-		for (int n = 0; n < static_cast<int>(vecSelects.size()); n++)
+		for (const auto& Select : vecSelects)
 		{
-			const auto &Select = vecSelects[n];
-
 			if (Select.second == nVar)
 			{
 				continue;
@@ -836,7 +797,7 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, const std::vector<std::
 
 			if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && bSelectHovered) {
 				nVar = Select.second;
-				m_mapStates[&nVar] = false;
+				SetControlActive(&nVar, false);
 				m_bClickConsumed = true;
 				break;
 			}
@@ -862,10 +823,10 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 	int nTextH = H::Fonts->Get(EFonts::Menu).m_nTall;
 
 	bool bHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, &vecSelects);
-	bool bActive = bHovered || m_mapStates[&vecSelects];
+	bool bActive = bHovered || IsControlActive(&vecSelects);
 
 	if (!m_bClickConsumed && bHovered && H::Input->IsPressed(VK_LBUTTON)) {
-		m_mapStates[&vecSelects] = !m_mapStates[&vecSelects];
+		SetControlActive(&vecSelects, !IsControlActive(&vecSelects));
 		m_bClickConsumed = true;
 	}
 
@@ -875,13 +836,13 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 
 	H::Draw->Rect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, clr_dim);
 
-	if (!m_mapStates[&vecSelects])
+	if (!IsControlActive(&vecSelects))
 		H::Draw->OutlinedRect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h, clr);
 
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
 		x, y,
-		(bHovered || m_mapStates[&vecSelects]) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		(bHovered || IsControlActive(&vecSelects)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
 		szLabel
 	);
@@ -912,17 +873,17 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 
 	I::MatSystemSurface->DisableClipping(true);
 
-	if (m_mapStates[&vecSelects])
+	if (IsControlActive(&vecSelects))
 	{
 		bool bSelectRegionHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size() + 1), &vecSelects);
 
 		if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bSelectRegionHovered) {
 			m_bClickConsumed = true;
-			m_mapStates[&vecSelects] = false;
+			SetControlActive(&vecSelects, false);
 		}
 	}
 
-	if (m_mapStates[&vecSelects])
+	if (IsControlActive(&vecSelects))
 	{
 		H::LateRender->OutlinedRect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size() + 1), clr);
 
@@ -987,12 +948,12 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 	bool bHovered = IsHovered(x, y, w_with_text, h, &colVar);
 
 	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed) {
-		m_mapStates[&colVar] = !m_mapStates[&colVar];
+		SetControlActive(&colVar, !IsControlActive(&colVar));
 		m_bClickConsumed = true;
 	}
 
 	if (H::Input->IsPressed(VK_ESCAPE) || H::Input->IsPressed(VK_INSERT) || H::Input->IsPressed(VK_F3))
-		m_mapStates[&colVar] = false;
+		SetControlActive(&colVar, false);
 
 	H::Draw->Rect(x, y, w, h, colVar);
 	H::Draw->OutlinedRect(x, y, w, h, CFG::Menu_Accent_Primary);
@@ -1000,11 +961,11 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 		H::Fonts->Get(EFonts::Menu),
 		x + w + CFG::Menu_Spacing_X,
 		y + (h / 2),
-		(bHovered || m_mapStates[&colVar]) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		(bHovered || IsControlActive(&colVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERY, szLabel
 	);
 
-	if (m_mapStates[&colVar])
+	if (IsControlActive(&colVar))
 	{
 		int y = m_nCursorY + h + CFG::Menu_Spacing_Y;
 		int w = 200;
@@ -1013,7 +974,7 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 		bool bHovered = IsHovered(x, y, w, h, &colVar);
 
 		if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bHovered)
-			m_mapStates[&colVar] = false;
+			SetControlActive(&colVar, false);
 
 		if (H::Input->IsHeld(VK_LBUTTON) && bHovered)
 		{
@@ -2407,46 +2368,54 @@ void CMenu::MainWindow()
 	if (MainTab == EMainTabs::CONFIGS)
 	{
 		static std::string strSelected = {};
+		static std::vector<std::string> vecConfigNames = {};
+		static double flNextConfigRefresh = 0.0;
 		const auto& configFolder = U::Storage->GetConfigFolder();
 
-		int nCount = 0;
-
-		for (const auto &entry : std::filesystem::directory_iterator(configFolder))
+		auto RefreshConfigNames = [&](bool bForce = false)
 		{
-			if (std::string(std::filesystem::path(entry).filename().string()).find(".json") == std::string_view::npos)
-				continue;
+			const double flNow = Plat_FloatTime();
+			if (!bForce && flNow < flNextConfigRefresh)
+				return;
 
-			nCount++;
-		}
+			flNextConfigRefresh = flNow + 1.0;
+			vecConfigNames.clear();
+
+			std::error_code error = {};
+			std::filesystem::directory_iterator it(configFolder, error);
+			const std::filesystem::directory_iterator end;
+			for (; !error && it != end; it.increment(error))
+			{
+				const auto& path = it->path();
+				if (path.extension() == ".json")
+					vecConfigNames.push_back(path.stem().string());
+			}
+
+			std::ranges::sort(vecConfigNames);
+		};
+
+		RefreshConfigNames();
+		const auto nCount = vecConfigNames.size();
 
 		if (nCount < 11)
 		{
-			std::string strInput = {};
+			static std::string strInput = {};
 
 			auto anchor_x{ m_nCursorX };
 			auto anchor_y{ m_nCursorY };
 
 			if (InputText("Create New", "Enter a Name:", strInput))
 			{
-				bool bAlreadyExists = [&]() -> bool
-				{
-					for (const auto &entry : std::filesystem::directory_iterator(configFolder))
-					{
-						if (std::string(std::filesystem::path(entry).filename().string()).find(".json") == std::string_view::npos)
-							continue;
+				const bool bAlreadyExists = std::ranges::find(vecConfigNames, strInput) != vecConfigNames.end();
 
-						if (!std::string(std::filesystem::path(entry).filename().string()).compare(strInput))
-							return true;
-					}
-
-					return false;
-				}();
-
-				if (!bAlreadyExists)
+				if (!bAlreadyExists && !strInput.empty())
 				{
 					std::string newFile = strInput + ".json";
 					Config::Save(configFolder / newFile);
+					RefreshConfigNames(true);
 				}
+
+				strInput.clear();
 			}
 			
 			//can't do this nicely after getting rid of std::any..
@@ -2480,16 +2449,10 @@ void CMenu::MainWindow()
 				{
 					m_nCursorY += CFG::Menu_Spacing_Y;
 
-					for (const auto &entry : std::filesystem::directory_iterator(configFolder))
+					for (const auto& configName : vecConfigNames)
 					{
-						if (std::string(std::filesystem::path(entry).filename().string()).find(".json") == std::string_view::npos)
-							continue;
-
-						std::string s = entry.path().filename().string();
-						s.erase(s.end() - 5, s.end());
-
-						if (Button(s.c_str(), false, ((m_nLastGroupBoxW + 1) - (CFG::Menu_Spacing_X * 6))))
-							strSelected = s;
+						if (Button(configName.c_str(), false, ((m_nLastGroupBoxW + 1) - (CFG::Menu_Spacing_X * 6))))
+							strSelected = configName;
 					}
 				}
 				GroupBoxEnd();
@@ -2523,6 +2486,7 @@ void CMenu::MainWindow()
 					std::string fileName = strSelected + ".json";
 					std::filesystem::remove(configFolder / fileName);
 					strSelected = {};
+					RefreshConfigNames(true);
 				}
 
 				if (Button("Cancel"))
@@ -2575,11 +2539,20 @@ void CMenu::Snow()
 
 	if (vecSnowFlakes.empty())
 	{
-		for (int n = 0; n < 1400; n++)
-		{
-			vecSnowFlakes.push_back(GenerateSnowFlake(true));
-		}
+		constexpr size_t MAX_SNOW_FLAKES = 400;
+		vecSnowFlakes.reserve(MAX_SNOW_FLAKES);
 	}
+
+	const size_t nTargetCount = std::clamp(
+		static_cast<size_t>((H::Draw->GetScreenW() * H::Draw->GetScreenH()) / 6000),
+		static_cast<size_t>(120),
+		static_cast<size_t>(400));
+
+	while (vecSnowFlakes.size() < nTargetCount)
+		vecSnowFlakes.push_back(GenerateSnowFlake(true));
+
+	if (vecSnowFlakes.size() > nTargetCount)
+		vecSnowFlakes.resize(nTargetCount);
 
 	for (auto &SnowFlake : vecSnowFlakes)
 	{
@@ -2626,46 +2599,50 @@ void CMenu::Indicators()
 
 void CMenu::Run()
 {
-	if (CFG::Misc_Clean_Screenshot && I::EngineClient->IsTakingScreenshot())
+	if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached())
 	{
 		return;
 	}
 
 	if (!H::Input->IsGameFocused() && m_bOpen) {
 		m_bOpen = false;
+		m_pActiveControl = nullptr;
 		I::MatSystemSurface->SetCursorAlwaysVisible(false);
 		return;
 	}
 
-	if (!m_pGradient)
-	{
-		m_pGradient = std::make_unique<Color_t[]>(200 * 200);
-
-		float hue = 0.0f, sat = 0.99f, lum = 1.0f;
-
-		for (int i = 0; i < 200; i++)
-		{
-			for (int j = 0; j < 200; j++)
-			{
-				*reinterpret_cast<Color_t *>(m_pGradient.get() + j + i * 200) = ColorUtils::HSLToRGB(hue, sat, lum);
-				hue += 1.0f / 200.0f;
-			}
-
-			lum -= 1.0f / 200.0f;
-			hue = 0.0f;
-		}
-
-		m_nColorPickerTextureId = I::MatSystemSurface->CreateNewTextureID(true);
-		I::MatSystemSurface->DrawSetTextureRGBAEx(m_nColorPickerTextureId, reinterpret_cast<const unsigned char *>(m_pGradient.get()), 200, 200, IMAGE_FORMAT_RGBA8888);
-	}
-
 	if (H::Input->IsPressed(VK_INSERT) || H::Input->IsPressed(VK_F3))
+	{
 		I::MatSystemSurface->SetCursorAlwaysVisible(m_bOpen = !m_bOpen);
+		if (!m_bOpen)
+			m_pActiveControl = nullptr;
+	}
 
 	Indicators();
 
 	if (m_bOpen)
 	{
+		if (!m_pGradient)
+		{
+			m_pGradient = std::make_unique<Color_t[]>(200 * 200);
+
+			float hue = 0.0f, sat = 0.99f, lum = 1.0f;
+			for (int i = 0; i < 200; ++i)
+			{
+				for (int j = 0; j < 200; ++j)
+				{
+					m_pGradient[j + i * 200] = ColorUtils::HSLToRGB(hue, sat, lum);
+					hue += 1.0f / 200.0f;
+				}
+
+				lum -= 1.0f / 200.0f;
+				hue = 0.0f;
+			}
+
+			m_nColorPickerTextureId = I::MatSystemSurface->CreateNewTextureID(true);
+			I::MatSystemSurface->DrawSetTextureRGBAEx(m_nColorPickerTextureId, reinterpret_cast<const unsigned char*>(m_pGradient.get()), 200, 200, IMAGE_FORMAT_RGBA8888);
+		}
+
 		m_bClickConsumed = false;
 		m_bInKeybind = false;
 		m_bWantTextInput = false;

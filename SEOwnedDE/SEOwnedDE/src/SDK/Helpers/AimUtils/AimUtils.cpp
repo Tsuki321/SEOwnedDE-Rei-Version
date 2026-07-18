@@ -176,16 +176,15 @@ EWeaponType CAimUtils::GetWeaponType(C_TFWeaponBase *pWeapon)
 
 void CAimUtils::FixMovement(CUserCmd *pCmd, const Vec3 &vTargetAngle)
 {
-	Vec3 vMove(pCmd->forwardmove, pCmd->sidemove, pCmd->upmove);
-	Vec3 vMoveDir = {};
+	const float flForwardMove = pCmd->forwardmove;
+	const float flSideMove = pCmd->sidemove;
+	const float flDeltaYaw = DEG2RAD(vTargetAngle.y - pCmd->viewangles.y);
 
-	Math::VectorAngles(vMove, vMoveDir);
+	float flSin = 0.0f, flCos = 0.0f;
+	Math::SinCos(flDeltaYaw, &flSin, &flCos);
 
-	float flSpeed = Math::FastSqrt(vMove.x * vMove.x + vMove.y * vMove.y);
-	float flYaw = DEG2RAD(vTargetAngle.y - pCmd->viewangles.y + vMoveDir.y);
-
-	pCmd->forwardmove = cos(flYaw) * flSpeed;
-	pCmd->sidemove = sin(flYaw) * flSpeed;
+	pCmd->forwardmove = flCos * flForwardMove - flSin * flSideMove;
+	pCmd->sidemove = flSin * flForwardMove + flCos * flSideMove;
 }
 
 #pragma warning (pop)

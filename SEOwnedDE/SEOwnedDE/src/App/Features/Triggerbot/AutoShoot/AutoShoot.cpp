@@ -30,7 +30,7 @@ float CAutoShoot::GetHitboxScale(int nHitboxGroup)
 
 // Checks if the crosshair ray intersects a specific hitbox, with the OBB scaled by flScale.
 // A scale < 1.0 shrinks the hitbox (stricter), scale >= 1.0 keeps it normal or expands (lenient).
-bool CAutoShoot::IsHitboxUnderCrosshair(C_TFPlayer* pLocal, C_TFPlayer* pPlayer, int nHitbox, float flScale)
+bool CAutoShoot::IsHitboxUnderCrosshair(C_TFPlayer* pPlayer, int nHitbox, float flScale, const Vec3& vTraceStart, const Vec3& vForward)
 {
 	Vec3 vCenter = {}, vMins = {}, vMaxs = {};
 	matrix3x4_t matrix = {};
@@ -39,10 +39,6 @@ bool CAutoShoot::IsHitboxUnderCrosshair(C_TFPlayer* pLocal, C_TFPlayer* pPlayer,
 	// Scale the OBB bounds to control strictness
 	vMins *= flScale;
 	vMaxs *= flScale;
-
-	Vec3 vForward = {};
-	Math::AngleVectors(I::EngineClient->GetViewAngles(), &vForward);
-	const Vec3 vTraceStart = pLocal->GetShootPos();
 
 	return Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, matrix);
 }
@@ -76,66 +72,60 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 	Math::AngleVectors(I::EngineClient->GetViewAngles(), &vForward);
 	const Vec3 vTraceEnd = vLocalPos + (vForward * 8192.0f);
 
-	// Iterate over enemy players
-	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
-	{
-		if (!pEntity)
-			continue;
+	trace_t trace = {};
+	trace.hitbox = -1;
+	CTraceFilterHitscan filter = {};
+	H::AimUtils->Trace(vLocalPos, vTraceEnd, MASK_SHOT | CONTENTS_GRATE, &filter, &trace);
 
-		const auto pPlayer = pEntity->As<C_TFPlayer>();
-
-		if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
-			continue;
-
-		if (CFG::Triggerbot_AutoShoot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
-			continue;
-
-		if (CFG::Triggerbot_AutoShoot_Ignore_Invisible && pPlayer->IsInvisible())
-			continue;
-
-		if (CFG::Triggerbot_AutoShoot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
-			continue;
-
-		if (CFG::Triggerbot_AutoShoot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
-			continue;
-
-		// First, do a basic bullet trace to see if our crosshair ray hits this player at all
-		int nHitHitbox = -1;
-		if (!H::AimUtils->TraceEntityBullet(pPlayer, vLocalPos, vTraceEnd, &nHitHitbox))
-			continue;
-
-		if (nHitHitbox < 0)
-			continue;
-
-		// Get the hitbox group to determine strictness
-		const int nHitboxGroup = pPlayer->GetHitboxGroup(nHitHitbox);
-		if (nHitboxGroup < 0)
-			continue;
-
-		const float flScale = GetHitboxScale(nHitboxGroup);
-
-		if (flScale < 1.0f && !IsHitboxUnderCrosshair(pLocal, pPlayer, nHitHitbox, flScale))
-			continue;
-
-		if (pWeapon->GetWeaponID() == TF_WEAPON_SNIPERRIFLE_CLASSIC)
-		{
-			if (G::nOldButtons & IN_ATTACK)
-				pCmd->buttons &= ~IN_ATTACK;
-			else
-				pCmd->buttons |= IN_ATTACK;
-		}
-		else
-		{
-			pCmd->buttons |= IN_ATTACK;
-		}
-
-		G::bFiring = true;
-
-		if (CFG::Misc_Accuracy_Improvements)
-		{
-			pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
-		}
-
+	if (!trace.m_pEnt || trace.allsolid || trace.hitbox < 0 || trace.m_pEnt->GetClassId() != ETFClassIds::CTFPlayer)
 		return;
+
+	const auto pPlayer = trace.m_pEnt->As<C_TFPlayer>();
+	int nTargetTeam = 0;
+	if (!pPlayer || !pPlayer->IsInValidTeam(&nTargetTeam) || nTargetTeam == pLocal->m_iTeamNum()
+		|| pPlayer->IsDormant() || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+		return;
+
+	if (CFG::Triggerbot_AutoShoot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+		return;
+
+	if (CFG::Triggerbot_AutoShoot_Ignore_Invisible && pPlayer->IsInvisible())
+		return;
+
+	if (CFG::Triggerbot_AutoShoot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+		return;
+
+	if (CFG::Triggerbot_AutoShoot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
+		return;
+
+	const int nHitHitbox = trace.hitbox;
+
+	const int nHitboxGroup = pPlayer->GetHitboxGroup(nHitHitbox);
+
+	if (nHitboxGroup < 0)
+		return;
+
+	const float flScale = GetHitboxScale(nHitboxGroup);
+
+	if (flScale < 1.0f && !IsHitboxUnderCrosshair(pPlayer, nHitHitbox, flScale, vLocalPos, vForward))
+		return;
+
+	if (pWeapon->GetWeaponID() == TF_WEAPON_SNIPERRIFLE_CLASSIC)
+	{
+		if (G::nOldButtons & IN_ATTACK)
+			pCmd->buttons &= ~IN_ATTACK;
+		else
+			pCmd->buttons |= IN_ATTACK;
+	}
+	else
+	{
+		pCmd->buttons |= IN_ATTACK;
+	}
+
+	G::bFiring = true;
+
+	if (CFG::Misc_Accuracy_Improvements)
+	{
+		pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
 	}
 }

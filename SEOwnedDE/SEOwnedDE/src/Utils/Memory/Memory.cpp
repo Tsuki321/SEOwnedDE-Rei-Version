@@ -1,7 +1,13 @@
 #include "Memory.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <format>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <Psapi.h>
 
 typedef void *(*InstantiateInterfaceFn)();
 
@@ -12,8 +18,134 @@ struct InterfaceInit_t
 	InterfaceInit_t *m_pNextInterface = nullptr;
 };
 
-#include <vector>
-#include <Psapi.h>
+namespace
+{
+	struct ScanRegion
+	{
+		const std::byte *m_pBytes = nullptr;
+		size_t m_nSize = 0;
+	};
+
+	struct ModuleScanCache
+	{
+		const std::byte *m_pImage = nullptr;
+		size_t m_nImageSize = 0;
+		std::vector<ScanRegion> m_vecExecutableRegions = {};
+		std::unordered_map<std::string, std::uintptr_t> m_mapSignatures = {};
+	};
+
+	std::unordered_map<HMODULE, ModuleScanCache> g_mapModules = {};
+
+	std::uintptr_t FindCompiledSignature(const std::byte *imageBytes, size_t imageSize, const std::vector<int> &patternBytes)
+	{
+		const size_t signatureSize = patternBytes.size();
+		if (!imageBytes || signatureSize == 0 || signatureSize > imageSize)
+			return 0;
+
+		// Anchor memchr on the final concrete byte.  IDA signatures commonly
+		// begin with 0x48, so the tail is generally more selective than the head.
+		size_t anchorOffset = signatureSize;
+		for (size_t i = 0; i < signatureSize; ++i)
+		{
+			if (patternBytes[i] != -1)
+				anchorOffset = i;
+		}
+
+		if (anchorOffset == signatureSize)
+			return reinterpret_cast<std::uintptr_t>(imageBytes);
+
+		const auto anchorByte = static_cast<unsigned char>(patternBytes[anchorOffset]);
+		const size_t candidateCount = imageSize - signatureSize + 1;
+		const std::byte *search = imageBytes + anchorOffset;
+		size_t remaining = candidateCount;
+
+		while (remaining)
+		{
+			const auto found = static_cast<const std::byte *>(std::memchr(search, anchorByte, remaining));
+			if (!found)
+				return 0;
+
+			const size_t candidate = static_cast<size_t>(found - imageBytes) - anchorOffset;
+			bool matches = true;
+			for (size_t j = 0; j < signatureSize; ++j)
+			{
+				if (patternBytes[j] != -1 && imageBytes[candidate + j] != static_cast<std::byte>(patternBytes[j]))
+				{
+					matches = false;
+					break;
+				}
+			}
+
+			if (matches)
+				return reinterpret_cast<std::uintptr_t>(imageBytes + candidate);
+
+			const size_t consumed = static_cast<size_t>(found - search) + 1;
+			search += consumed;
+			remaining -= consumed;
+		}
+
+		return 0;
+	}
+
+	void PopulateExecutableRegions(ModuleScanCache &cache)
+	{
+		if (!cache.m_pImage || cache.m_nImageSize < sizeof(IMAGE_DOS_HEADER))
+			return;
+
+		const auto dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER *>(cache.m_pImage);
+		if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE || dosHeader->e_lfanew < 0)
+			return;
+
+		const size_t ntOffset = static_cast<size_t>(dosHeader->e_lfanew);
+		if (cache.m_nImageSize < sizeof(IMAGE_NT_HEADERS) || ntOffset > cache.m_nImageSize - sizeof(IMAGE_NT_HEADERS))
+			return;
+
+		const auto ntHeaders = reinterpret_cast<const IMAGE_NT_HEADERS *>(cache.m_pImage + ntOffset);
+		if (ntHeaders->Signature != IMAGE_NT_SIGNATURE)
+			return;
+
+		const auto sections = IMAGE_FIRST_SECTION(ntHeaders);
+		const auto imageEnd = cache.m_pImage + cache.m_nImageSize;
+		const auto sectionBytes = reinterpret_cast<const std::byte *>(sections);
+		if (sectionBytes < cache.m_pImage || sectionBytes > imageEnd)
+			return;
+
+		const size_t availableSectionHeaders = static_cast<size_t>(imageEnd - sectionBytes) / sizeof(IMAGE_SECTION_HEADER);
+		if (ntHeaders->FileHeader.NumberOfSections > availableSectionHeaders)
+			return;
+
+		cache.m_vecExecutableRegions.reserve(ntHeaders->FileHeader.NumberOfSections);
+		for (WORD i = 0; i < ntHeaders->FileHeader.NumberOfSections; ++i)
+		{
+			const auto &section = sections[i];
+			if (!(section.Characteristics & IMAGE_SCN_MEM_EXECUTE) || section.VirtualAddress >= cache.m_nImageSize)
+				continue;
+
+			size_t sectionSize = section.Misc.VirtualSize ? section.Misc.VirtualSize : section.SizeOfRawData;
+			sectionSize = (std::min)(sectionSize, cache.m_nImageSize - section.VirtualAddress);
+			if (sectionSize)
+				cache.m_vecExecutableRegions.push_back({ cache.m_pImage + section.VirtualAddress, sectionSize });
+		}
+	}
+
+	ModuleScanCache *GetModuleScanCache(HMODULE module)
+	{
+		if (const auto it = g_mapModules.find(module); it != g_mapModules.end())
+			return &it->second;
+
+		MODULEINFO moduleInfo = {};
+		if (!GetModuleInformation(GetCurrentProcess(), module, &moduleInfo, sizeof(moduleInfo)) || !moduleInfo.SizeOfImage)
+			return nullptr;
+
+		ModuleScanCache cache = {};
+		cache.m_pImage = reinterpret_cast<const std::byte *>(moduleInfo.lpBaseOfDll);
+		cache.m_nImageSize = moduleInfo.SizeOfImage;
+		PopulateExecutableRegions(cache);
+
+		const auto result = g_mapModules.emplace(module, std::move(cache));
+		return &result.first->second;
+	}
+}
 
 std::vector<int> Memory::PatternToBytes(const char *pattern)
 {
@@ -62,41 +194,22 @@ std::vector<int> Memory::PatternToBytes(const char *pattern)
 std::uintptr_t Memory::FindSignature(const std::byte *image_bytes, size_t image_size, const char *szPattern)
 {
 	const auto pattern_bytes = PatternToBytes(szPattern);
-	const auto signature_size = pattern_bytes.size();
-
-	if (!image_bytes || signature_size == 0 || signature_size > image_size)
-		return 0x0;
-
-	const int *signature_bytes = pattern_bytes.data();
-	const size_t scan_end = image_size - signature_size;
-
-	for (size_t i = 0; i <= scan_end; ++i)
-	{
-		size_t j = 0;
-		for (; j < signature_size; ++j)
-		{
-			if (signature_bytes[j] != -1 && image_bytes[i + j] != static_cast<std::byte>(signature_bytes[j]))
-				break;
-		}
-
-		if (j == signature_size)
-			return reinterpret_cast<std::uintptr_t>(&image_bytes[i]);
-	}
-
-	return 0x0;
+	return FindCompiledSignature(image_bytes, image_size, pattern_bytes);
 }
 
 std::uintptr_t Memory::FindSignature(const char *szModule, const char *szPattern)
 {
+	if (!szModule || !szPattern)
+		return 0;
+
 	if (const auto hMod = GetModuleHandleA(szModule))
 	{
 #ifdef _DEBUG
 #define DEBUG_SIG
 #endif
 
-		/// Get module information to search in the given module
-		MODULEINFO module_info;
-		if (!GetModuleInformation(GetCurrentProcess(), hMod, &module_info, sizeof(MODULEINFO)))
+		auto module = GetModuleScanCache(hMod);
+		if (!module)
 		{
 #ifdef DEBUG_SIG
 			MessageBox(nullptr, std::format("GetModuleInformation {} failed\n", szPattern).c_str(), "", 0);
@@ -104,17 +217,26 @@ std::uintptr_t Memory::FindSignature(const char *szModule, const char *szPattern
 			return {};
 		}
 
-		/// The region where we will search for the byte sequence
-		const auto image_size = module_info.SizeOfImage;
+		if (const auto it = module->m_mapSignatures.find(szPattern); it != module->m_mapSignatures.end())
+			return it->second;
 
-		/// Check if the image is faulty
-		if (!image_size)
-			return {};
+		const auto patternBytes = PatternToBytes(szPattern);
+		for (const auto &region : module->m_vecExecutableRegions)
+		{
+			if (const auto result = FindCompiledSignature(region.m_pBytes, region.m_nSize, patternBytes))
+			{
+				module->m_mapSignatures.emplace(szPattern, result);
+				return result;
+			}
+		}
 
-		const auto image_bytes = reinterpret_cast<byte *>(hMod);
-		const auto result = FindSignature(reinterpret_cast<const std::byte *>(image_bytes), image_size, szPattern);
-		if (result)
+		// Preserve the original whole-image behavior for data signatures and
+		// unusual modules without conventional executable section metadata.
+		if (const auto result = FindCompiledSignature(module->m_pImage, module->m_nImageSize, patternBytes))
+		{
+			module->m_mapSignatures.emplace(szPattern, result);
 			return result;
+		}
 
 #if defined DEBUG_SIG
 		//MessageBox(nullptr, std::format("find_ida_sig {} failed\n", szPattern).c_str(), "", 0);

@@ -146,27 +146,11 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 
 		//I::DebugOverlay->AddSweptBoxOverlay(vPlayerOrigin, vPlayerOrigin, mins, maxs, {}, 0, 255, 0, 255, 0.1f);
 
-		const auto visibleFromCenter
-		{
-			H::AimUtils->TraceEntityAutoDet
-			(
-				pEntity,
-				vPlayerCenter,
-				enemy->m_vecOrigin() + Vec3{ 0.0f, 0.0f, enemy->m_vecMaxs().z }
-			)
-		};
+		const Vec3 vEnemyHead = enemy->m_vecOrigin() + Vec3{ 0.0f, 0.0f, enemy->m_vecMaxs().z };
+		const bool bVisible = H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerCenter, vEnemyHead)
+			|| H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerHead, vEnemyHead);
 
-		const auto visibleFromHead
-		{
-			H::AimUtils->TraceEntityAutoDet
-			(
-				pEntity,
-				vPlayerHead,
-				enemy->m_vecOrigin() + Vec3{ 0.0f, 0.0f, enemy->m_vecMaxs().z }
-			)
-		};
-
-		if (!visibleFromCenter && !visibleFromHead)
+		if (!bVisible)
 			continue;
 
 		// Dangerous sniper!
@@ -175,6 +159,7 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 	}
 
 	size_t numClosePipebombs{};
+	const float flLatency = SDKUtils::GetLatency();
 
 	// Check for dangerous projectiles
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PROJECTILES_ENEMIES))
@@ -182,123 +167,122 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 		if (!pEntity)
 			continue;
 
-		const auto pEntCenter{ pEntity->GetCenter() };
-
-		const auto visibleFromCenter{ H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerCenter, pEntCenter) };
-		const auto visibleFromHead{ H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerHead, pEntCenter) };
-
-		if (!visibleFromCenter && !visibleFromHead)
-			continue;
-
 		Vec3 vel{};
 		pEntity->EstimateAbsVelocity(vel);
 
-		auto entOrigin{ pEntity->m_vecOrigin() + (vel * SDKUtils::GetLatency()) };
+		const Vec3 entOrigin{ pEntity->m_vecOrigin() + (vel * flLatency) };
+		const float flDistanceSqr = entOrigin.DistToSqr(vPlayerCenter);
+		medigun_resist_types_t projectileDanger = MEDIGUN_NUM_RESISTS;
+		bool bCountPipebomb = false;
 
 		switch (pEntity->GetClassId())
 		{
 		case ETFClassIds::CTFProjectile_Arrow:
 			{
-				if (vel.IsZero() || entOrigin.DistTo(vPlayerCenter) > 150.0f)
+				if (vel.IsZero() || flDistanceSqr > 150.0f * 150.0f)
 					continue;
 
-				// Dangerous arrows
-				dangerType = MEDIGUN_BULLET_RESIST;
-				return true;
+				projectileDanger = MEDIGUN_BULLET_RESIST;
+				break;
 			}
 
 		case ETFClassIds::CTFProjectile_HealingBolt:
 			{
-				if (vel.IsZero() || entOrigin.DistTo(vPlayerCenter) > 150.0f)
+				if (vel.IsZero() || flDistanceSqr > 150.0f * 150.0f)
 					continue;
 
 				const auto arrow{ pEntity->As<C_TFProjectile_Arrow>() };
 				if (!arrow->m_bCritical() && percentHealth >= HEALTH_LIMIT)
 					continue;
 
-				// Dangerous medigun bolt
-				dangerType = MEDIGUN_BULLET_RESIST;
-				return true;
+				projectileDanger = MEDIGUN_BULLET_RESIST;
+				break;
 			}
 
 		case ETFClassIds::CTFProjectile_Rocket:
 		case ETFClassIds::CTFProjectile_SentryRocket:
 		case ETFClassIds::CTFProjectile_EnergyBall:
 			{
-				if (entOrigin.DistTo(vPlayerCenter) > 250.0f)
+				if (flDistanceSqr > 250.0f * 250.0f)
 					continue;
 
 				const auto rocket{ pEntity->As<C_TFProjectile_Rocket>() };
 				if (!rocket->m_bCritical() && percentHealth >= 1.0f)
 					continue;
 
-				// Dangerous rocket
-				dangerType = MEDIGUN_BLAST_RESIST;
-				return true;
+				projectileDanger = MEDIGUN_BLAST_RESIST;
+				break;
 			}
 
 		case ETFClassIds::CTFGrenadePipebombProjectile:
 			{
-				if (entOrigin.DistTo(vPlayerCenter) > 250.0f)
+				if (flDistanceSqr > 250.0f * 250.0f)
 					continue;
 
 				const auto bomb{ pEntity->As<C_TFGrenadePipebombProjectile>() };
 				if (bomb->m_iType() == TF_GL_MODE_REMOTE_DETONATE_PRACTICE)
 					continue;
 
-				if (!bomb->m_bCritical() && percentHealth >= 1.0f && entOrigin.DistTo(vPlayerCenter) >= 100.0f)
-				{
-					numClosePipebombs++;
-					continue;
-				}
-
-				// Dangerous pipebomb
-				dangerType = MEDIGUN_BLAST_RESIST;
-				return true;
+				bCountPipebomb = !bomb->m_bCritical() && percentHealth >= 1.0f && flDistanceSqr >= 100.0f * 100.0f;
+				projectileDanger = MEDIGUN_BLAST_RESIST;
+				break;
 			}
 
 		case ETFClassIds::CTFProjectile_Flare:
 			{
-				if (entOrigin.DistTo(vPlayerCenter) > 150.0f)
+				if (flDistanceSqr > 150.0f * 150.0f)
 					continue;
 
 				const auto flare{ pEntity->As<C_TFProjectile_Flare>() };
 				if (!flare->m_bCritical() && !player->InCond(TF_COND_BURNING) && !player->InCond(TF_COND_BURNING_PYRO))
 					continue;
 
-				// Dangerous flare
-				dangerType = MEDIGUN_FIRE_RESIST;
-				return true;
+				projectileDanger = MEDIGUN_FIRE_RESIST;
+				break;
 			}
 
 		case ETFClassIds::CTFProjectile_BallOfFire:
 			{
-				if (entOrigin.DistTo(vPlayerCenter) > 150.0f)
+				if (flDistanceSqr > 150.0f * 150.0f)
 					continue;
 
 				if (!player->InCond(TF_COND_BURNING) && !player->InCond(TF_COND_BURNING_PYRO))
 					continue;
 
-				// Dangerous fireball
-				dangerType = MEDIGUN_FIRE_RESIST;
-				return true;
+				projectileDanger = MEDIGUN_FIRE_RESIST;
+				break;
 			}
 
 		case ETFClassIds::CTFProjectile_EnergyRing:
 			{
-				if (entOrigin.DistTo(vPlayerCenter) > 150.0f)
+				if (flDistanceSqr > 150.0f * 150.0f)
 					continue;
 
 				if (percentHealth >= HEALTH_LIMIT)
 					continue;
 
-				// Dangerous energy ball
-				dangerType = MEDIGUN_BULLET_RESIST;
-				return true;
+				projectileDanger = MEDIGUN_BULLET_RESIST;
+				break;
 			}
 
-		default: {}
+		default: continue;
 		}
+
+		const Vec3 vEntCenter = pEntity->GetCenter();
+		const bool bVisible = H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerCenter, vEntCenter)
+			|| H::AimUtils->TraceEntityAutoDet(pEntity, vPlayerHead, vEntCenter);
+
+		if (!bVisible)
+			continue;
+
+		if (bCountPipebomb)
+		{
+			numClosePipebombs++;
+			continue;
+		}
+
+		dangerType = projectileDanger;
+		return true;
 	}
 
 	if (numClosePipebombs > 0)

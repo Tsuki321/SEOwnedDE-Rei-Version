@@ -32,6 +32,28 @@ private:
 	float m_flCritChance = 0.0f;
 	float m_flMultCritChance = 1.0f;
 
+	struct ForecastState_t
+	{
+		C_TFWeaponBase* Weapon = nullptr;
+		float TokenBucket = 0.0f;
+		float BucketCap = 0.0f;
+		float BaseDamage = 0.0f;
+		float CritDamage = 0.0f;
+		float FireRate = 0.0f;
+		float LastRapidFireCheck = 0.0f;
+		int CritChecks = 0;
+		int SeedRequests = 0;
+		int TimeTick = 0;
+		bool Melee = false;
+		bool RapidFire = false;
+		bool Valid = false;
+	};
+
+	ForecastState_t m_ForecastState = {};
+	C_TFPlayer* m_pLastInfoLocal = nullptr;
+	C_TFWeaponBase* m_pLastInfoWeapon = nullptr;
+	int m_iLastInfoTick = -1;
+
 	int CommandToSeed(int nCommandNumber) const;
 	void UpdateWeaponInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void UpdateInfo(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
