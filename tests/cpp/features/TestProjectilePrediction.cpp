@@ -300,6 +300,7 @@ TEST(QuarticSolver, MovingTarget_Gravity_Intercepts) {
 	EXPECT_LT(r.Time, 2.0f);
 
 	Vec3 hitPos = p.ShootPos + r.Direction * p.Speed * r.Time;
+	hitPos.z -= 0.5f * p.Gravity * r.Time * r.Time;
 	Vec3 targetAtHit = p.TargetPos + p.TargetVel * r.Time;
 	float dist = hitPos.DistTo(targetAtHit);
 	EXPECT_LT(dist, 10.0f);
@@ -328,7 +329,7 @@ TEST(QuarticSolver, PipeMuzzleUp_ProducesValidSolution) {
 	EXPECT_NEAR(lenSq, 1.0f, 1e-3f);
 }
 
-TEST(QuarticSolver, PipeMuzzleUp_LowerPitchThanNoMuzzleUp) {
+TEST(QuarticSolver, PipeMuzzleUp_RequiresLessAimElevation) {
 	BallisticSolver::SolverParams withMuzzle;
 	withMuzzle.ShootPos = Vec3(0, 0, 0);
 	withMuzzle.TargetPos = Vec3(1000, 0, 0);
@@ -345,10 +346,7 @@ TEST(QuarticSolver, PipeMuzzleUp_LowerPitchThanNoMuzzleUp) {
 	ASSERT_TRUE(rWith.Valid);
 	ASSERT_TRUE(rWithout.Valid);
 
-	Vec3 anglesWith = BallisticSolver::DirectionToAngles(rWith.Direction);
-	Vec3 anglesWithout = BallisticSolver::DirectionToAngles(rWithout.Direction);
-
-	EXPECT_LT(anglesWith.x, anglesWithout.x);
+	EXPECT_LT(rWith.Direction.z, rWithout.Direction.z);
 }
 
 // =============================================================================
@@ -617,7 +615,7 @@ TEST(QuarticEval, EvaluateAtKnownPoint) {
 
 TEST(QuarticEval, DerivativeAtKnownPoint) {
 	float deriv = BallisticSolver::EvaluateQuarticDerivative(1.0f, 0.0f, -5.0f, 0.0f, 1.0f);
-	EXPECT_NEAR(deriv, -3.0f, 1e-4f);
+	EXPECT_NEAR(deriv, -6.0f, 1e-4f);
 }
 
 TEST(QuarticNewton, ConvergesToRoot) {
@@ -625,7 +623,7 @@ TEST(QuarticNewton, ConvergesToRoot) {
 	EXPECT_NEAR(t, 1.0f, 1e-4f);
 }
 
-TEST(QuarticNewton, FindsSecondRoot) {
+TEST(QuarticNewton, FindsSecondPositiveRoot) {
 	float t = BallisticSolver::SolveQuarticNewton(1.0f, 0.0f, -5.0f, 0.0f, 4.0f, 3.0f);
-	EXPECT_NEAR(t, 4.0f, 1e-4f);
+	EXPECT_NEAR(t, 2.0f, 1e-4f);
 }

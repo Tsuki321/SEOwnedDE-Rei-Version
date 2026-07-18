@@ -159,8 +159,8 @@ namespace BallisticSolver
 		if (k <= 0.0f || t <= 0.0f)
 			return speed;
 		const float kt = k * t;
-		if (kt < 1e-6f)
-			return speed * (1.0f - kt * 0.5f);
+		if (kt < 0.01f)
+			return speed * (1.0f - kt * 0.5f + kt * kt / 6.0f);
 		return speed * (1.0f - std::exp(-kt)) / kt;
 	}
 

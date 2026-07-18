@@ -18,7 +18,7 @@
 //   CPrediction::RunCommand
 //     -> drives local player anim state
 //   AddVar
-//     -> filters interpolated vars used by remote pose
+//     -> filters velocity-derived vars while leaving pose interpolation intact
 //
 // Each link must remain wired together; this test catches accidental decoupling.
 
@@ -84,10 +84,7 @@ const PipelineFile kPipeline[] = {
         "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_AddVar.cpp",
         {
             "m_iv_vecVelocity",
-            "m_iv_flPoseParameter",
-            "m_iv_flCycle",
             "m_iv_flMaxGroundSpeed",
-            "m_iv_angEyeAngles",
         },
     },
 };

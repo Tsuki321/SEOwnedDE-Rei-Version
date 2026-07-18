@@ -53,7 +53,7 @@ TEST(AnimationSmoothnessTest, ValidatesVelocityBlocked) {
     EXPECT_EQ(g_CalledOriginal, 0);
 }
 
-TEST(AnimationSmoothnessTest, ValidatesPoseParametersBlocked) {
+TEST(AnimationSmoothnessTest, ValidatesPoseParametersPassThrough) {
     g_CalledOriginal = 0;
     CFG::Misc_Accuracy_Improvements = true;
     char dummyEcx[1024] = {0};
@@ -63,18 +63,18 @@ TEST(AnimationSmoothnessTest, ValidatesPoseParametersBlocked) {
     
     CBaseEntity_AddVar(pEntity, nullptr, reinterpret_cast<IInterpolatedVar*>(&watcher), 0, false);
     
-    // Pose params are filtered by the hook when accuracy improvements are enabled.
-    EXPECT_EQ(g_CalledOriginal, 0);
+    // Pose interpolation was restored to prevent remote animation jitter.
+    EXPECT_EQ(g_CalledOriginal, 1);
 }
 
-TEST(AnimationSmoothnessTest, ValidatesCycleBlocked) {
+TEST(AnimationSmoothnessTest, ValidatesCyclePassesThrough) {
     g_CalledOriginal = 0;
     CFG::Misc_Accuracy_Improvements = true;
     char dummyEcx[1024] = {0};
     C_BaseEntity* pEntity = reinterpret_cast<C_BaseEntity*>(dummyEcx);
     MockInterpolatedVar watcher("C_BaseAnimating::m_iv_flCycle");
     CBaseEntity_AddVar(pEntity, nullptr, reinterpret_cast<IInterpolatedVar*>(&watcher), 0, false);
-    EXPECT_EQ(g_CalledOriginal, 0);
+    EXPECT_EQ(g_CalledOriginal, 1);
 }
 
 // Phase 1 expansion: ensure m_iv_flMaxGroundSpeed is filtered when accuracy improvements are on.
@@ -88,17 +88,15 @@ TEST(AnimationSmoothnessTest, ValidatesMaxGroundSpeedBlocked) {
     EXPECT_EQ(g_CalledOriginal, 0);
 }
 
-// Eye angle interpolation must be blocked for non-local entities so remote head/aim
-// direction reflects raw netvar values used by the aim/lag-comp pipeline.
-TEST(AnimationSmoothnessTest, ValidatesEyeAnglesBlockedForRemote) {
+// Eye-angle interpolation remains engine-managed along with the restored pose data.
+TEST(AnimationSmoothnessTest, ValidatesEyeAnglesPassThrough) {
     g_CalledOriginal = 0;
     CFG::Misc_Accuracy_Improvements = true;
     char dummyEcx[1024] = {0};
     C_BaseEntity* pEntity = reinterpret_cast<C_BaseEntity*>(dummyEcx);
     MockInterpolatedVar watcher("C_TFPlayer::m_iv_angEyeAngles");
     CBaseEntity_AddVar(pEntity, nullptr, reinterpret_cast<IInterpolatedVar*>(&watcher), 0, false);
-    // Remote: should be blocked (no original call).
-    EXPECT_EQ(g_CalledOriginal, 0);
+    EXPECT_EQ(g_CalledOriginal, 1);
 }
 
 // Unknown debug names should always pass through to the engine when not in our block-list.
