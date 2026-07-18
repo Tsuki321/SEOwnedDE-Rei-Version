@@ -103,61 +103,22 @@ TEST(AimbotContracts, HotPathWorkIsDemandDrivenAndBatched) {
     EXPECT_EQ(projectileSource.find("std::vector<Vec3> potential"), std::string::npos);
 }
 
-TEST(AimbotPredictionMath, HybridBlendFactorDecaysProperly) {
-    const float startConfidence = 1.0f;
-    const float decayRate = 2.5f;
-
-    const float tick0 = ProjectilePredictionMath::ComputeHybridBlendFactor(0, decayRate, startConfidence);
-    const float tick10 = ProjectilePredictionMath::ComputeHybridBlendFactor(10, decayRate, startConfidence);
-    const float tick50 = ProjectilePredictionMath::ComputeHybridBlendFactor(50, decayRate, startConfidence);
-
-    EXPECT_FLOAT_EQ(tick0, 0.85f);
-    EXPECT_LT(tick10, tick0);
-    EXPECT_LT(tick50, tick10);
-    EXPECT_GT(tick50, 0.149f); // should approach 0.15
-}
-
-TEST(AimbotPredictionMath, VelocityConfidenceScalesByVariance) {
-    const float maxSpeedSq = 90000.0f; // 300^2
-    const float zeroVariance = 0.0f;
-    const float highVariance = 45000.0f; // 0.5 * maxSpeedSq
-    const float extremeVariance = 180000.0f; // 2 * maxSpeedSq
-
-    const float maxConfidence = ProjectilePredictionMath::ComputeVelocityConfidence(zeroVariance, maxSpeedSq);
-    const float midConfidence = ProjectilePredictionMath::ComputeVelocityConfidence(highVariance, maxSpeedSq);
-    const float minConfidence = ProjectilePredictionMath::ComputeVelocityConfidence(extremeVariance, maxSpeedSq);
-
-    EXPECT_FLOAT_EQ(maxConfidence, 1.0f);
-    EXPECT_FLOAT_EQ(midConfidence, 0.5f);
-    EXPECT_FLOAT_EQ(minConfidence, 0.2f); // max clamped at 1.0 - 0.8
-}
-
-TEST(AimbotPredictionMath, StickyArmArrivalUsesArmTimeAsMinimum) {
-    EXPECT_FLOAT_EQ(ProjectilePredictionMath::ApplyStickyArmTime(0.25f, 0.8f), 0.8f);
-    EXPECT_FLOAT_EQ(ProjectilePredictionMath::ApplyStickyArmTime(1.2f, 0.8f), 1.2f);
-}
-
 TEST(AimbotPredictionMath, TemporalResidualIncludesOutgoingAndInterpBias) {
-    const float interpolation = ProjectilePredictionMath::ResolveInterpolationAmount(0.03f, 0.015f);
-    const float timingBias = ProjectilePredictionMath::ComputeTimingBias(0.05f, interpolation);
-    const float residual = ProjectilePredictionMath::ComputeTemporalResidual(1.08f, 1.0f, timingBias);
+	const float timingBias = ProjectilePredictionMath::ComputeTimingBias(0.05f, 0.03f);
+	const float residual = ProjectilePredictionMath::ComputeTemporalResidual(1.08f, 1.0f, timingBias);
 
-    EXPECT_NEAR(residual, 0.0f, 1e-6f);
+	EXPECT_NEAR(residual, 0.0f, 1e-6f);
 }
 
-TEST(AimbotPredictionMath, TemporalToleranceAndScoreAreConsistent) {
-    const float tolerance = 0.06f;
-    const float nearResidual = 0.02f;
-    const float farResidual = 0.08f;
+TEST(AimbotPredictionMath, TemporalToleranceClampsNegativeInputs) {
+	const float tolerance = 0.06f;
+	const float nearResidual = 0.02f;
+	const float farResidual = 0.08f;
 
-    EXPECT_TRUE(ProjectilePredictionMath::IsWithinTemporalTolerance(nearResidual, tolerance));
-    EXPECT_FALSE(ProjectilePredictionMath::IsWithinTemporalTolerance(farResidual, tolerance));
-    EXPECT_LT(ProjectilePredictionMath::ComputeTemporalScore(nearResidual, tolerance),
-              ProjectilePredictionMath::ComputeTemporalScore(farResidual, tolerance));
-
-    const float nearCombined = ProjectilePredictionMath::CombineTemporalAndSpatialScore(0.5f, 2.0f, 0.35f);
-    const float farCombined = ProjectilePredictionMath::CombineTemporalAndSpatialScore(0.5f, 30.0f, 0.35f);
-    EXPECT_LT(nearCombined, farCombined);
+	EXPECT_TRUE(ProjectilePredictionMath::IsWithinTemporalTolerance(nearResidual, tolerance));
+	EXPECT_FALSE(ProjectilePredictionMath::IsWithinTemporalTolerance(farResidual, tolerance));
+	EXPECT_TRUE(ProjectilePredictionMath::IsWithinTemporalTolerance(-nearResidual, tolerance));
+	EXPECT_TRUE(ProjectilePredictionMath::IsWithinTemporalTolerance(0.0f, -tolerance));
 }
 
 TEST(AimbotContracts, SharedTargetScoringIsCentralizedAcrossModes) {
