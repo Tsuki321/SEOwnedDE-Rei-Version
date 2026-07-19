@@ -17,6 +17,8 @@ class COutlines
 	std::array<int, MAX_EDICTS> m_arrDrawnHandles = {};
 	uint32_t m_nDrawGeneration = 1;
 	int m_nDrawFrame = -1;
+	int m_nLastModelFrame = -1;
+	int m_nLastCompositeFrame = -1;
 	bool m_bHasAnyDrawn = false;
 	bool m_bRendering = false;
 	bool m_bRenderingOutlines = false;

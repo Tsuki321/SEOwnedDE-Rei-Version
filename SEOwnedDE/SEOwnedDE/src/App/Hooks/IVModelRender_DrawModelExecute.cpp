@@ -13,6 +13,9 @@ MAKE_SIGNATURE(ViewmodelAttachment_DrawModel, "client.dll", "41 8B D5 FF 50 ? 8B
 
 static IMaterial* GetViewmodelMaterialByIndex(int nIndex)
 {
+	if (nIndex >= 1 && nIndex <= 5)
+		F::Materials->EnsureInitialized();
+
 	switch (nIndex)
 	{
 	case 0: return nullptr;

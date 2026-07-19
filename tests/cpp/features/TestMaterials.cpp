@@ -12,6 +12,10 @@ constexpr const char* kRenderPassStateSource =
     "SEOwnedDE/SEOwnedDE/src/App/Features/Rendering/RenderPassState.h";
 constexpr const char* kWorldRenderHookSource =
     "SEOwnedDE/SEOwnedDE/src/App/Hooks/CParticleSystemMgr_DrawRenderCache.cpp";
+constexpr const char* kViewModelHookSource =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CViewRender_DrawViewModels.cpp";
+constexpr const char* kRenderViewHookSource =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CViewRender_RenderView.cpp";
 constexpr const char* kModelRenderHookSource =
     "SEOwnedDE/SEOwnedDE/src/App/Hooks/IVModelRender_DrawModelExecute.cpp";
 }
@@ -57,6 +61,7 @@ TEST(MaterialsContracts, MainSourceContainsFeatureTokens) {
     EXPECT_NE(headerSource.find("m_arrDrawnGenerations"), std::string::npos);
     EXPECT_NE(headerSource.find("m_arrDrawnHandles"), std::string::npos);
     EXPECT_NE(headerSource.find("m_nDrawFrame"), std::string::npos);
+    EXPECT_NE(headerSource.find("m_nLastRunFrame"), std::string::npos);
     EXPECT_NE(headerSource.find("return pMaterial && (pMaterial == m_pFlat"), std::string::npos);
     EXPECT_NE(mainSource.find("CMaterials::Run(IMatRenderContext* pRenderContext)"), std::string::npos);
     EXPECT_NE(mainSource.find("ApplyWorldColor"), std::string::npos);
@@ -103,4 +108,73 @@ TEST(MaterialsContracts, DrawSuppressionIsScopedToMainWorldPass) {
               std::string::npos);
     EXPECT_NE(modelHookSource.find("!bTakingScreenshot && RenderPassState::g_bDrawingMainWorld"),
               std::string::npos);
+}
+
+TEST(MaterialsContracts, MainWorldEffectsAreClaimedOncePerFrame) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto passSource = testhelpers::ReadTextFile(root / kRenderPassStateSource);
+    const auto worldHookSource = testhelpers::ReadTextFile(root / kWorldRenderHookSource);
+    const auto viewModelHookSource = testhelpers::ReadTextFile(root / kViewModelHookSource);
+
+    EXPECT_NE(passSource.find("std::atomic<int>"), std::string::npos);
+    EXPECT_NE(passSource.find("compare_exchange_weak"), std::string::npos);
+    EXPECT_NE(passSource.find("TryBeginMainWorldModelPass"), std::string::npos);
+    EXPECT_NE(passSource.find("CompleteMainWorldModelPass"), std::string::npos);
+    EXPECT_NE(passSource.find("TryBeginCompositePass"), std::string::npos);
+
+    const auto claimPos = worldHookSource.find(
+        "bNeedsRenderPass && RenderPassState::TryBeginMainWorldModelPass(frame)");
+    const auto contextPos = worldHookSource.find("CRenderContextScope renderContext");
+    ASSERT_NE(claimPos, std::string::npos);
+    ASSERT_NE(contextPos, std::string::npos);
+    EXPECT_LT(claimPos, contextPos);
+
+    EXPECT_NE(worldHookSource.find("RenderPassState::CompleteMainWorldModelPass(frame)"),
+              std::string::npos);
+    EXPECT_NE(worldHookSource.find("RenderPassState::ReleaseMainWorldModelPass(frame)"),
+              std::string::npos);
+    EXPECT_NE(viewModelHookSource.find("RenderPassState::IsMainWorldModelPassComplete(frame)"),
+              std::string::npos);
+    EXPECT_NE(viewModelHookSource.find("RenderPassState::TryBeginCompositePass(frame)"),
+              std::string::npos);
+    EXPECT_NE(viewModelHookSource.find("F::SpyCamera->IsRendering()"), std::string::npos);
+}
+
+TEST(MaterialsContracts, CompositeBelongsToRenderViewThatDrewMainWorld) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto passSource = testhelpers::ReadTextFile(root / kRenderPassStateSource);
+    const auto renderViewSource = testhelpers::ReadTextFile(root / kRenderViewHookSource);
+    const auto worldHookSource = testhelpers::ReadTextFile(root / kWorldRenderHookSource);
+    const auto viewModelHookSource = testhelpers::ReadTextFile(root / kViewModelHookSource);
+
+    EXPECT_NE(passSource.find("class CRenderViewScope"), std::string::npos);
+    EXPECT_NE(renderViewSource.find("CRenderViewScope renderViewScope"), std::string::npos);
+    EXPECT_NE(worldHookSource.find("MarkCurrentRenderViewMainWorld()"), std::string::npos);
+    EXPECT_NE(viewModelHookSource.find("IsCurrentRenderViewMainWorld()"), std::string::npos);
+}
+
+TEST(MaterialsContracts, ViewmodelOnlyMaterialsInitializeOnDemand) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto header = testhelpers::ReadTextFile(root / kHeaderSource);
+    const auto modelHook = testhelpers::ReadTextFile(root / kModelRenderHookSource);
+
+    EXPECT_NE(header.find("void EnsureInitialized();"), std::string::npos);
+    EXPECT_NE(modelHook.find("F::Materials->EnsureInitialized();"), std::string::npos);
+}
+
+TEST(MaterialsContracts, FeatureRunHasLocalFrameGuardAndCleanupReset) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto mainSource = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(mainSource.find("m_nLastRunFrame == frame"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nLastRunFrame = frame"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_nLastRunFrame = -1"), std::string::npos);
+    EXPECT_NE(mainSource.find("RenderPassState::ResetFrameGates()"), std::string::npos);
+
+    const auto activeGuardPos = mainSource.find("if (!CFG::Materials_Active");
+    const auto initializePos = mainSource.find("Initialize();", activeGuardPos);
+    ASSERT_NE(activeGuardPos, std::string::npos);
+    ASSERT_NE(initializePos, std::string::npos);
+    EXPECT_LT(activeGuardPos, initializePos)
+        << "Disabled/UI/screenshot paths must not initialize material resources.";
 }

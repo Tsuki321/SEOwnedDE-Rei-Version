@@ -2176,7 +2176,6 @@ void CMenu::MainWindow()
 			CheckBox("Network Fix", CFG::Misc_Ping_Reducer);
 			CheckBox("Prediction Error Jitter Fix", CFG::Misc_Pred_Error_Jitter_Fix);
 			CheckBox("ComputeLightingOrigin Fix", CFG::Misc_ComputeLightingOrigin_Fix);
-			CheckBox("SetupBones Optimization", CFG::Misc_SetupBones_Optimization);
 		}
 		GroupBoxEnd();
 

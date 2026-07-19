@@ -12,6 +12,7 @@ class CMaterials
 	std::array<int, MAX_EDICTS> m_arrDrawnHandles = {};
 	uint32_t m_nDrawGeneration = 1;
 	int m_nDrawFrame = -1;
+	int m_nLastRunFrame = -1;
 	bool m_bHasAnyDrawn = false;
 	bool m_bRendering = false;
 	bool m_bRenderingOriginalMat = false;
@@ -33,6 +34,7 @@ public:
 	IMaterial* m_pFlatNoInvis = nullptr;
 	IMaterial* m_pShadedNoInvis = nullptr;
 
+	void EnsureInitialized();
 	void Run(IMatRenderContext* pRenderContext);
 	void CleanUp();
 

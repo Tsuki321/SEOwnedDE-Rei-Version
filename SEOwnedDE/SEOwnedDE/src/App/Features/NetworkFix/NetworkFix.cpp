@@ -9,6 +9,7 @@ MAKE_HOOK(CL_ReadPackets, Signatures::CL_ReadPackets.Get(), void, __cdecl,
 {
 	if (!CFG::Misc_Ping_Reducer)
 	{
+		F::NetworkFix->Reset();
 		CALL_ORIGINAL(bFinalTick);
 
 		return;
@@ -38,21 +39,25 @@ void CReadPacketState::Restore()
 
 void CNetworkFix::FixInputDelay(bool bFinalTick)
 {
-	if (!I::EngineClient->IsInGame())
+	if (!CFG::Misc_Ping_Reducer || !I::EngineClient || !I::ClientState || !I::GlobalVars || !I::EngineClient->IsInGame())
 	{
+		Reset();
 		return;
 	}
 
-	if (const auto pNetChannel = I::EngineClient->GetNetChannelInfo())
+	const auto pNetChannel = I::EngineClient->GetNetChannelInfo();
+	if (!pNetChannel || pNetChannel->IsLoopback())
 	{
-		if (pNetChannel->IsLoopback())
-		{
-			return;
-		}
+		Reset();
+		return;
 	}
 
-	CReadPacketState backup = {};
+	const int nFrame = I::GlobalVars->framecount;
+	if (m_ReadGate.IsArmedFor(nFrame, pNetChannel))
+		return;
 
+	Reset();
+	CReadPacketState backup = {};
 	backup.Store();
 
 	Hooks::CL_ReadPackets::Hook.Original<Hooks::CL_ReadPackets::fn>()(bFinalTick);
@@ -60,20 +65,38 @@ void CNetworkFix::FixInputDelay(bool bFinalTick)
 	m_State.Store();
 
 	backup.Restore();
+	m_ReadGate.Arm(nFrame, pNetChannel);
 }
 
 bool CNetworkFix::ShouldReadPackets()
 {
-	if (!I::EngineClient->IsInGame())
-		return true;
-
-	if (const auto pNetChannel = I::EngineClient->GetNetChannelInfo())
+	if (!CFG::Misc_Ping_Reducer || !I::EngineClient || !I::ClientState || !I::GlobalVars || !I::EngineClient->IsInGame())
 	{
-		if (pNetChannel->IsLoopback())
-			return true;
+		Reset();
+		return true;
+	}
+
+	const auto pNetChannel = I::EngineClient->GetNetChannelInfo();
+	if (!pNetChannel || pNetChannel->IsLoopback())
+	{
+		Reset();
+		return true;
+	}
+
+	if (!m_ReadGate.Consume(I::GlobalVars->framecount, pNetChannel))
+	{
+		m_State = {};
+		return true;
 	}
 
 	m_State.Restore();
+	m_State = {};
 
 	return false;
+}
+
+void CNetworkFix::Reset()
+{
+	m_State = {};
+	m_ReadGate.Reset();
 }

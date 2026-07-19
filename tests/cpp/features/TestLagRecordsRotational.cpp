@@ -13,7 +13,7 @@ constexpr const char* kFeatureHeader =
 // - rotational + feet-yaw capture
 // - sim-time validity window
 // - bone matrix swap helper symmetry
-// - failed wearable child tracking (Phase 2)
+// - explicit historical-scope isolation from live rendering
 
 TEST(LagRecordsRotationalContracts, RecordCapturesAnglesAndFeetYaw) {
     const auto root = testhelpers::FindRepoRoot();
@@ -32,7 +32,7 @@ TEST(LagRecordsRotationalContracts, RecordCapturesAnglesAndFeetYaw) {
     EXPECT_NE(header.find("FeetYaw"), std::string::npos);
     EXPECT_NE(header.find("BoneMatrix[MAX_BONE_COUNT]"), std::string::npos);
 
-    // AddRecord captures live values into the record.
+    // AddRenderRecord captures coherent rendered values into the record.
     EXPECT_NE(src.find("newRecord.AbsAngles"), std::string::npos);
     EXPECT_NE(src.find("newRecord.AbsOrigin"), std::string::npos);
     EXPECT_NE(src.find("newRecord.FeetYaw"), std::string::npos);
@@ -78,19 +78,18 @@ TEST(LagRecordsRotationalContracts, DiffersFromCurrentChecksOriginAnglesFlagsAnd
     EXPECT_NE(src.find("pRecord->FeetYaw"), std::string::npos);
 }
 
-// Phase 2: failed wearable-child SetupBones tracking. The set must exist in the
-// header and be referenced from both AddRecord (insertion / per-player clear) and
-// the SetupBones cache short-circuit.
-TEST(LagRecordsRotationalContracts, FailedChildBonesSetIsDeclaredAndUsed) {
+TEST(LagRecordsRotationalContracts, HistoricalCopyIsScopedToActivePlayer) {
     const auto root = testhelpers::FindRepoRoot();
     const auto header = testhelpers::ReadTextFile(root / kFeatureHeader);
-    const auto cpp = testhelpers::ReadTextFile(root / kFeatureCpp);
+    const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
 
-    EXPECT_NE(header.find("m_FailedChildBones"), std::string::npos)
-        << "Phase 2 expects CLagRecords::m_FailedChildBones to be declared.";
-    EXPECT_NE(header.find("HasFailedBones"), std::string::npos)
-        << "Phase 2 expects HasFailedBones() accessor.";
-    EXPECT_NE(cpp.find("m_FailedChildBones"), std::string::npos);
+    EXPECT_NE(header.find("CopyActiveBones"), std::string::npos);
+    EXPECT_NE(header.find("AppliedBoneCount"), std::string::npos);
+    EXPECT_NE(src.find("entry.Player != pEntity"), std::string::npos);
+    EXPECT_NE(src.find("entry.AppliedBoneCount"), std::string::npos);
+	EXPECT_NE(src.find("nMaxBones < nCachedCount"), std::string::npos);
+    EXPECT_EQ(header.find("m_FailedChildBones"), std::string::npos);
+    EXPECT_EQ(src.find("FirstMoveChild"), std::string::npos);
 }
 
 // Velocity/tick-relative teleport detection: the fixed 64u gate must be scaled
@@ -105,7 +104,7 @@ TEST(LagRecordsRotationalContracts, TeleportDetectionScalesWithVelocityAndTime) 
     EXPECT_NE(header.find("LAG_COMPENSATION_TELEPORTED_BASE_RADIUS"), std::string::npos);
     EXPECT_NE(header.find("LAG_COMPENSATION_TELEPORTED_VELOCITY_SLACK"), std::string::npos);
 
-    // AddRecord derives an allowance from velocity * dt before flagging.
+    // AddRenderRecord derives an allowance from velocity * dt before flagging.
     EXPECT_NE(src.find("head.Velocity.Length()"), std::string::npos);
     EXPECT_NE(src.find("flSimTime - head.SimulationTime"), std::string::npos);
     EXPECT_NE(src.find("bTeleported = true"), std::string::npos);

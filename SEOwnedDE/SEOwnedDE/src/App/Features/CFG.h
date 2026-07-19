@@ -444,7 +444,6 @@ namespace CFG
 	CFGVAR(Misc_Fake_Taunt, false);
 	CFGVAR(Misc_Ping_Reducer, true);
 	CFGVAR(Misc_Pred_Error_Jitter_Fix, true);
-	CFGVAR(Misc_SetupBones_Optimization, true);
 	CFGVAR(Misc_LagRecords_Skip_Offscreen, false);
 	CFGVAR(Misc_ComputeLightingOrigin_Fix, true);
 	CFGVAR(Misc_Equip_Region_Unlock, true);

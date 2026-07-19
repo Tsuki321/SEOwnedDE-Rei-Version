@@ -4,7 +4,6 @@
 
 #include <array>
 #include <cstdint>
-#include <vector>
 
 // MAX_LAG_RECORDS: 24 ticks ~= 360 ms at 66 tick (240 ms at 100 tick). Sits
 // comfortably inside the default sv_maxunlag (1.0 s) window, so essentially the
@@ -42,6 +41,7 @@ inline constexpr float LAG_LATENCY_EMA_ALPHA = 0.12f;
 struct LagRecord_t
 {
 	C_TFPlayer* Player = nullptr;
+	int ModelIndex = -1;
 	int BoneCount = 0;
 	std::array<matrix3x4_t, MAX_BONE_COUNT> BoneData{};
 	float SimulationTime = -1.0f;
@@ -84,7 +84,6 @@ class CLagRecords
 	std::array<std::array<LagRecord_t, MAX_LAG_RECORDS>, MAX_PLAYERS> m_LagRecords = {};
 	std::array<uint8_t, MAX_PLAYERS> m_RecordHeads = {};
 	std::array<uint8_t, MAX_PLAYERS> m_RecordCounts = {};
-	bool m_bSettingUpBones = false;
 
 	// Exponentially-smoothed latency (outgoing + lerp) used to scope the
 	// per-frame validity window. Seeded to -1 so the first UpdateRecords adopts
@@ -100,15 +99,6 @@ class CLagRecords
 	// results instead of redundantly re-fetching them per pass.
 	std::array<LagRecordCachedState_t, MAX_PLAYERS> m_CachedStates = {};
 
-	// Failed-child wearable handles. Compacted in-place via swap-and-pop,
-	// so the list is unsorted; consumer lookup is linear. Typical N is a
-	// handful (cosmetic / weapon wearables that fail SetupBones capture),
-	// so linear beats binary search here on cache locality alone. EHANDLE
-	// staleness detection is cheap: Get() returns nullptr when the entity
-	// is destroyed, and a handle value mismatch catches entity recycling
-	// without a separate GetClientEntity round-trip.
-	std::vector<CBaseHandle> m_FailedChildBones = {};
-
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency);
 
 	static int PlayerToIndex(C_TFPlayer* pPlayer);
@@ -121,11 +111,11 @@ public:
 	// place instead of being copy-pasted across hook branches.
 	static bool AreConsumersActive();
 
-	// Whether AddRecord should run for this player under the current skip-
-	// offscreen / consumer policy. Callers still apply dead/team filters.
+	// Whether AddRecord should run for this enemy under the current feature and
+	// off-screen policy. Centralizing all validity gates keeps capture callers cheap.
 	static bool ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer);
 
-	void AddRecord(C_TFPlayer* pPlayer);
+	void AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime);
 	const LagRecord_t* GetRecord(C_TFPlayer* pPlayer, int nRecord);
 	bool HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords = nullptr);
 	void UpdateRecords();
@@ -157,18 +147,6 @@ public:
 	}
 
 	static LagRecordCachedState_t CacheCurrentState(C_TFPlayer* pPlayer);
-	bool IsSettingUpBones() { return m_bSettingUpBones; }
-
-	bool HasFailedBones(C_BaseEntity* pEntity) const
-	{
-		if (m_FailedChildBones.empty())
-			return false;
-
-		// CBaseHandle has no converting ctor from IHandleEntity*; assign instead.
-		CBaseHandle h;
-		h = pEntity;
-		return std::find(m_FailedChildBones.begin(), m_FailedChildBones.end(), h) != m_FailedChildBones.end();
-	}
 };
 
 MAKE_SINGLETON_SCOPED(CLagRecords, LagRecords, F);
@@ -182,6 +160,7 @@ class CLagRecordMatrixHelper
 		Vec3 AbsAngles = {};
 		matrix3x4_t BoneMatrix[MAX_BONE_COUNT] = {};
 		int BoneCount = 0;
+		int AppliedBoneCount = 0;
 		CUtlVector<matrix3x4_t>* CachedBoneData = nullptr;
 	};
 
@@ -189,9 +168,15 @@ class CLagRecordMatrixHelper
 	int m_nActiveDepth = 0;
 
 public:
-	void Set(const LagRecord_t* pRecord);
+	bool Set(const LagRecord_t* pRecord);
 	void Restore();
+	bool CopyActiveBones(C_BaseEntity* pEntity, matrix3x4_t* pBoneToWorldOut, int nMaxBones) const;
 	bool IsActive() const { return m_nActiveDepth > 0; }
+	bool IsActiveFor(const C_BaseEntity* pEntity) const
+	{
+		return IsActive()
+			&& static_cast<const C_BaseEntity*>(m_Stack[m_nActiveDepth - 1].Player) == pEntity;
+	}
 };
 
 MAKE_SINGLETON_SCOPED(CLagRecordMatrixHelper, LagRecordMatrixHelper, F);
@@ -204,10 +189,7 @@ public:
 	explicit CLagRecordScope(const LagRecord_t* pRecord)
 	{
 		if (pRecord)
-		{
-			F::LagRecordMatrixHelper->Set(pRecord);
-			m_bActive = F::LagRecordMatrixHelper->IsActive();
-		}
+			m_bActive = F::LagRecordMatrixHelper->Set(pRecord);
 	}
 
 	~CLagRecordScope()

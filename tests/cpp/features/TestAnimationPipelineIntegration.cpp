@@ -2,132 +2,74 @@
 
 #include "../helpers/SourceContractAssertions.h"
 
-// End-to-end integration contract for the animation smoothness pipeline.
-//
-// The pipeline spans multiple files. Rather than reconstructing the engine in a unit
-// test, this suite verifies that the *call chain contracts* hold across the
-// participating sources:
-//
-//   FRAME_NET_UPDATE_END (FrameStageNotify)
-//     -> per remote player: UpdateClientSideAnimation x N (tick-locked)
-//     -> per remote player: LagRecords::AddRecord
-//       -> SetupBones writes into LagRecord_t::BoneData
-//     -> arrVelFixRecords refreshed
-//   FRAME_RENDER_START
-//     -> CBaseAnimating::SetupBones consumes cached bones + delta correction
-//   CPrediction::RunCommand
-//     -> drives local player anim state
-//   AddVar
-//     -> filters velocity-derived vars while leaving pose interpolation intact
-//
-// Each link must remain wired together; this test catches accidental decoupling.
-
 namespace {
-struct PipelineFile {
-    const char* path;
-    std::vector<const char*> required_tokens;
-};
-
-const PipelineFile kPipeline[] = {
-    {
-        "SEOwnedDE/SEOwnedDE/src/App/Hooks/IBaseClientDLL_FrameStageNotify.cpp",
-        {
-            "FRAME_NET_UPDATE_END",
-            "G::bUpdatingAnims",
-            "pPlayer->UpdateClientSideAnimation()",
-            "F::LagRecords->AddRecord(pPlayer)",
-            "G::arrVelFixRecords",
-        },
-    },
-    {
-        "SEOwnedDE/SEOwnedDE/src/App/Hooks/CTFPlayer_UpdateClientSideAnimation.cpp",
-        {
-            "G::bUpdatingAnims",
-            "UpdateAllViewmodelAddons()",
-        },
-    },
-    {
-        "SEOwnedDE/SEOwnedDE/src/App/Hooks/CPrediction_RunCommand.cpp",
-        {
-            "pAnimState->Update",
-            "FrameAdvance",
-            "TICK_INTERVAL",
-        },
-    },
-    {
-        "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.cpp",
-        {
-            "newRecord.BoneData",
-            "newRecord.AbsOrigin",
-            "newRecord.AbsAngles",
-            "newRecord.SimulationTime",
-            "records[newHead]",
-        },
-    },
-    {
-        "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseAnimating_SetupBones.cpp",
-        {
-            "GetCachedBoneData()",
-            "F::LagRecords->",
-            "pRecord->AbsOrigin",
-            "pBoneToWorldOut",
-        },
-    },
-    {
-        "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_SetAbsVelocity.cpp",
-        {
-            "G::arrVelFixRecords",
-            "FL_DUCKING",
-        },
-    },
-    {
-        "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_AddVar.cpp",
-        {
-            "m_iv_vecVelocity",
-            "m_iv_flMaxGroundSpeed",
-        },
-    },
-};
-}  // namespace
+constexpr const char* kFrameStage =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/IBaseClientDLL_FrameStageNotify.cpp";
+constexpr const char* kUpdateAnimation =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CTFPlayer_UpdateClientSideAnimation.cpp";
+constexpr const char* kRunCommand =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CPrediction_RunCommand.cpp";
+constexpr const char* kSetupBones =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseAnimating_SetupBones.cpp";
+constexpr const char* kAddVar =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_AddVar.cpp";
+constexpr const char* kInterpolate =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_InterpolateServerEntities.cpp";
+constexpr const char* kResetLatched =
+    "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_ResetLatched.cpp";
+constexpr const char* kLagRecords =
+    "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.cpp";
+}
 
 TEST(AnimationPipelineIntegration, AllParticipatingFilesExist) {
     const auto root = testhelpers::FindRepoRoot();
-    for (const auto& entry : kPipeline) {
-        const auto fullPath = root / entry.path;
-        EXPECT_TRUE(std::filesystem::exists(fullPath))
-            << "Pipeline source missing: " << fullPath.string();
-    }
+    const char* files[] = {
+        kFrameStage, kUpdateAnimation, kRunCommand, kSetupBones,
+        kAddVar, kInterpolate, kResetLatched, kLagRecords,
+    };
+
+    for (const auto* file : files)
+        EXPECT_TRUE(std::filesystem::exists(root / file));
 }
 
-TEST(AnimationPipelineIntegration, AllPipelineLinksRetainContractTokens) {
+TEST(AnimationPipelineIntegration, LiveAnimationRemainsEngineOwned) {
     const auto root = testhelpers::FindRepoRoot();
-    for (const auto& entry : kPipeline) {
-        const auto fullPath = root / entry.path;
-        ASSERT_TRUE(std::filesystem::exists(fullPath));
-        const auto src = testhelpers::ReadTextFile(fullPath);
+    const auto frame = testhelpers::ReadTextFile(root / kFrameStage);
+    const auto update = testhelpers::ReadTextFile(root / kUpdateAnimation);
+    const auto prediction = testhelpers::ReadTextFile(root / kRunCommand);
 
-        for (const auto* token : entry.required_tokens) {
-            EXPECT_NE(src.find(token), std::string::npos)
-                << "File " << entry.path << " missing required pipeline token: " << token;
-        }
-    }
+    EXPECT_EQ(frame.find("UpdateClientSideAnimation()"), std::string::npos);
+    EXPECT_EQ(frame.find("G::bUpdatingAnims"), std::string::npos);
+    EXPECT_EQ(update.find("G::bUpdatingAnims"), std::string::npos);
+    EXPECT_NE(update.find("CALL_ORIGINAL(ecx);"), std::string::npos);
+    EXPECT_EQ(prediction.find("FrameAdvance"), std::string::npos);
+    EXPECT_EQ(prediction.find("pAnimState->Update"), std::string::npos);
 }
 
-TEST(AnimationPipelineIntegration, CatchUpLoopAndLagRecordCallSitesAreColocated) {
+TEST(AnimationPipelineIntegration, LiveInterpolationRemainsEngineOwned) {
     const auto root = testhelpers::FindRepoRoot();
-    const auto frameStage = testhelpers::ReadTextFile(
-        root / "SEOwnedDE/SEOwnedDE/src/App/Hooks/IBaseClientDLL_FrameStageNotify.cpp");
+    const auto addVar = testhelpers::ReadTextFile(root / kAddVar);
+    const auto interpolate = testhelpers::ReadTextFile(root / kInterpolate);
+    const auto reset = testhelpers::ReadTextFile(root / kResetLatched);
 
-    // Anim catch-up loop and LagRecord capture must occur within the same frame stage,
-    // so the catch-up loop and AddRecord call must both be present.
-    const auto loopPos = frameStage.find("UpdateClientSideAnimation()");
-    const auto addPos = frameStage.find("AddRecord(pPlayer)");
-    ASSERT_NE(loopPos, std::string::npos);
-    ASSERT_NE(addPos, std::string::npos);
+    EXPECT_EQ(addVar.find("m_iv_vecVelocity"), std::string::npos);
+    EXPECT_EQ(addVar.find("m_iv_flMaxGroundSpeed"), std::string::npos);
+    EXPECT_EQ(interpolate.find("cl_extrapolate"), std::string::npos);
+    EXPECT_EQ(reset.find("Misc_Pred_Error_Jitter_Fix"), std::string::npos);
+    EXPECT_NE(reset.find("CALL_ORIGINAL(ecx);"), std::string::npos);
+}
 
-    // Anim catch-up should precede the lag record capture so bones reflect the
-    // freshest pose for the recorded snapshot.
-    EXPECT_LT(loopPos, addPos);
+TEST(AnimationPipelineIntegration, HistoricalBonesAreIsolatedFromLiveRendering) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto setup = testhelpers::ReadTextFile(root / kSetupBones);
+    const auto lag = testhelpers::ReadTextFile(root / kLagRecords);
+
+    EXPECT_NE(setup.find("CopyActiveBones"), std::string::npos);
+    EXPECT_EQ(setup.find("F::LagRecords->GetRecord"), std::string::npos);
+    EXPECT_NE(lag.find("pPlayer->SetupBones("), std::string::npos);
+    EXPECT_NE(lag.find("AddRenderRecord"), std::string::npos);
+    EXPECT_NE(lag.find("I::GlobalVars->curtime"), std::string::npos);
+    EXPECT_EQ(lag.find("pPlayer->InvalidateBoneCache();"), std::string::npos);
 }
 
 TEST(AnimationPipelineIntegration, AimbotTickRemapUsesInterpAmount) {
@@ -135,8 +77,7 @@ TEST(AnimationPipelineIntegration, AimbotTickRemapUsesInterpAmount) {
     const auto hitscan = testhelpers::ReadTextFile(
         root / "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp");
 
-    // The aimbot must remap tick_count using the client interp amount.
-	EXPECT_NE(hitscan.find("SDKUtils::GetLerp()"), std::string::npos);
+    EXPECT_NE(hitscan.find("SDKUtils::GetLerp()"), std::string::npos);
     EXPECT_NE(hitscan.find("TIME_TO_TICKS"), std::string::npos);
     EXPECT_NE(hitscan.find("SimulationTime"), std::string::npos);
 }

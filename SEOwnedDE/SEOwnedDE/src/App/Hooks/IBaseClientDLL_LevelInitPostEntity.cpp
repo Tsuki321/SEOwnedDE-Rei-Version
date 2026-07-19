@@ -3,6 +3,7 @@
 #include "../Features/Aimbot/AimbotHitscan/AimbotHitscan.h"
 #include "../Features/Crits/Crits.h"
 #include "../Features/Killstreak/Killstreak.h"
+#include "../Features/NetworkFix/NetworkFix.h"
 #include "../Features/Players/Players.h"
 #include "../Features/CFG.h"
 
@@ -11,6 +12,7 @@ MAKE_HOOK(IBaseClientDLL_LevelInitPostEntity, Memory::GetVFunc(I::BaseClientDLL,
 {
 	CALL_ORIGINAL(ecx);
 
+	F::NetworkFix->Reset();
 	H::Entities->UpdateModelIndexes();
 	F::AimbotHitscan->Reset();
 	F::Crits->Reset();

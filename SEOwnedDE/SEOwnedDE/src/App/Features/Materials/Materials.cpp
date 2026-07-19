@@ -3,6 +3,7 @@
 #include "../CFG.h"
 #include "../VisualUtils/VisualUtils.h"
 #include "../LagRecords/LagRecords.h"
+#include "../Rendering/RenderPassState.h"
 #include "../SpyCamera/SpyCamera.h"
 
 void SetModelStencilForOutlines(C_BaseEntity* pEntity, IMatRenderContext* pRenderContext, C_TFPlayer* pPlayerOwner)
@@ -215,6 +216,11 @@ void CMaterials::BeginDrawPass()
 	m_nDrawFrame = I::GlobalVars ? I::GlobalVars->framecount : -1;
 }
 
+void CMaterials::EnsureInitialized()
+{
+	Initialize();
+}
+
 void CMaterials::MarkDrawn(C_BaseEntity* pEntity)
 {
 	if (!pEntity)
@@ -392,9 +398,6 @@ void CMaterials::RunLagRecords(IMatRenderContext* pRenderContext)
 
 void CMaterials::Run(IMatRenderContext* pRenderContext)
 {
-	Initialize();
-	BeginDrawPass();
-
 	if (!CFG::Materials_Active || I::EngineVGui->IsGameUIVisible() || F::SpyCamera->IsRendering())
 		return;
 
@@ -410,6 +413,14 @@ void CMaterials::Run(IMatRenderContext* pRenderContext)
 
 	if (!pRenderContext)
 		return;
+
+	const int frame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+	if (frame < 0 || m_nLastRunFrame == frame)
+		return;
+
+	m_nLastRunFrame = frame;
+	EnsureInitialized();
+	BeginDrawPass();
 
 	m_pGlowSelfillumTint->SetVecValue(0.03f, 0.03f, 0.03f);
 
@@ -664,6 +675,12 @@ void CMaterials::Run(IMatRenderContext* pRenderContext)
 void CMaterials::CleanUp()
 {
 	m_bCleaningUp = true;
+	m_nLastRunFrame = -1;
+	m_nDrawFrame = -1;
+	m_bHasAnyDrawn = false;
+	m_bRendering = false;
+	m_bRenderingOriginalMat = false;
+	RenderPassState::ResetFrameGates();
 
 	if (m_pFlat)
 	{

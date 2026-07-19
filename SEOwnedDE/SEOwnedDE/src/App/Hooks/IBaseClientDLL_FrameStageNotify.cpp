@@ -24,73 +24,22 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 		{
 			H::Entities->UpdateCache();
 
-			if (const auto pLocal = H::Entities->GetLocal())
+			if (H::Entities->GetLocal())
 			{
-				for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
+				for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 				{
-					if (!pEntity || pEntity == pLocal)
+					if (!pEntity)
 						continue;
 
 					const auto pPlayer = pEntity->As<C_TFPlayer>();
+					if (pPlayer->deadflag()
+						|| pPlayer->m_flSimulationTime() <= pPlayer->m_flOldSimulationTime())
+						continue;
 
-					if (const auto nDifference = std::clamp(TIME_TO_TICKS(pPlayer->m_flSimulationTime() - pPlayer->m_flOldSimulationTime()), 0, 22))
-					{
-						//deal with animations, local player is dealt with in RunCommand
-						if (CFG::Misc_Accuracy_Improvements)
-						{
-							const float flOldFrameTime = I::GlobalVars->frametime;
-
-							I::GlobalVars->frametime = I::Prediction->m_bEnginePaused ? 0.0f : TICK_INTERVAL;
-
-							for (int n = 0; n < nDifference; n++)
-							{
-								G::bUpdatingAnims = true;
-								pPlayer->UpdateClientSideAnimation();
-								G::bUpdatingAnims = false;
-							}
-
-							I::GlobalVars->frametime = flOldFrameTime;
-						}
-
-						//add the lag record
-						if (CFG::Misc_SetupBones_Optimization)
-						{
-							if (!pPlayer->deadflag())
-							{
-								// Off-screen AddRecord skip (opt-in via
-								// Misc_LagRecords_Skip_Offscreen). Cuts the
-								// SetupBones(128) cost for off-screen players
-								// when no consumer of the records is active.
-								// Policy lives in CLagRecords so both branches
-								// and future callers share one CFG gate.
-								if (CLagRecords::ShouldCaptureRecord(pLocal, pPlayer))
-								{
-									F::LagRecords->AddRecord(pPlayer);
-								}
-							}
-						}
-
-						else
-						{
-							if (pPlayer->m_iTeamNum() != pLocal->m_iTeamNum() && !pPlayer->deadflag())
-							{
-								if (CLagRecords::ShouldCaptureRecord(pLocal, pPlayer))
-								{
-									F::LagRecords->AddRecord(pPlayer);
-								}
-							}
-						}
-
-						// Store movement records for hitchance calculation
-						if (CFG::Aimbot_Projectile_Hitchance_Enabled)
-						{
-							F::MovementSimulation->StoreMoveRecord(pPlayer);
-						}
-					}
+					if (CFG::Aimbot_Projectile_Hitchance_Enabled)
+						F::MovementSimulation->StoreMoveRecord(pPlayer);
 				}
 			}
-
-			F::LagRecords->UpdateRecords();
 
 			for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
 			{
@@ -118,6 +67,32 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 
 		case FRAME_RENDER_START:
 		{
+			// The original frame-stage handler has now applied interpolation and
+			// client animation. Capture that coherent visible pose without advancing
+			// or rewinding the live animation state a second time.
+			if (const auto pLocal = H::Entities->GetLocal(); pLocal && I::GlobalVars)
+			{
+				const float flPoseTime = I::GlobalVars->curtime - SDKUtils::GetLerp();
+				if (std::isfinite(flPoseTime) && flPoseTime > 0.0f)
+				{
+					for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+					{
+						if (!pEntity)
+							continue;
+
+						const auto pPlayer = pEntity->As<C_TFPlayer>();
+						// Once the interpolation target passes the latest network sample,
+						// the visible pose is extrapolated and cannot be backtrack-labeled.
+						if (flPoseTime > pPlayer->m_flSimulationTime() + 0.001f)
+							continue;
+
+						if (CLagRecords::ShouldCaptureRecord(pLocal, pPlayer))
+							F::LagRecords->AddRenderRecord(pPlayer, flPoseTime);
+					}
+				}
+			}
+
+			F::LagRecords->UpdateRecords();
 			H::Input->Update();
 
 			F::WorldModulation->UpdateWorldModulation();

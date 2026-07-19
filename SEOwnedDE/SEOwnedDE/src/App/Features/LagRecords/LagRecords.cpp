@@ -26,29 +26,42 @@ float CLagRecords::GetOutgoingLatency()
 
 bool CLagRecords::AreConsumersActive()
 {
-	return CFG::Aimbot_Hitscan_Target_LagRecords
-		|| CFG::Aimbot_Melee_Target_LagRecords
-		|| CFG::Triggerbot_AutoBackstab_Use_LagRecords
-		|| CFG::Aimbot_Projectile_Ground_Strafe_Prediction
-		|| CFG::Aimbot_Projectile_Air_Strafe_Prediction
-		|| (CFG::Materials_Players_Active && !CFG::Materials_Players_Ignore_LagRecords);
+	const bool bHitscan = CFG::Aimbot_Active
+		&& CFG::Aimbot_Target_Players
+		&& CFG::Aimbot_Hitscan_Active
+		&& CFG::Aimbot_Hitscan_Target_LagRecords;
+	const bool bMelee = CFG::Aimbot_Active
+		&& CFG::Aimbot_Target_Players
+		&& CFG::Aimbot_Melee_Active
+		&& CFG::Aimbot_Melee_Target_LagRecords;
+	const bool bProjectilePrediction = CFG::Aimbot_Active
+		&& CFG::Aimbot_Target_Players
+		&& CFG::Aimbot_Projectile_Active
+		&& (CFG::Aimbot_Projectile_Ground_Strafe_Prediction
+			|| CFG::Aimbot_Projectile_Air_Strafe_Prediction);
+	const bool bBackstab = CFG::Triggerbot_Active
+		&& CFG::Triggerbot_AutoBackstab_Active
+		&& CFG::Triggerbot_AutoBackstab_Use_LagRecords;
+	const bool bHistoricalModels = CFG::Materials_Active
+		&& CFG::Materials_Players_Active
+		&& !CFG::Materials_Players_Ignore_LagRecords;
+
+	return bHitscan || bMelee || bProjectilePrediction || bBackstab || bHistoricalModels;
 }
 
 bool CLagRecords::ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
 {
-	if (!pLocal || !pPlayer)
+	if (!pLocal || !pPlayer || pPlayer == pLocal || pPlayer->IsDormant() || pPlayer->deadflag())
 		return false;
 
-	// When skip-offscreen is off, always capture (legacy default).
-	if (!CFG::Misc_LagRecords_Skip_Offscreen)
-		return true;
+	if (pPlayer->m_iTeamNum() == pLocal->m_iTeamNum())
+		return false;
 
-	// Any active consumer must keep a full ring even for off-screen players
-	// so aimbot/backstab/materials never starve for records.
-	if (AreConsumersActive())
-		return true;
+	if (!AreConsumersActive())
+		return false;
 
-	return F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin());
+	return !CFG::Misc_LagRecords_Skip_Offscreen
+		|| F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin());
 }
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency)
@@ -74,12 +87,12 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime,
 	return true;
 }
 
-void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
+void CLagRecords::AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime)
 {
-	if (!pPlayer)
+	if (!pPlayer || !I::GlobalVars || !std::isfinite(flPoseTime) || flPoseTime <= 0.0f)
 		return;
 
-	if (pPlayer->IsDormant())
+	if (pPlayer->IsDormant() || pPlayer->deadflag())
 		return;
 
 	const int idx = PlayerToIndex(pPlayer);
@@ -93,8 +106,12 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	// ring. SimulationTime, origin and identity are all readable without bones,
 	// so the only work an early-out wastes is a handful of netvar reads (the
 	// original ran SetupBones first, then discarded its result here).
-	const float flSimTime = pPlayer->m_flSimulationTime();
+	if (flPoseTime > pPlayer->m_flSimulationTime() + 0.001f)
+		return;
+
+	const float flSimTime = flPoseTime;
 	const Vec3 vecOrigin = pPlayer->GetAbsOrigin();
+	const int nModelIndex = pPlayer->m_nModelIndex();
 	size_t baseCount = m_RecordCounts[idx];
 	bool bTeleported = false;
 
@@ -111,7 +128,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 		}
 		else
 		{
-			if (flSimTime <= head.SimulationTime)
+			if (TIME_TO_TICKS(flSimTime) <= TIME_TO_TICKS(head.SimulationTime))
 				return;
 
 			// Teleport detection scaled by elapsed time and the target's last
@@ -145,70 +162,29 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
 	LagRecord_t& newRecord = records[newHead];
 
-	m_bSettingUpBones = true;
+	// Capture the already-interpolated, already-animated render pose. Do not
+	// invalidate the cache here: SetupBones can reuse or complete the coherent
+	// vanilla pose, and normal rendering remains free of a second animation pass.
+	const bool bHistoricalModels = CFG::Materials_Active
+		&& CFG::Materials_Players_Active
+		&& !CFG::Materials_Players_Ignore_LagRecords;
+	const int nBoneMask = bHistoricalModels ? BONE_USED_BY_ANYTHING : BONE_USED_BY_HITBOX;
 
-	const auto setup_bones_optimization{ CFG::Misc_SetupBones_Optimization };
+	const bool bCaptured = pPlayer->SetupBones(
+		newRecord.BoneData.data(),
+		MAX_BONE_COUNT,
+		nBoneMask,
+		I::GlobalVars->curtime
+	);
 
-	if (setup_bones_optimization)
+	int nCapturedBoneCount = 0;
+	if (bCaptured)
 	{
-		pPlayer->InvalidateBoneCache();
+		if (const auto pCachedBoneData = pPlayer->GetCachedBoneData())
+			nCapturedBoneCount = std::clamp(pCachedBoneData->Count(), 0, MAX_BONE_COUNT);
 	}
 
-	// BoneData is an inline std::array<matrix3x4_t, MAX_BONE_COUNT> inside the
-	// ring slot, so the buffer is already allocated. We narrow the authoritative
-	// BoneCount after SetupBones succeeds based on the model's actual skeleton
-	// size; matrices past that count are never read by any consumer.
-	const auto result = pPlayer->SetupBones(newRecord.BoneData.data(), MAX_BONE_COUNT, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
-
-	if (setup_bones_optimization)
-	{
-		// Visibility gate: when the player is fully off-screen, the
-		// cosmetics' SetupBones output will be invisible until the
-		// player comes back into view, at which point the next
-		// AddRecord re-runs the loop. Skipping it here saves a
-		// SetupBones call per move-child per off-screen player per
-		// net tick. The player's own SetupBones above still runs
-		// because lag records for off-screen players are still useful
-		// when the player pops into view (Aimbot/Materials ghosts
-		// need fresh bones).
-		const auto pLocal = H::Entities->GetLocal();
-		if (pLocal && F::VisualUtils->IsOnScreenNoEntity(pLocal, vecOrigin))
-		{
-			// Bound the peer walk: a corrupted/recycled move-peer chain could
-			// otherwise cycle indefinitely and freeze the net-update thread. 64
-			// is well above any realistic cosmetic/weapon count (typically <10).
-			constexpr int MAX_MOVE_CHILDREN = 64;
-			int nChild = 0;
-			auto attach = pPlayer->FirstMoveChild();
-			while (attach && nChild < MAX_MOVE_CHILDREN)
-			{
-				if (attach->ShouldDraw())
-				{
-					attach->InvalidateBoneCache();
-					const auto childResult = attach->SetupBones(nullptr, -1, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime);
-
-					if (!childResult)
-					{
-						// Insert if not already present. Lookup is linear because
-						// the list is unsorted (swap-and-pop compact above) and
-						// small in practice (typically a handful of failed
-						// wearables).
-						CBaseHandle h;
-						h = attach;
-						if (std::find(m_FailedChildBones.begin(), m_FailedChildBones.end(), h) == m_FailedChildBones.end())
-							m_FailedChildBones.push_back(h);
-					}
-				}
-
-				++nChild;
-				attach = attach->NextMovePeer();
-			}
-		}
-	}
-
-	m_bSettingUpBones = false;
-
-	if (!result)
+	if (!bCaptured || nCapturedBoneCount <= 0)
 	{
 		// SetupBones may have partially overwritten the slot's bone block. When
 		// the ring was full this slot was the oldest committed record, so shrink
@@ -221,6 +197,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	}
 
 	newRecord.Player = pPlayer;
+	newRecord.ModelIndex = nModelIndex;
 	newRecord.SimulationTime = flSimTime;
 	newRecord.AbsOrigin = vecOrigin;
 	newRecord.AbsAngles = pPlayer->GetAbsAngles();
@@ -236,12 +213,7 @@ void CLagRecords::AddRecord(C_TFPlayer* pPlayer)
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		newRecord.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 
-	// Authoritative bone count: bound by both the engine's cached count and
-	// MAX_BONE_COUNT (the size we actually allocated). Defaults to 0 so a
-	// missing cache leaves no consumer reading stale bones.
-	newRecord.BoneCount = 0;
-	if (const auto pCachedBoneData = pPlayer->GetCachedBoneData())
-		newRecord.BoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
+	newRecord.BoneCount = nCapturedBoneCount;
 
 	// Commit: advance the head to the freshly written slot and grow the count
 	// (clamped at capacity, oldest record silently retired on overflow).
@@ -292,43 +264,15 @@ void CLagRecords::UpdateRecords()
 		m_CachedStates = {};
 		m_flSmoothedLatency = -1.0f;
 
-		if (!m_FailedChildBones.empty())
-			m_FailedChildBones.clear();
-
 		return;
 	}
 
+	if (!AreConsumersActive())
 	{
-		// Per-entry EHANDLE checks replace the original GetClientEntity +
-		// cast-back round-trip. Get() returning nullptr means the entity is
-		// gone; a handle value mismatch means the slot was recycled to a
-		// different entity; missing move parent means the wearable is no
-		// longer attached to the player. Compact via swap-and-pop since
-		// the list is short and consumer lookup is linear (HasFailedBones
-		// below) — O(1) per removal instead of the O(N) shift erase.
-		size_t i = 0;
-		while (i < m_FailedChildBones.size())
-		{
-			C_BaseEntity* pChild = static_cast<C_BaseEntity*>(m_FailedChildBones[i].Get());
-
-			if (!pChild || !pChild->GetMoveParent())
-			{
-				m_FailedChildBones[i] = m_FailedChildBones.back();
-				m_FailedChildBones.pop_back();
-				continue;
-			}
-
-			CBaseHandle currentHandle;
-			currentHandle = pChild;
-			if (currentHandle != m_FailedChildBones[i])
-			{
-				m_FailedChildBones[i] = m_FailedChildBones.back();
-				m_FailedChildBones.pop_back();
-				continue;
-			}
-
-			++i;
-		}
+		m_RecordCounts.fill(0u);
+		m_CachedStates = {};
+		m_flSmoothedLatency = -1.0f;
+		return;
 	}
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
@@ -341,7 +285,7 @@ void CLagRecords::UpdateRecords()
 		const auto pPlayer = pEntity->As<C_TFPlayer>();
 		const int idx = PlayerToIndex(pPlayer);
 
-		if (pPlayer->deadflag())
+		if (pPlayer->deadflag() || pPlayer->m_iTeamNum() == pLocal->m_iTeamNum())
 		{
 			if (idx >= 0)
 			{
@@ -473,8 +417,7 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 	if ((cached.AbsOrigin - pRecord->AbsOrigin).LengthSqr() > 0.25f)
 		return true;
 
-	// fmodf-based wrap into [-180, 180] (matches NormalizeYawDelta in
-	// CBaseAnimating_SetupBones.cpp). std::remainderf respects the IEEE
+	// fmodf-based wrap into [-180, 180]. std::remainderf respects the IEEE
 	// rounding mode and is several times slower than fmodf on MSVC.
 	const float flYawDelta = std::fmodf(cached.EyeAngles.y - pRecord->EyeAngles.y + 540.0f, 360.0f) - 180.0f;
 	if (fabsf(flYawDelta) > 0.5f)
@@ -492,29 +435,33 @@ bool CLagRecords::IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCach
 {
 	// Order the cheapest rejects first: the null and teleport checks are single
 	// loads/branches, so they short-circuit before the multi-field pose compare.
-	if (!pRecord || pRecord->bTeleported)
+	if (!pRecord || !pRecord->Player || pRecord->bTeleported
+		|| pRecord->ModelIndex != pRecord->Player->m_nModelIndex())
 		return false;
 
 	return DiffersFromCurrentCached(pRecord, cached);
 }
 
-void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
+bool CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 {
-	if (!pRecord)
-		return;
+	if (!pRecord || pRecord->BoneCount <= 0)
+		return false;
 
 	if (m_nActiveDepth >= MAX_MATRIX_HELPER_DEPTH)
-		return; // Nested scope depth exceeded; bail out rather than overflow m_Stack.
+		return false;
 
 	const auto pPlayer = pRecord->Player;
 
 	if (!pPlayer || pPlayer->deadflag())
-		return;
+		return false;
+
+	if (pRecord->ModelIndex != pPlayer->m_nModelIndex())
+		return false;
 
 	const auto pCachedBoneData = pPlayer->GetCachedBoneData();
 
 	if (!pCachedBoneData)
-		return;
+		return false;
 
 	// Sanity-guard the cached bone count. GetCachedBoneData() resolves a
 	// CUtlVector at a netvar-derived offset; a stale offset after a TF2 patch
@@ -522,26 +469,58 @@ void CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	// the bone buffer. Bail (no-op) instead of trusting it.
 	const int nLiveCount = pCachedBoneData->Count();
 	if (nLiveCount <= 0 || nLiveCount > MAX_BONE_COUNT)
-		return;
+		return false;
+
+	const auto pLiveBones = pCachedBoneData->Base();
+	if (!pLiveBones)
+		return false;
+
+	const int nApplyCount = std::min(nLiveCount, pRecord->BoneCount);
+	if (nApplyCount <= 0)
+		return false;
 
 	auto& entry = m_Stack[m_nActiveDepth];
 	entry.Player = pPlayer;
 	entry.AbsOrigin = pPlayer->GetAbsOrigin();
 	entry.AbsAngles = pPlayer->GetAbsAngles();
-	entry.BoneCount = std::min(pCachedBoneData->Count(), MAX_BONE_COUNT);
+	entry.BoneCount = nLiveCount;
+	entry.AppliedBoneCount = nApplyCount;
 	entry.CachedBoneData = pCachedBoneData;
-	memcpy(entry.BoneMatrix, pCachedBoneData->Base(), sizeof(matrix3x4_t) * entry.BoneCount);
+	memcpy(entry.BoneMatrix, pLiveBones, sizeof(matrix3x4_t) * entry.BoneCount);
 
-	// Apply the record's bones up to the min of (cached count, record count)
-	// so we never read past the end of either buffer.
-	const int nApplyCount = std::min(entry.BoneCount, pRecord->BoneCount);
-	if (nApplyCount > 0)
-		memcpy(pCachedBoneData->Base(), pRecord->BoneData.data(), sizeof(matrix3x4_t) * nApplyCount);
+	memcpy(pLiveBones, pRecord->BoneData.data(), sizeof(matrix3x4_t) * nApplyCount);
 
 	pPlayer->SetAbsOrigin(pRecord->AbsOrigin);
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
 
 	++m_nActiveDepth;
+	return true;
+}
+
+bool CLagRecordMatrixHelper::CopyActiveBones(C_BaseEntity* pEntity, matrix3x4_t* pBoneToWorldOut, int nMaxBones) const
+{
+	if (m_nActiveDepth <= 0 || !pEntity || !pBoneToWorldOut || nMaxBones <= 0)
+		return false;
+
+	const auto& entry = m_Stack[m_nActiveDepth - 1];
+	if (entry.Player != pEntity || !entry.CachedBoneData)
+		return false;
+
+	const int nCachedCount = entry.CachedBoneData->Count();
+	if (nCachedCount <= 0 || nCachedCount > MAX_BONE_COUNT)
+		return false;
+
+	const auto pCachedBones = entry.CachedBoneData->Base();
+	if (!pCachedBones)
+		return false;
+
+	// Match C_BaseAnimating::SetupBones: callers either receive the complete
+	// cached vector or a false result when their output buffer is too small.
+	if (nCachedCount != entry.BoneCount || nMaxBones < nCachedCount)
+		return false;
+
+	memcpy(pBoneToWorldOut, pCachedBones, sizeof(matrix3x4_t) * nCachedCount);
+	return true;
 }
 
 void CLagRecordMatrixHelper::Restore()
@@ -569,6 +548,10 @@ void CLagRecordMatrixHelper::Restore()
 	if (nCachedRestore <= 0 || nCachedRestore > MAX_BONE_COUNT)
 		return;
 
+	const auto pCachedBones = pCachedBoneData->Base();
+	if (!pCachedBones)
+		return;
+
 	const int nBoneCount = std::min(nCachedRestore, entry.BoneCount);
-	memcpy(pCachedBoneData->Base(), entry.BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
+	memcpy(pCachedBones, entry.BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);
 }

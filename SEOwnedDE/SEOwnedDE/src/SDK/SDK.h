@@ -336,8 +336,6 @@ namespace G
 	inline int nTargetIndexEarly = 0;
 	inline int nTicksSinceCanFire = 0;
 
-	inline bool bUpdatingAnims = false;
-
 	inline bool bStartedFakeTaunt = false;
 	inline float flFakeTauntStartYaw = 0.0f;
 }

@@ -3,6 +3,7 @@
 #include "../CFG.h"
 #include "../Materials/Materials.h"
 #include "../Rendering/RenderContextScope.h"
+#include "../Rendering/RenderPassState.h"
 #include "../SpyCamera/SpyCamera.h"
 #include "../VisualUtils/VisualUtils.h"
 
@@ -143,11 +144,6 @@ void COutlines::DrawEntity(C_BaseEntity* pEntity, bool bModel)
 
 void COutlines::RunModels(IMatRenderContext* pRenderContext)
 {
-	BeginDrawPass();
-
-	if (!m_vecOutlineEntities.empty())
-		m_vecOutlineEntities.clear();
-
 	if (!CFG::Outlines_Active || I::EngineVGui->IsGameUIVisible() || F::SpyCamera->IsRendering())
 		return;
 
@@ -170,6 +166,16 @@ void COutlines::RunModels(IMatRenderContext* pRenderContext)
 
 	if (!pRenderContext)
 		return;
+
+	const int frame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+	if (frame < 0 || m_nLastModelFrame == frame)
+		return;
+
+	m_nLastModelFrame = frame;
+	BeginDrawPass();
+
+	if (!m_vecOutlineEntities.empty())
+		m_vecOutlineEntities.clear();
 
 	auto* pRC = pRenderContext;
 
@@ -366,11 +372,17 @@ void COutlines::Run()
 	if (m_vecOutlineEntities.empty())
 		return;
 
+	const int frame = I::GlobalVars ? I::GlobalVars->framecount : -1;
+	if (frame < 0 || m_nDrawFrame != frame || m_nLastCompositeFrame == frame)
+		return;
+
 	const int w = H::Draw->GetScreenW();
 	const int h = H::Draw->GetScreenH();
 
 	if (w < 1 || h < 1 || w > 4096 || h > 2160)
 		return;
+
+	m_nLastCompositeFrame = frame;
 
 	const bool bBloom = CFG::Outlines_Style == 0;
 	Initialize(bBloom);
@@ -483,6 +495,14 @@ void COutlines::Run()
 void COutlines::CleanUp()
 {
 	m_bCleaningUp = true;
+	m_nLastModelFrame = -1;
+	m_nLastCompositeFrame = -1;
+	m_nDrawFrame = -1;
+	m_bHasAnyDrawn = false;
+	m_bRendering = false;
+	m_bRenderingOutlines = false;
+	m_vecOutlineEntities.clear();
+	RenderPassState::ResetFrameGates();
 
 	if (m_pMatHaloAddToScreen)
 	{
@@ -517,6 +537,7 @@ void COutlines::CleanUp()
 		m_pMatBlurY->DecrementReferenceCount();
 		m_pMatBlurY->DeleteIfUnreferenced();
 		m_pMatBlurY = nullptr;
+		m_pBloomAmount = nullptr;
 	}
 
 	m_bCleaningUp = false;

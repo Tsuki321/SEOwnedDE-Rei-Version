@@ -213,8 +213,9 @@ void CPaint::Run()
 	}
 
 	const bool bCleanScreenshot = CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached();
+	const bool bGameUIVisible = I::EngineVGui->IsGameUIVisible();
 
-	if (!bCleanScreenshot && !pLocal->deadflag() && !I::EngineVGui->IsGameUIVisible() && !I::MatSystemSurface->IsCursorVisible() && !SDKUtils::BInEndOfMatch())
+	if (!bCleanScreenshot && !bGameUIVisible && !pLocal->deadflag() && !I::MatSystemSurface->IsCursorVisible() && !SDKUtils::BInEndOfMatch())
 	{
 		static int nOldTick = I::GlobalVars->tickcount;
 
@@ -259,7 +260,7 @@ void CPaint::Run()
 
 	PrunePoints();
 
-	if (bCleanScreenshot)
+	if (bCleanScreenshot || bGameUIVisible)
 		return;
 
 	size_t nLongestStroke = 0;

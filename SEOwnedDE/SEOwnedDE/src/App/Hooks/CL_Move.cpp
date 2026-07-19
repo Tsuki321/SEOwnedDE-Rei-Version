@@ -9,13 +9,13 @@ MAKE_SIGNATURE(CL_Move, "engine.dll", "40 55 53 48 8D AC 24 ? ? ? ? B8 ? ? ? ? E
 MAKE_HOOK(CL_Move, Signatures::CL_Move.Get(), void, __fastcall,
 	float accumulated_extra_samples, bool bFinalTick)
 {
+	if (CFG::Misc_Ping_Reducer)
+		F::NetworkFix->FixInputDelay(bFinalTick);
+	else
+		F::NetworkFix->Reset();
+
 	auto callOriginal = [&](bool bFinal)
 	{
-		if (CFG::Misc_Ping_Reducer)
-		{
-			F::NetworkFix->FixInputDelay(bFinal);
-		}
-
 		F::SeedPred->AskForPlayerPerf();
 
 		if (Shifting::nAvailableTicks < MAX_COMMANDS)
@@ -45,12 +45,31 @@ MAKE_HOOK(CL_Move, Signatures::CL_Move.Get(), void, __fastcall,
 		CALL_ORIGINAL(accumulated_extra_samples, bFinal);
 	};
 
+	auto getShiftCommandCapacity = []()
+	{
+		return CNetworkFix::GetShiftCommandCapacity(
+			I::ClientState ? I::ClientState->chokedcommands : MAX_COMMANDS
+		);
+	};
+
 	if (Shifting::bRapidFireWantShift)
 	{
 		Shifting::bRapidFireWantShift = false;
 		Shifting::bShifting = true;
 
-		const int nTicks = std::min(CFG::Exploits_RapidFire_Ticks, Shifting::nAvailableTicks);
+		const int nTicks = std::min({
+			CFG::Exploits_RapidFire_Ticks,
+			Shifting::nAvailableTicks,
+			getShiftCommandCapacity()
+		});
+
+		if (nTicks <= 0)
+		{
+			Shifting::bShifting = false;
+			callOriginal(bFinalTick);
+			return;
+		}
+
 		for (int n = 0; n < nTicks; n++)
 		{
 			callOriginal(n == nTicks - 1);
@@ -72,9 +91,18 @@ MAKE_HOOK(CL_Move, Signatures::CL_Move.Get(), void, __fastcall,
 				{
 					Shifting::bShifting = true;
 					Shifting::bShiftingWarp = true;
+					const int nCommandCapacity = getShiftCommandCapacity();
 
 					if (CFG::Exploits_Warp_Mode == 0)
 					{
+						if (nCommandCapacity < 2)
+						{
+							Shifting::bShifting = false;
+							Shifting::bShiftingWarp = false;
+							callOriginal(bFinalTick);
+							return;
+						}
+
 						for (int n = 0; n < 2; n++)
 						{
 							callOriginal(n == 1);
@@ -85,7 +113,14 @@ MAKE_HOOK(CL_Move, Signatures::CL_Move.Get(), void, __fastcall,
 
 					if (CFG::Exploits_Warp_Mode == 1)
 					{
-						const int nTicks = Shifting::nAvailableTicks;
+						const int nTicks = std::min(Shifting::nAvailableTicks, nCommandCapacity);
+						if (nTicks <= 0)
+						{
+							Shifting::bShifting = false;
+							Shifting::bShiftingWarp = false;
+							callOriginal(bFinalTick);
+							return;
+						}
 
 						for (int n = 0; n < nTicks; n++)
 						{

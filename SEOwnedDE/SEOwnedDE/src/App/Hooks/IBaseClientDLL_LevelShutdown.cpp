@@ -7,10 +7,12 @@
 #include "../Features/Paint/Paint.h"
 #include "../Features/SeedPred/SeedPred.h"
 #include "../Features/Killstreak/Killstreak.h"
+#include "../Features/NetworkFix/NetworkFix.h"
 
 MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), void, __fastcall,
 	void* ecx)
 {
+	F::NetworkFix->Reset();
 	CALL_ORIGINAL(ecx);
 
 	H::Entities->ClearCache();

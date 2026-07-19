@@ -237,8 +237,9 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 		}
 	}
 
-	// Don't choke too much
-	if (I::ClientState->chokedcommands > 22)
+	// Keep ordinary traffic within the engine's new-command budget. Tick shifts
+	// use the dedicated clc_Move serializer instead.
+	if (!Shifting::bShifting && I::ClientState && I::ClientState->chokedcommands >= (MAX_NEW_COMMANDS - 1))
 	{
 		*pSendPacket = true;
 	}

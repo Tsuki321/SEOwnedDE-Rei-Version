@@ -13,57 +13,79 @@ TEST(LagRecordsContracts, ContainsExpectedSourceFiles) {
     const auto featurePath = root / kFeatureDir;
 
     ASSERT_TRUE(std::filesystem::exists(featurePath));
-
-    const auto cppFiles = testhelpers::CollectFiles(featurePath, ".cpp");
-    const auto headerFiles = testhelpers::CollectFiles(featurePath, ".h");
-
-    EXPECT_GE(cppFiles.size(), static_cast<std::size_t>(1));
-    EXPECT_GE(headerFiles.size(), static_cast<std::size_t>(1));
+    EXPECT_GE(testhelpers::CollectFiles(featurePath, ".cpp").size(), 1u);
+    EXPECT_GE(testhelpers::CollectFiles(featurePath, ".h").size(), 1u);
 }
 
-TEST(LagRecordsContracts, MainSourceContainsFeatureTokens) {
+TEST(LagRecordsContracts, UsesFixedCapacityInPlaceRing) {
     const auto root = testhelpers::FindRepoRoot();
-    const auto mainPath = root / kMainSource;
-    const auto cppFiles = testhelpers::CollectFiles(root / kFeatureDir, ".cpp");
-
-    ASSERT_TRUE(std::filesystem::exists(mainPath));
-    ASSERT_FALSE(cppFiles.empty());
-
-    const auto mainSource = testhelpers::ReadTextFile(mainPath);
-    EXPECT_NE(mainSource.find("CFG::Misc_SetupBones_Optimization"), std::string::npos);
-    EXPECT_NE(mainSource.find("H::Entities"), std::string::npos);
-    EXPECT_NE(mainSource.find("CLagRecords::IsSimulationTimeValid("), std::string::npos);
-    // In-place ring build (commit 0df6959+): AddRecord aliases the destination
-    // slot instead of move-assigning a stack-local record into it.
-    EXPECT_NE(mainSource.find("LagRecord_t& newRecord = records[newHead]"), std::string::npos);
-    EXPECT_NE(mainSource.find("m_LagRecords[i]"), std::string::npos);
-    EXPECT_NE(mainSource.find("sizeof(matrix3x4_t) * entry.BoneCount"), std::string::npos);
-    EXPECT_GE(testhelpers::CountTokenAcrossFiles(cppFiles, "CFG::"), 1u);
-}
-
-TEST(LagRecordsContracts, UsesGuardClausesAndReturns) {
-    const auto root = testhelpers::FindRepoRoot();
-    const auto cppFiles = testhelpers::CollectFiles(root / kFeatureDir, ".cpp");
-
-    ASSERT_FALSE(cppFiles.empty());
-
-    const auto totalIfs = testhelpers::CountTokenAcrossFiles(cppFiles, "if (");
-    const auto totalReturns = testhelpers::CountTokenAcrossFiles(cppFiles, "return");
-
-    EXPECT_GE(totalIfs, static_cast<std::size_t>(4));
-    EXPECT_GE(totalReturns, static_cast<std::size_t>(3));
-}
-
-TEST(LagRecordsContracts, CentralizesConsumerCapturePolicy) {
-    const auto root = testhelpers::FindRepoRoot();
-    const auto header = testhelpers::ReadTextFile(root / kHeaderSource);
     const auto mainSource = testhelpers::ReadTextFile(root / kMainSource);
+    const auto header = testhelpers::ReadTextFile(root / kHeaderSource);
 
-    EXPECT_NE(header.find("AreConsumersActive"), std::string::npos);
-    EXPECT_NE(header.find("ShouldCaptureRecord"), std::string::npos);
-    EXPECT_NE(mainSource.find("CLagRecords::AreConsumersActive()"), std::string::npos);
-    EXPECT_NE(mainSource.find("CLagRecords::ShouldCaptureRecord("), std::string::npos);
-    EXPECT_NE(mainSource.find("CFG::Aimbot_Hitscan_Target_LagRecords"), std::string::npos);
-    EXPECT_NE(mainSource.find("CFG::Triggerbot_AutoBackstab_Use_LagRecords"), std::string::npos);
-    EXPECT_NE(mainSource.find("CFG::Materials_Players_Ignore_LagRecords"), std::string::npos);
+    EXPECT_NE(header.find("MAX_LAG_RECORDS"), std::string::npos);
+    EXPECT_NE(header.find("std::array<std::array<LagRecord_t"), std::string::npos);
+    EXPECT_NE(mainSource.find("LagRecord_t& newRecord = records[newHead]"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_RecordHeads[idx]"), std::string::npos);
+    EXPECT_NE(mainSource.find("m_RecordCounts[idx]"), std::string::npos);
+}
+
+TEST(LagRecordsContracts, ConsumerPolicyIncludesMasterFeatureGates) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(src.find("CFG::Aimbot_Active"), std::string::npos);
+    EXPECT_NE(src.find("CFG::Aimbot_Hitscan_Active"), std::string::npos);
+    EXPECT_NE(src.find("CFG::Aimbot_Melee_Active"), std::string::npos);
+    EXPECT_NE(src.find("CFG::Aimbot_Projectile_Active"), std::string::npos);
+    EXPECT_NE(src.find("CFG::Triggerbot_Active"), std::string::npos);
+    EXPECT_NE(src.find("CFG::Triggerbot_AutoBackstab_Active"), std::string::npos);
+    EXPECT_NE(src.find("CFG::Materials_Active"), std::string::npos);
+}
+
+TEST(LagRecordsContracts, CapturePolicyRejectsNonEnemiesAndUnusedRecords) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(src.find("pPlayer == pLocal"), std::string::npos);
+    EXPECT_NE(src.find("pPlayer->m_iTeamNum() == pLocal->m_iTeamNum()"), std::string::npos);
+    EXPECT_NE(src.find("if (!AreConsumersActive())"), std::string::npos);
+    EXPECT_NE(src.find("CFG::Misc_LagRecords_Skip_Offscreen"), std::string::npos);
+    EXPECT_NE(src.find("F::VisualUtils->IsOnScreenNoEntity"), std::string::npos);
+}
+
+TEST(LagRecordsContracts, CapturesOnlyCoherentRenderedPlayerBody) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(src.find("pPlayer->SetupBones("), std::string::npos);
+    EXPECT_NE(src.find("nBoneMask"), std::string::npos);
+    EXPECT_NE(src.find("AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime)"), std::string::npos);
+    EXPECT_NE(src.find("I::GlobalVars->curtime"), std::string::npos);
+    EXPECT_EQ(src.find("pPlayer->InvalidateBoneCache();"), std::string::npos);
+
+    EXPECT_EQ(src.find("FirstMoveChild"), std::string::npos);
+    EXPECT_EQ(src.find("NextMovePeer"), std::string::npos);
+    EXPECT_EQ(src.find("attach->SetupBones"), std::string::npos);
+    EXPECT_EQ(src.find("Misc_SetupBones_Optimization"), std::string::npos);
+}
+
+TEST(LagRecordsContracts, HistoricalScopeRestoresLiveState) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kMainSource);
+    const auto header = testhelpers::ReadTextFile(root / kHeaderSource);
+
+    EXPECT_NE(header.find("class CLagRecordScope"), std::string::npos);
+    EXPECT_NE(header.find("bool Set(const LagRecord_t* pRecord)"), std::string::npos);
+    EXPECT_NE(src.find("CLagRecordMatrixHelper::CopyActiveBones"), std::string::npos);
+    EXPECT_GE(testhelpers::CountOccurrences(src, "SetAbsOrigin("), 2u);
+    EXPECT_GE(testhelpers::CountOccurrences(src, "SetAbsAngles("), 2u);
+}
+
+TEST(LagRecordsContracts, HistoricalBoneCopyNeverReportsPartialSuccess) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kMainSource);
+
+    EXPECT_NE(src.find("nMaxBones < nCachedCount"), std::string::npos);
+    EXPECT_NE(src.find("nCachedCount != entry.BoneCount"), std::string::npos);
+    EXPECT_NE(src.find("sizeof(matrix3x4_t) * nCachedCount"), std::string::npos);
 }
