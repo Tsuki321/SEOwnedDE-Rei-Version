@@ -48,7 +48,7 @@ public:
 	CProjectileSim() = default;
 	CProjectileSim(const CProjectileSim &) = delete;
 	CProjectileSim &operator=(const CProjectileSim &) = delete;
-	~CProjectileSim();
+	void CleanUp();
 	bool GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const Vec3 &angles, ProjectileInfo &out);
 	bool Init(const ProjectileInfo &info, bool no_vec_up = false);
 	void RunTick();

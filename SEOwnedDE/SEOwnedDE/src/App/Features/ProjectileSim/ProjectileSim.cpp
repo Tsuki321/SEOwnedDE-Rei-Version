@@ -9,25 +9,25 @@
 // affect the linear trajectory through the engine's drag model.
 static const Vec3 kPipeAngularVelocity{ 600.0f, 0.0f, 0.0f };
 
-CProjectileSim::~CProjectileSim()
+void CProjectileSim::CleanUp()
 {
 	if (m_pObj && m_pEnv)
 	{
 		m_pEnv->DestroyObject(m_pObj);
-		m_pObj = nullptr;
 	}
+	m_pObj = nullptr;
 
 	if (m_pCollide && I::PhysicsCollision)
 	{
 		I::PhysicsCollision->DestroyCollide(m_pCollide);
-		m_pCollide = nullptr;
 	}
+	m_pCollide = nullptr;
 
 	if (m_pEnv && I::Physics)
 	{
 		I::Physics->DestroyEnvironment(m_pEnv);
-		m_pEnv = nullptr;
 	}
+	m_pEnv = nullptr;
 }
 
 bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const Vec3 &angles, ProjectileInfo &out)

@@ -165,10 +165,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		}
 
 		const Vec3 vTargetCenter = pPlayer->GetCenter();
-		if (vShootPos.DistToSqr(vTargetCenter) > kMaxBackstabCandidateRangeSqr)
-		{
-			continue;
-		}
+		const bool bLiveTargetInRange = vShootPos.DistToSqr(vTargetCenter) <= kMaxBackstabCandidateRangeSqr;
 
 		if (CFG::Triggerbot_AutoBackstab_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
 		{
@@ -214,7 +211,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			angleTo = Math::CalcAngle(vShootPos, vTargetCenter);
 		}
 
-		if (canKnife || IsBehindAndFacingTarget(vLocalCenter, angleTo, vTargetCenter, pPlayer->GetEyeAngles()))
+		if (bLiveTargetInRange && (canKnife || IsBehindAndFacingTarget(vLocalCenter, angleTo, vTargetCenter, pPlayer->GetEyeAngles())))
 		{
 			Vec3 forward{};
 			Math::AngleVectors(angleTo, &forward);

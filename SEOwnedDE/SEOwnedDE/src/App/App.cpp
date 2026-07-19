@@ -8,6 +8,7 @@
 #include "Features/Paint/Paint.h"
 #include "Features/Menu/Menu.h"
 #include "Features/Players/Players.h"
+#include "Features/ProjectileSim/ProjectileSim.h"
 
 #include "Features/CFG.h"
 
@@ -117,6 +118,8 @@ void CApp::Shutdown()
 			I::MatSystemSurface->SetCursorAlwaysVisible(false);
 		}
 	}
+
+	F::ProjectileSim->CleanUp();
 	
 	if (I::CVar)
 		I::CVar->ConsoleColorPrintf({ 255, 70, 70, 255 }, "SEOwnedDE Unloaded!\n");

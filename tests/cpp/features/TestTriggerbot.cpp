@@ -66,6 +66,27 @@ TEST(TriggerbotContracts, AutoBackstabUsesMoveChildRazorbackWalk) {
     EXPECT_EQ(src.find("GetHighestEntityIndex()"), std::string::npos);
 }
 
+TEST(TriggerbotContracts, AutoBackstabLiveRangeGateDoesNotSkipLagRecords) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);
+
+    const auto liveRange = src.find("const bool bLiveTargetInRange");
+    const auto liveCheck = src.find("if (bLiveTargetInRange &&", liveRange);
+    const auto lagRecordBranch = src.find("Triggerbot_AutoBackstab_Use_LagRecords", liveCheck);
+    const auto recordRange = src.find("vShootPos.DistToSqr(record->Center)", lagRecordBranch);
+
+    ASSERT_NE(liveRange, std::string::npos);
+    ASSERT_NE(liveCheck, std::string::npos);
+    ASSERT_NE(lagRecordBranch, std::string::npos);
+    ASSERT_NE(recordRange, std::string::npos);
+    EXPECT_LT(liveRange, liveCheck);
+    EXPECT_LT(liveCheck, lagRecordBranch);
+    EXPECT_LT(lagRecordBranch, recordRange);
+    EXPECT_EQ(src.find("if (!bLiveTargetInRange)", liveRange), std::string::npos);
+    EXPECT_EQ(src.find("if (vShootPos.DistToSqr(vTargetCenter) > kMaxBackstabCandidateRangeSqr)"),
+              std::string::npos);
+}
+
 TEST(TriggerbotContracts, ExpensiveQueriesFollowCheapClassification) {
     const auto root = testhelpers::FindRepoRoot();
     const auto autoShoot = testhelpers::ReadTextFile(root / kAutoShootSource);
