@@ -18,6 +18,7 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	G::bSilentAngles = false;
 	G::bPSilentAngles = false;
 	G::bFiring = false;
+	G::bManualHitscanFiring = false;
 
 	if (!pCmd || !pCmd->command_number)
 	{

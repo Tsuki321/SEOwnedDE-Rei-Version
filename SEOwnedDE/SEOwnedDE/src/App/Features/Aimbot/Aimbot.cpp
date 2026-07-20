@@ -57,12 +57,21 @@ void CAimbot::RunMain(CUserCmd* pCmd)
 
 void CAimbot::Run(CUserCmd* pCmd)
 {
+	const auto pLocal = H::Entities->GetLocal();
+	const auto pWeapon = H::Entities->GetWeapon();
+
+	// Capture manual ownership before RunMain can add IN_ATTACK itself. The
+	// triggerbot runs after the aimbot and must not replace this command's
+	// historical tick (or its unchanged fallback tick).
+	if (pLocal && pWeapon && !pLocal->deadflag()
+		&& H::AimUtils->GetWeaponType(pWeapon) == EWeaponType::HITSCAN)
+	{
+		G::bManualHitscanFiring = F::AimbotHitscan->IsFiring(pCmd, pWeapon);
+	}
+
 	RunMain(pCmd);
 
 	//same-ish code below to see if we are firing manually
-
-	const auto pLocal = H::Entities->GetLocal();
-	const auto pWeapon = H::Entities->GetWeapon();
 
 	if (!pLocal || !pWeapon
 		|| pLocal->deadflag()

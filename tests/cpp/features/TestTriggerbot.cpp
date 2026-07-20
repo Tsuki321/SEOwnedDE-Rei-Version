@@ -66,6 +66,20 @@ TEST(TriggerbotContracts, AutoBackstabUsesMoveChildRazorbackWalk) {
     EXPECT_EQ(src.find("GetHighestEntityIndex()"), std::string::npos);
 }
 
+TEST(TriggerbotContracts, AutoShootLeavesManualHitscanTickOwnedByAimbot) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
+    const auto manualGuard = src.find("if (G::bManualHitscanFiring)");
+    const auto trace = src.find("H::AimUtils->Trace(", manualGuard);
+    const auto tickWrite = src.find("pCmd->tick_count =", manualGuard);
+
+    ASSERT_NE(manualGuard, std::string::npos);
+    ASSERT_NE(trace, std::string::npos);
+    ASSERT_NE(tickWrite, std::string::npos);
+    EXPECT_LT(manualGuard, trace);
+    EXPECT_LT(manualGuard, tickWrite);
+}
+
 TEST(TriggerbotContracts, AutoBackstabLiveRangeGateDoesNotSkipLagRecords) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);

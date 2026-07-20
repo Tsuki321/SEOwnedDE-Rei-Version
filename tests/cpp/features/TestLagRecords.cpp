@@ -76,6 +76,8 @@ TEST(LagRecordsContracts, HistoricalScopeRestoresLiveState) {
 
     EXPECT_NE(header.find("class CLagRecordScope"), std::string::npos);
     EXPECT_NE(header.find("bool Set(const LagRecord_t* pRecord)"), std::string::npos);
+    EXPECT_NE(header.find("bool IsActive() const { return m_bActive; }"), std::string::npos);
+    EXPECT_NE(header.find("static int GetCommandTick(float flPoseTime)"), std::string::npos);
     EXPECT_NE(src.find("CLagRecordMatrixHelper::CopyActiveBones"), std::string::npos);
     EXPECT_GE(testhelpers::CountOccurrences(src, "SetAbsOrigin("), 2u);
     EXPECT_GE(testhelpers::CountOccurrences(src, "SetAbsAngles("), 2u);

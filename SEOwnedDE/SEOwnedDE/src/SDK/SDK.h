@@ -332,6 +332,9 @@ namespace G
 	inline std::array<VelFixRecord_t, MAX_PLAYERS + 1> arrVelFixRecords = {};
 
 	inline bool bFiring = false;
+	// Set when the command already contains a real manual hitscan shot. This
+	// lets downstream trigger features leave its tick selection untouched.
+	inline bool bManualHitscanFiring = false;
 	inline int nTicksTargetSame = 0;
 	inline int nTargetIndexEarly = 0;
 	inline int nTicksSinceCanFire = 0;

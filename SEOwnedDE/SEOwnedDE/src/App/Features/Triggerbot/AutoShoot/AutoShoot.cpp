@@ -52,6 +52,11 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 	if (H::AimUtils->GetWeaponType(pWeapon) != EWeaponType::HITSCAN)
 		return;
 
+	// A manual shot owns its command tick. Hitscan has either resolved it to a
+	// historical pose or intentionally left the incoming tick unchanged.
+	if (G::bManualHitscanFiring)
+		return;
+
 	// Don't fire if we can't attack yet
 	if (!G::bCanPrimaryAttack)
 		return;

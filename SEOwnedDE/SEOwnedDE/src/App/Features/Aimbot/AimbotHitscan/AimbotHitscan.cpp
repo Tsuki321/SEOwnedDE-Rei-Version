@@ -4,18 +4,59 @@
 
 namespace
 {
-	bool SetupHitboxScan(C_BaseAnimating* pAnimating, mstudiohitboxset_t*& pSet, matrix3x4_t (&boneMatrix)[128])
+	mstudiohitboxset_t* GetHitboxSet(C_BaseAnimating* pAnimating)
 	{
+		if (!pAnimating)
+			return nullptr;
+
 		const auto pModel = pAnimating->GetModel();
 		if (!pModel)
-			return false;
+			return nullptr;
 
 		const auto pHDR = I::ModelInfoClient->GetStudiomodel(pModel);
-		if (!pHDR)
+		return pHDR ? pHDR->pHitboxSet(pAnimating->m_nHitboxSet()) : nullptr;
+	}
+
+	bool SetupHitboxScan(C_BaseAnimating* pAnimating, mstudiohitboxset_t*& pSet, matrix3x4_t (&boneMatrix)[128])
+	{
+		pSet = GetHitboxSet(pAnimating);
+		return pSet && pAnimating->SetupBones(boneMatrix, 128, BONE_USED_BY_HITBOX, I::GlobalVars->curtime);
+	}
+
+	bool HistoricalPoseMayIntersectRay(mstudiohitboxset_t* pSet, const LagRecord_t* pRecord,
+		const Vec3& vTraceStart, const Vec3& vForward, float flTraceLength)
+	{
+		if (!pSet || !pRecord || pRecord->BoneCount <= 0)
 			return false;
 
-		pSet = pHDR->pHitboxSet(pAnimating->m_nHitboxSet());
-		return pSet && pAnimating->SetupBones(boneMatrix, 128, BONE_USED_BY_HITBOX, I::GlobalVars->curtime);
+		for (int n = 0; n < pSet->numhitboxes; ++n)
+		{
+			const auto pBox = pSet->pHitbox(n);
+			if (!pBox || pBox->bone < 0 || pBox->bone >= pRecord->BoneCount)
+				continue;
+
+			Vec3 vCenter = {};
+			Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f,
+				pRecord->BoneData[pBox->bone], vCenter);
+
+			const Vec3 vToCenter = vCenter - vTraceStart;
+			float flAlongRay = vToCenter.Dot(vForward);
+			if (flAlongRay < 0.0f)
+				flAlongRay = 0.0f;
+			else if (flAlongRay > flTraceLength)
+				flAlongRay = flTraceLength;
+
+			const Vec3 vClosestPoint = vTraceStart + (vForward * flAlongRay);
+			const Vec3 vHalfExtents = (pBox->bbmax - pBox->bbmin) * 0.5f;
+			const float flRadius = vHalfExtents.Length() + 8.0f;
+
+			// The padded half-diagonal sphere encloses the rotated hitbox, so this
+			// cheaply rejects impossible records before the authoritative trace.
+			if (vClosestPoint.DistToSqr(vCenter) <= flRadius * flRadius)
+				return true;
+		}
+
+		return false;
 	}
 }
 
@@ -219,6 +260,90 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target)
 	return false;
 }
 
+bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
+{
+	if (!pCmd || !pLocal || !CFG::Aimbot_Target_Players || !CFG::Aimbot_Hitscan_Target_LagRecords)
+		return false;
+
+	const Vec3 vTraceStart = pLocal->GetShootPos();
+	const Vec3 vShotAngles = pCmd->viewangles + pLocal->m_vecPunchAngle();
+	Vec3 vForward = {};
+	Math::AngleVectors(vShotAngles, &vForward);
+	constexpr float flTraceLength = 8192.0f;
+	const Vec3 vTraceEnd = vTraceStart + (vForward * flTraceLength);
+
+	const LagRecord_t* pBestRecord = nullptr;
+	C_TFPlayer* pBestPlayer = nullptr;
+
+	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+	{
+		if (!pEntity)
+			continue;
+
+		const auto pPlayer = pEntity->As<C_TFPlayer>();
+		if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+			continue;
+
+		if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+			continue;
+
+		if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
+			continue;
+
+		if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+			continue;
+
+		if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
+			continue;
+
+		const auto pHitboxSet = GetHitboxSet(pPlayer);
+		if (!pHitboxSet)
+			continue;
+
+		int nRecords = 0;
+		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+			continue;
+
+		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
+		for (int n = 0; n < nRecords; ++n)
+		{
+			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+			if (!pRecord)
+				continue;
+
+			// Records are newest-first. Once this player's record cannot beat the
+			// best global hit, none of its older records can beat it either.
+			if (pBestRecord && pRecord->SimulationTime <= pBestRecord->SimulationTime)
+				break;
+
+			if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
+				continue;
+
+			if (!HistoricalPoseMayIntersectRay(pHitboxSet, pRecord, vTraceStart, vForward, flTraceLength))
+				continue;
+
+			CLagRecordScope scope(pRecord);
+			if (!scope.IsActive())
+				continue;
+
+			if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
+				continue;
+
+			pBestRecord = pRecord;
+			pBestPlayer = pPlayer;
+			break;
+		}
+	}
+
+	if (!pBestRecord || !pBestPlayer)
+		return false;
+
+	pCmd->tick_count = CLagRecords::GetCommandTick(pBestRecord->SimulationTime);
+	G::nTargetIndexEarly = pBestPlayer->entindex();
+	G::nTargetIndex = pBestPlayer->entindex();
+	return true;
+}
+
 bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, HitscanTarget_t& outTarget)
 {
 	const Vec3 vLocalPos = pLocal->GetShootPos();
@@ -406,6 +531,8 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 				else
 				{
 					CLagRecordScope scope(target.LagRecord);
+					if (!scope.IsActive())
+						continue;
 
 					int nHitHitbox = -1;
 					const bool bTraceResult = H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position, &nHitHitbox);
@@ -684,6 +811,8 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 			else
 			{
 				CLagRecordScope scope(target.LagRecord);
+				if (!scope.IsActive())
+					return false;
 
 				int nHitHitbox = -1;
 
@@ -756,6 +885,9 @@ bool CAimbotHitscan::IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon)
 
 void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
+	const bool bManualFiring = IsFiring(pCmd, pWeapon);
+	G::bManualHitscanFiring = bManualFiring;
+
 	if (!CFG::Aimbot_Hitscan_Active)
 		return;
 
@@ -767,13 +899,17 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 	// Delay check - prevents snap aiming
 	if (CFG::Aimbot_Hitscan_Delay_Fire && I::GlobalVars->curtime < m_flDelayFireEndTime)
-		return;
+	{
+		if (bManualFiring)
+			ResolveManualShot(pCmd, pLocal);
 
-	const bool isFiring = IsFiring(pCmd, pWeapon);
+		return;
+	}
+
 	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
 	const bool manualFireIntent = pCmd->buttons & IN_ATTACK;
 	const bool rapidFirePretracking = CFG::Exploits_RapidFire_Key && H::Input->IsDown(CFG::Exploits_RapidFire_Key);
-	const bool needsTargetScan = aimKeyDown || manualFireIntent || isFiring || rapidFirePretracking;
+	const bool needsTargetScan = aimKeyDown || manualFireIntent || bManualFiring || rapidFirePretracking;
 	if (!needsTargetScan)
 		return;
 
@@ -782,7 +918,7 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	{
 		G::nTargetIndexEarly = target.Entity->entindex();
 
-		if (aimKeyDown || isFiring)
+		if (aimKeyDown || bManualFiring)
 		{
 			G::nTargetIndex = target.Entity->entindex();
 
@@ -791,6 +927,9 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 				&& !pLocal->IsZoomed() && pLocal->m_iClass() == TF_CLASS_SNIPER && pWeapon->GetSlot() == WEAPON_SLOT_PRIMARY && G::bCanPrimaryAttack)
 			{
 				pCmd->buttons |= IN_ATTACK2;
+				if (bManualFiring)
+					ResolveManualShot(pCmd, pLocal);
+
 				return;
 			}
 
@@ -829,11 +968,14 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					Aim(pCmd, pLocal, target.AngleTo);
 				}
 
-				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
+				if (bIsFiring && !bManualFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
-					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
+					pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
 				}
 			}
 		}
 	}
+
+	if (bManualFiring)
+		ResolveManualShot(pCmd, pLocal);
 }

@@ -44,6 +44,8 @@ struct LagRecord_t
 	int ModelIndex = -1;
 	int BoneCount = 0;
 	std::array<matrix3x4_t, MAX_BONE_COUNT> BoneData{};
+	// Render records store the pose time paired with BoneData. GetCommandTick
+	// preserves that pairing when a consumer writes a user command.
 	float SimulationTime = -1.0f;
 	Vec3 AbsOrigin = {};
 	Vec3 AbsAngles = {};
@@ -105,6 +107,13 @@ class CLagRecords
 
 public:
 	static float GetOutgoingLatency();
+
+	// Convert the pose time stored with a historical record into the command
+	// tick the server uses for lag compensation.
+	static int GetCommandTick(float flPoseTime)
+	{
+		return TIME_TO_TICKS(flPoseTime + SDKUtils::GetLerp());
+	}
 
 	// True when any feature that reads lag records is configured on. Used by
 	// capture gating (FrameStageNotify) so the consumer CFG list lives in one
@@ -197,6 +206,8 @@ public:
 		if (m_bActive)
 			F::LagRecordMatrixHelper->Restore();
 	}
+
+	bool IsActive() const { return m_bActive; }
 
 	CLagRecordScope(const CLagRecordScope&) = delete;
 	CLagRecordScope& operator=(const CLagRecordScope&) = delete;

@@ -19,6 +19,7 @@ class CAimbotHitscan
 	bool ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target);
 	bool ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target);
 	bool ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target);
+	bool ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal);
 	bool GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, HitscanTarget_t& outTarget);
 	bool ShouldAim(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, const Vec3& vAngles);
