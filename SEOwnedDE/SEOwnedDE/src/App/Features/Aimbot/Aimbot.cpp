@@ -73,13 +73,17 @@ void CAimbot::Run(CUserCmd* pCmd)
 
 	//same-ish code below to see if we are firing manually
 
-	if (!pLocal || !pWeapon
-		|| pLocal->deadflag()
-		|| pLocal->InCond(TF_COND_TAUNTING) || pLocal->InCond(TF_COND_PHASE)
-		|| pLocal->m_bFeignDeathReady() || pLocal->m_flInvisibility() > 0.0f)
+	// Re-fetch entities after RunMain in case they were invalidated
+	const auto pLocalAfter = H::Entities->GetLocal();
+	const auto pWeaponAfter = H::Entities->GetWeapon();
+
+	if (!pLocalAfter || !pWeaponAfter
+		|| pLocalAfter->deadflag()
+		|| pLocalAfter->InCond(TF_COND_TAUNTING) || pLocalAfter->InCond(TF_COND_PHASE)
+		|| pLocalAfter->m_bFeignDeathReady() || pLocalAfter->m_flInvisibility() > 0.0f)
 		return;
 
-	const auto nWeaponType = H::AimUtils->GetWeaponType(pWeapon);
+	const auto nWeaponType = H::AimUtils->GetWeaponType(pWeaponAfter);
 
 	if (!G::bFiring)
 	{
@@ -87,19 +91,19 @@ void CAimbot::Run(CUserCmd* pCmd)
 		{
 			case EWeaponType::HITSCAN:
 			{
-				G::bFiring = F::AimbotHitscan->IsFiring(pCmd, pWeapon);
+				G::bFiring = F::AimbotHitscan->IsFiring(pCmd, pWeaponAfter);
 				break;
 			}
 
 			case EWeaponType::PROJECTILE:
 			{
-				G::bFiring = F::AimbotProjectile->IsFiring(pCmd, pLocal, pWeapon);
+				G::bFiring = F::AimbotProjectile->IsFiring(pCmd, pLocalAfter, pWeaponAfter);
 				break;
 			}
 
 			case EWeaponType::MELEE:
 			{
-				G::bFiring = F::AimbotMelee->IsFiring(pCmd, pWeapon);
+				G::bFiring = F::AimbotMelee->IsFiring(pCmd, pWeaponAfter);
 				break;
 			}
 

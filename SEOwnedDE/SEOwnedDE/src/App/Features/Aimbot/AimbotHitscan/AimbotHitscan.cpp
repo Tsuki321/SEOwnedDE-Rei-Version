@@ -26,7 +26,7 @@ namespace
 	bool HistoricalPoseMayIntersectRay(mstudiohitboxset_t* pSet, const LagRecord_t* pRecord,
 		const Vec3& vTraceStart, const Vec3& vForward, float flTraceLength)
 	{
-		if (!pSet || !pRecord || pRecord->BoneCount <= 0)
+		if (!pSet || !pRecord || pRecord->BoneCount <= 0 || pRecord->BoneCount > MAX_BONE_COUNT)
 			return false;
 
 		for (int n = 0; n < pSet->numhitboxes; ++n)
@@ -296,10 +296,6 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 		if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
 			continue;
 
-		const auto pHitboxSet = GetHitboxSet(pPlayer);
-		if (!pHitboxSet)
-			continue;
-
 		int nRecords = 0;
 		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
 			continue;
@@ -319,11 +315,16 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 			if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
 				continue;
 
-			if (!HistoricalPoseMayIntersectRay(pHitboxSet, pRecord, vTraceStart, vForward, flTraceLength))
-				continue;
-
 			CLagRecordScope scope(pRecord);
 			if (!scope.IsActive())
+				continue;
+
+			// Get hitbox set after activating historical pose to ensure model index matches
+			const auto pHitboxSet = GetHitboxSet(pPlayer);
+			if (!pHitboxSet)
+				continue;
+
+			if (!HistoricalPoseMayIntersectRay(pHitboxSet, pRecord, vTraceStart, vForward, flTraceLength))
 				continue;
 
 			if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
@@ -885,11 +886,11 @@ bool CAimbotHitscan::IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon)
 
 void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
-	const bool bManualFiring = IsFiring(pCmd, pWeapon);
-	G::bManualHitscanFiring = bManualFiring;
-
 	if (!CFG::Aimbot_Hitscan_Active)
 		return;
+
+	const bool bManualFiring = IsFiring(pCmd, pWeapon);
+	G::bManualHitscanFiring = bManualFiring;
 
 	if (CFG::Aimbot_Hitscan_Sort == 0)
 		G::flAimbotFOV = CFG::Aimbot_Hitscan_FOV;
@@ -899,12 +900,7 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 	// Delay check - prevents snap aiming
 	if (CFG::Aimbot_Hitscan_Delay_Fire && I::GlobalVars->curtime < m_flDelayFireEndTime)
-	{
-		if (bManualFiring)
-			ResolveManualShot(pCmd, pLocal);
-
 		return;
-	}
 
 	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
 	const bool manualFireIntent = pCmd->buttons & IN_ATTACK;
@@ -914,7 +910,9 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 		return;
 
 	HitscanTarget_t target = {};
-	if (GetTarget(pLocal, pWeapon, target) && target.Entity)
+	const bool bFoundTarget = GetTarget(pLocal, pWeapon, target) && target.Entity;
+
+	if (bFoundTarget)
 	{
 		G::nTargetIndexEarly = target.Entity->entindex();
 
@@ -927,9 +925,6 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 				&& !pLocal->IsZoomed() && pLocal->m_iClass() == TF_CLASS_SNIPER && pWeapon->GetSlot() == WEAPON_SLOT_PRIMARY && G::bCanPrimaryAttack)
 			{
 				pCmd->buttons |= IN_ATTACK2;
-				if (bManualFiring)
-					ResolveManualShot(pCmd, pLocal);
-
 				return;
 			}
 
@@ -968,14 +963,16 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					Aim(pCmd, pLocal, target.AngleTo);
 				}
 
-				if (bIsFiring && !bManualFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
+				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
 					pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
 				}
 			}
 		}
 	}
-
-	if (bManualFiring)
+	else if (bManualFiring)
+	{
+		// No aimbot target found, resolve manual shot with historical backtracking
 		ResolveManualShot(pCmd, pLocal);
+	}
 }
