@@ -5,6 +5,7 @@
 #include "../Features/LagRecords/LagRecords.h"
 #include "../Features/MiscVisuals/MiscVisuals.h"
 #include "../Features/MovementSimulation/MovementSimulation.h"
+#include "../Features/SkinChanger/SkinChanger.h"
 
 MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35), void, __fastcall,
 	void* ecx, ClientFrameStage_t curStage)
@@ -17,6 +18,12 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 		{
 			H::Entities->ClearCache();
 
+			break;
+		}
+
+		case FRAME_NET_UPDATE_POSTDATAUPDATE_END:
+		{
+			F::SkinChanger->Run();
 			break;
 		}
 

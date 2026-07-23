@@ -319,6 +319,7 @@
     <ClCompile Include="features\TestMultiPlayerAnimStateResetGestureSlot.cpp" />
     <ClCompile Include="features\TestResetLatched.cpp" />
     <ClCompile Include="features\TestSequenceTransitioner.cpp" />
+    <ClCompile Include="features\TestSkinChanger.cpp" />
     <ClCompile Include="features\TestSetupBones.cpp" />
     <ClCompile Include="features\TestUpdateClientSideAnimation.cpp" />
     <ClCompile Include="features\TestVelFix.cpp" />
@@ -391,6 +392,7 @@
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\Radar\Radar.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\RapidFire\RapidFire.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SeedPred\SeedPred.cpp" />
+    <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SkinChanger\SkinChanger.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SpectatorList\SpectatorList.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SpyCamera\SpyCamera.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SpyWarning\SpyWarning.cpp" />

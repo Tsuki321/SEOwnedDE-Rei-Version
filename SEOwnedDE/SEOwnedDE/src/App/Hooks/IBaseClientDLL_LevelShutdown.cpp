@@ -8,6 +8,7 @@
 #include "../Features/SeedPred/SeedPred.h"
 #include "../Features/Killstreak/Killstreak.h"
 #include "../Features/NetworkFix/NetworkFix.h"
+#include "../Features/SkinChanger/SkinChanger.h"
 
 MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), void, __fastcall,
 	void* ecx)
@@ -26,6 +27,7 @@ MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), v
 
 	F::SeedPred->Reset();
 	F::Killstreak->Reset();
+	F::SkinChanger->ResetRuntimeState();
 
 	G::arrVelFixRecords = {};
 

@@ -9,6 +9,7 @@
 #include "Features/Menu/Menu.h"
 #include "Features/Players/Players.h"
 #include "Features/ProjectileSim/ProjectileSim.h"
+#include "Features/SkinChanger/SkinChanger.h"
 
 #include "Features/CFG.h"
 
@@ -34,6 +35,7 @@ void CApp::Start()
 	U::Storage->Init("SEOwnedDE");
 	U::SignatureManager->InitializeAllSignatures();
 	U::InterfaceManager->InitializeAllInterfaces();
+	F::SkinChanger->Load();
 
 	H::Draw->UpdateScreenSize();
 	
@@ -118,6 +120,8 @@ void CApp::Shutdown()
 			I::MatSystemSurface->SetCursorAlwaysVisible(false);
 		}
 	}
+
+	F::SkinChanger->Save();
 
 	F::ProjectileSim->CleanUp();
 	

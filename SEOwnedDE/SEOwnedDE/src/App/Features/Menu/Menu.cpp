@@ -5,8 +5,11 @@
 #include "../CFG.h"
 #include "../VisualUtils/VisualUtils.h"
 #include "../Players/Players.h"
+#include "../SkinChanger/SkinChanger.h"
 #include <algorithm>
+#include <charconv>
 #include <ranges>
+#include <system_error>
 
 #define multiselect(label, unique, ...) static std::vector<std::pair<const char *, bool &>> unique##multiselect = __VA_ARGS__; \
 SelectMulti(label, unique##multiselect)
@@ -141,6 +144,20 @@ void CMenu::GroupBoxEnd()
 	H::Draw->Line(m_nCursorX, m_nCursorY, m_nCursorX + m_nLastGroupBoxW, m_nCursorY, clr);
 
 	m_nCursorY += CFG::Menu_Spacing_Y;
+}
+
+void CMenu::Label(const char *szText)
+{
+	H::Draw->String(
+		H::Fonts->Get(EFonts::Menu),
+		m_nCursorX,
+		m_nCursorY,
+		CFG::Menu_Text_Inactive,
+		POS_DEFAULT,
+		szText
+	);
+
+	m_nCursorY += H::Fonts->Get(EFonts::Menu).m_nTall + CFG::Menu_Spacing_Y;
 }
 
 bool CMenu::CheckBox(const char *szLabel, bool &bVar)
@@ -380,6 +397,113 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 
 	m_nCursorY += h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y + 2;
 
+	return bCallback;
+}
+
+bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
+{
+	bool bCallback = false;
+	const int x = m_nCursorX;
+	const int y = m_nCursorY;
+	const int w = CFG::Menu_InputKey_Width;
+	const int h = CFG::Menu_InputKey_Height;
+	const int nTextH = H::Fonts->Get(EFonts::Menu).m_nTall;
+	const int nInputY = y + nTextH + CFG::Menu_Spacing_Y;
+	const bool bHovered = IsHovered(x, nInputY, w, h, &nVar);
+
+	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
+	{
+		SetControlActive(&nVar, true);
+		m_mapTempNumbers[&nVar] = std::to_string(nVar);
+		m_bClickConsumed = true;
+	}
+
+	const auto commit = [&]()
+	{
+		auto found = m_mapTempNumbers.find(&nVar);
+		if (found == m_mapTempNumbers.end() || found->second.empty())
+			return;
+
+		int nValue = 0;
+		const auto &text = found->second;
+		const auto result = std::from_chars(text.data(), text.data() + text.size(), nValue);
+		if (result.ec == std::errc{} && result.ptr == text.data() + text.size())
+		{
+			nValue = std::clamp(nValue, nMin, nMax);
+			bCallback = nValue != nVar;
+			nVar = nValue;
+		}
+	};
+
+	if (IsControlActive(&nVar))
+	{
+		m_bWantTextInput = true;
+		auto &text = m_mapTempNumbers[&nVar];
+
+		if (text.size() < 10)
+		{
+			for (int key = '0'; key <= '9'; ++key)
+			{
+				if (H::Input->IsPressedAndHeld(key))
+					text.push_back(static_cast<char>(key));
+			}
+
+			for (int key = VK_NUMPAD0; key <= VK_NUMPAD9; ++key)
+			{
+				if (H::Input->IsPressedAndHeld(key))
+					text.push_back(static_cast<char>('0' + key - VK_NUMPAD0));
+			}
+
+			if (nMin < 0 && text.empty() && H::Input->IsPressedAndHeld(VK_OEM_MINUS))
+				text.push_back('-');
+		}
+
+		if (!text.empty() && H::Input->IsPressedAndHeld(VK_BACK))
+			text.pop_back();
+
+		if (H::Input->IsPressed(VK_RETURN))
+		{
+			commit();
+			SetControlActive(&nVar, false);
+			m_mapTempNumbers.erase(&nVar);
+		}
+		else if (H::Input->IsPressed(VK_ESCAPE) || H::Input->IsPressed(VK_INSERT) || H::Input->IsPressed(VK_F3))
+		{
+			SetControlActive(&nVar, false);
+			m_mapTempNumbers.erase(&nVar);
+		}
+		else if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bHovered)
+		{
+			commit();
+			SetControlActive(&nVar, false);
+			m_mapTempNumbers.erase(&nVar);
+			m_bClickConsumed = true;
+		}
+	}
+
+	H::Draw->String(
+		H::Fonts->Get(EFonts::Menu),
+		x,
+		y,
+		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		POS_DEFAULT,
+		szLabel
+	);
+
+	H::Draw->OutlinedRect(x, nInputY, w, h, CFG::Menu_Accent_Primary);
+	const std::string displayValue = IsControlActive(&nVar)
+		? m_mapTempNumbers[&nVar]
+		: std::to_string(nVar);
+	H::Draw->String(
+		H::Fonts->Get(EFonts::Menu),
+		x + (w / 2),
+		nInputY + (h / 2) - 1,
+		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+		POS_CENTERXY,
+		displayValue.c_str()
+	);
+
+	m_nCursorY += h + nTextH + (CFG::Menu_Spacing_Y * 2);
 	return bCallback;
 }
 
@@ -1037,7 +1161,7 @@ void CMenu::MainWindow()
 	m_nCursorX = CFG::Menu_Pos_X + CFG::Menu_Spacing_X;
 	m_nCursorY = CFG::Menu_Pos_Y + CFG::Menu_Drag_Bar_Height + CFG::Menu_Spacing_Y;
 
-	enum class EMainTabs { AIM, VISUALS, MISC, PLAYERS, CONFIGS };
+	enum class EMainTabs { AIM, VISUALS, MISC, SKINS, PLAYERS, CONFIGS };
 	static EMainTabs MainTab = EMainTabs::AIM;
 
 	if (Button("Aim", MainTab == EMainTabs::AIM, CFG::Menu_Tab_Button_Width))
@@ -1048,6 +1172,9 @@ void CMenu::MainWindow()
 
 	if (Button("Misc", MainTab == EMainTabs::MISC, CFG::Menu_Tab_Button_Width))
 		MainTab = EMainTabs::MISC;
+
+	if (Button("Skins", MainTab == EMainTabs::SKINS, CFG::Menu_Tab_Button_Width))
+		MainTab = EMainTabs::SKINS;
 
 	if (Button("Players", MainTab == EMainTabs::PLAYERS, CFG::Menu_Tab_Button_Width))
 		MainTab = EMainTabs::PLAYERS;
@@ -2283,6 +2410,133 @@ void CMenu::MainWindow()
 			CheckBox("Draw Indicator", CFG::Exploits_SeedPred_DrawIndicator);
 		}
 		GroupBoxEnd();
+	}
+
+	if (MainTab == EMainTabs::SKINS)
+	{
+		const int nCurrentWeapon = F::SkinChanger->GetCurrentWeaponIndex();
+		if (nCurrentWeapon != m_nSkinEditorItemDefinition)
+		{
+			m_nSkinEditorItemDefinition = nCurrentWeapon;
+			m_SkinEditorSettings = nCurrentWeapon >= 0
+				? F::SkinChanger->GetSettings(nCurrentWeapon)
+				: SkinChangerSettings{};
+			m_mapTempNumbers.clear();
+			m_pActiveControl = nullptr;
+		}
+
+		const auto previousSettings = m_SkinEditorSettings;
+		bool bExternalSettingsChange = false;
+
+		m_nCursorX += CFG::Menu_Spacing_X;
+		const int anchor_x = m_nCursorX;
+		const int anchor_y = m_nCursorY;
+		constexpr int nGroupWidth = 145;
+
+		GroupBoxStart("Weapon", nGroupWidth);
+		{
+			Label(F::SkinChanger->GetCurrentWeaponLabel().c_str());
+
+			if (nCurrentWeapon >= 0)
+			{
+				CheckBox("Active", m_SkinEditorSettings.m_bEnabled);
+				InputInt("Paint Kit", m_SkinEditorSettings.m_nPaintKit, 0, 65535);
+				SliderFloat("Wear", m_SkinEditorSettings.m_flWear, 0.0f, 1.0f, 0.05f, "%.2f");
+				CheckBox("Team Colored", m_SkinEditorSettings.m_bTeamColored);
+				CheckBox("Allow Inspect", m_SkinEditorSettings.m_bAllowInspect);
+				InputInt("Seed Low", m_SkinEditorSettings.m_nSeedLow, 0, 65535);
+				InputInt("Seed High", m_SkinEditorSettings.m_nSeedHigh, 0, 65535);
+			}
+			if (Button("Save"))
+			{
+				if (nCurrentWeapon >= 0)
+					F::SkinChanger->SetSettings(nCurrentWeapon, m_SkinEditorSettings);
+				F::SkinChanger->Save();
+			}
+
+			if (Button("Load"))
+			{
+				if (F::SkinChanger->Load())
+				{
+					if (nCurrentWeapon >= 0)
+						m_SkinEditorSettings = F::SkinChanger->GetSettings(nCurrentWeapon);
+					bExternalSettingsChange = true;
+				}
+			}
+
+			if (nCurrentWeapon >= 0 && Button("Reset"))
+			{
+				F::SkinChanger->RemoveSettings(nCurrentWeapon);
+				m_SkinEditorSettings = {};
+				bExternalSettingsChange = true;
+			}
+		}
+		GroupBoxEnd();
+
+		if (nCurrentWeapon >= 0)
+		{
+			m_nCursorX = anchor_x + nGroupWidth + (CFG::Menu_Spacing_X * 2);
+			m_nCursorY = anchor_y;
+			GroupBoxStart("Attributes", nGroupWidth);
+			{
+				SelectSingle("Unusual", m_SkinEditorSettings.m_nUnusualEffect, {
+					{ "None", 0 },
+					{ "Community Sparkle", 4 },
+					{ "Hot", 701 },
+					{ "Isotope", 702 },
+					{ "Cool", 703 },
+					{ "Energy Orb", 704 }
+				});
+				InputInt("Static Effect", m_SkinEditorSettings.m_nUnusualEffectStatic, 0, 65535);
+				CheckBox("Festivized", m_SkinEditorSettings.m_bFestivized);
+				CheckBox("Australium", m_SkinEditorSettings.m_bAustralium);
+				CheckBox("Decorated Rarity", m_SkinEditorSettings.m_bDecoratedRarity);
+				InputInt("Style", m_SkinEditorSettings.m_nStyleOverride, 0, 100);
+				CheckBox("Victims to Gold", m_SkinEditorSettings.m_bTurnVictimsToGold);
+			}
+			GroupBoxEnd();
+
+			m_nCursorX = anchor_x + ((nGroupWidth + (CFG::Menu_Spacing_X * 2)) * 2);
+			m_nCursorY = anchor_y;
+			GroupBoxStart("Killstreak", nGroupWidth);
+			{
+				SelectSingle("Tier", m_SkinEditorSettings.m_nKillstreakTier, {
+					{ "None", 0 },
+					{ "Basic", 1 },
+					{ "Specialized", 2 },
+					{ "Professional", 3 }
+				});
+				SelectSingle("Sheen", m_SkinEditorSettings.m_nKillstreakSheen, {
+					{ "None", 0 },
+					{ "Team Shine", 1 },
+					{ "Deadly Daffodil", 2 },
+					{ "Manndarin", 3 },
+					{ "Mean Green", 4 },
+					{ "Agonizing Emerald", 5 },
+					{ "Villainous Violet", 6 },
+					{ "Hot Rod", 7 }
+				});
+				SelectSingle("Effect", m_SkinEditorSettings.m_nKillstreakEffect, {
+					{ "None", 0 },
+					{ "Cerebral Discharge", 1 },
+					{ "Fire Horns", 2 },
+					{ "Flames", 3 },
+					{ "Hypno-Beam", 4 },
+					{ "Incinerator", 5 },
+					{ "Singularity", 6 },
+					{ "Tornado", 7 }
+				});
+				CheckBox("Pumpkin Bombs", m_SkinEditorSettings.m_bPumpkinBombs);
+				CheckBox("Halloween Flames", m_SkinEditorSettings.m_bHalloweenFlames);
+				CheckBox("Halloween Voices", m_SkinEditorSettings.m_bHalloweenVoices);
+				CheckBox("Jingle Footsteps", m_SkinEditorSettings.m_bJingleFootsteps);
+				CheckBox("Pip-Boy Menu", m_SkinEditorSettings.m_bPipBoyBuildMenu);
+			}
+			GroupBoxEnd();
+		}
+
+		if (nCurrentWeapon >= 0 && !bExternalSettingsChange && m_SkinEditorSettings != previousSettings)
+			F::SkinChanger->SetSettings(nCurrentWeapon, m_SkinEditorSettings);
 	}
 
 	if (MainTab == EMainTabs::PLAYERS)

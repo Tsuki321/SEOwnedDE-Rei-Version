@@ -60,6 +60,9 @@
     <ClCompile Include="features\TestSequenceTransitioner.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="features\TestSkinChanger.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="features\TestSetupBones.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

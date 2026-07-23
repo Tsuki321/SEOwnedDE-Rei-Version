@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
+#include "../SkinChanger/SkinChanger.h"
 #include <initializer_list>
 
 class CMenu
@@ -16,6 +17,9 @@ private:
 	bool m_bClickConsumed = false;
 	void* m_pActiveControl = nullptr;
 	std::unordered_map<std::string *, std::string> m_mapTempStrings = {};
+	std::unordered_map<int *, std::string> m_mapTempNumbers = {};
+	SkinChangerSettings m_SkinEditorSettings = {};
+	int m_nSkinEditorItemDefinition = -1;
 
 	bool IsControlActive(const void* pControl) const { return m_pActiveControl == pControl; }
 	bool CanActivateControl(const void* pControl) const { return !m_pActiveControl || IsControlActive(pControl); }
@@ -40,6 +44,7 @@ private:
 	bool CheckBox(const char *szLabel, bool &bVar);
 	bool SliderFloat(const char *szLabel, float &flVar, float flMin, float flMax, float flStep, const char *szFormat);
 	bool SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nStep);
+	bool InputInt(const char *szLabel, int &nVar, int nMin, int nMax);
 	bool InputKey(const char *szLabel, int &nKeyOut);
 	bool Button(const char *szLabel, bool bActive = false, int nCustomWidth = 0);
 	bool playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr, bool center_txt);
@@ -49,6 +54,7 @@ private:
 	bool ColorPicker(const char *szLabel, Color_t &colVar);
 	void GroupBoxStart(const char *szLabel, int nWidth);
 	void GroupBoxEnd();
+	void Label(const char *szText);
 
 public:
 	inline bool IsOpen() { return m_bOpen; }

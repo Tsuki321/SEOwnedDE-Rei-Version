@@ -448,6 +448,7 @@
     <ClCompile Include="src\App\Features\Radar\Radar.cpp" />
     <ClCompile Include="src\App\Features\RapidFire\RapidFire.cpp" />
     <ClCompile Include="src\App\Features\SeedPred\SeedPred.cpp" />
+    <ClCompile Include="src\App\Features\SkinChanger\SkinChanger.cpp" />
     <ClCompile Include="src\App\Features\SpectatorList\SpectatorList.cpp" />
     <ClCompile Include="src\App\Features\SpyCamera\SpyCamera.cpp" />
     <ClCompile Include="src\App\Features\SpyWarning\SpyWarning.cpp" />
@@ -520,6 +521,7 @@
     <ClInclude Include="src\App\Features\Rendering\RenderContextScope.h" />
     <ClInclude Include="src\App\Features\Rendering\RenderPassState.h" />
     <ClInclude Include="src\App\Features\SeedPred\SeedPred.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\SkinChanger.h" />
     <ClInclude Include="src\App\Features\SpectatorList\SpectatorList.h" />
     <ClInclude Include="src\App\Features\SpyCamera\SpyCamera.h" />
     <ClInclude Include="src\App\Features\SpyWarning\SpyWarning.h" />
