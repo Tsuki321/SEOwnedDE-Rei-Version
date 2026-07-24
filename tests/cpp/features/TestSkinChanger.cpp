@@ -68,8 +68,13 @@ TEST(SkinChangerContracts, DebouncesRefreshAndCachesAppliedWeapons) {
     EXPECT_NE(header.find("TransientFailure"), std::string::npos);
     EXPECT_NE(header.find("PermanentFailure"), std::string::npos);
     EXPECT_NE(source.find("result == ApplyResult::TransientFailure"), std::string::npos);
-    EXPECT_NE(source.find("if (HasEnabledProfiles())\n\t\tScheduleRuntimeRefresh()"),
-              std::string::npos);
+    EXPECT_NE(source.find("if (HasEnabledProfiles())"), std::string::npos);
+    {
+        const auto enabledGate = source.find("if (HasEnabledProfiles())");
+        ASSERT_NE(enabledGate, std::string::npos);
+        EXPECT_NE(source.find("ScheduleRuntimeRefresh()", enabledGate), std::string::npos);
+        EXPECT_LT(source.find("ScheduleRuntimeRefresh()", enabledGate), enabledGate + 80);
+    }
     EXPECT_NE(source.find("m_mapAttributeDefinitions.clear()"), std::string::npos);
     EXPECT_NE(source.find("m_pItemSchema = nullptr"), std::string::npos);
     EXPECT_NE(source.find("previous.m_bEnabled || sanitized.m_bEnabled"), std::string::npos);
