@@ -79,9 +79,9 @@ TEST(AimbotContracts, HotPathWorkIsDemandDrivenAndBatched) {
     const auto projectilePredictionHeader = testhelpers::ReadTextFile(root / kProjectilePredictionHeader);
 
     const auto hitscanGuard = hitscanSource.find("if (!needsTargetScan)");
-    const auto hitscanScan = hitscanSource.find("if (GetTarget(pLocal, pWeapon, target)");
+    const auto hitscanScan = hitscanSource.find("GetTarget(pLocal, pWeapon, target)");
     const auto meleeGuard = meleeSource.find("if (!needsTargetScan)");
-    const auto meleeScan = meleeSource.find("if (GetTarget(pLocal, pWeapon, target)");
+    const auto meleeScan = meleeSource.find("GetTarget(pLocal, pWeapon, target)");
 
     ASSERT_NE(hitscanGuard, std::string::npos);
     ASSERT_NE(hitscanScan, std::string::npos);

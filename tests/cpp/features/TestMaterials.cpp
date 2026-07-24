@@ -172,7 +172,7 @@ TEST(MaterialsContracts, FeatureRunHasLocalFrameGuardAndCleanupReset) {
     EXPECT_NE(mainSource.find("RenderPassState::ResetFrameGates()"), std::string::npos);
 
     const auto activeGuardPos = mainSource.find("if (!CFG::Materials_Active");
-    const auto initializePos = mainSource.find("Initialize();", activeGuardPos);
+    const auto initializePos = mainSource.find("EnsureInitialized();", activeGuardPos);
     ASSERT_NE(activeGuardPos, std::string::npos);
     ASSERT_NE(initializePos, std::string::npos);
     EXPECT_LT(activeGuardPos, initializePos)

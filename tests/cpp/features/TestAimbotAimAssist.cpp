@@ -85,8 +85,16 @@ TEST(AimbotAimAssistContracts, ManualShotSelectsNewestHitAndPreservesTickOnMiss)
     const auto runStart = source.find("void CAimbotHitscan::Run");
     ASSERT_NE(runStart, std::string::npos);
     const auto runBody = source.substr(runStart);
-    EXPECT_NE(runBody.find("if (bIsFiring && !bManualFiring"), std::string::npos);
-    EXPECT_GE(testhelpers::CountOccurrences(runBody, "ResolveManualShot(pCmd, pLocal)"), 2u);
+    // Manual ownership is captured separately from auto aim-assist firing.
+    EXPECT_NE(runBody.find("const bool bManualFiring = IsFiring(pCmd, pWeapon)"), std::string::npos);
+    EXPECT_NE(runBody.find("G::bManualHitscanFiring = bManualFiring"), std::string::npos);
+    EXPECT_NE(runBody.find("const bool bIsFiring = IsFiring(pCmd, pWeapon)"), std::string::npos);
+    // No-target manual path is distinct from the aim-key / auto-fire branch.
+    EXPECT_NE(runBody.find("else if (bManualFiring)"), std::string::npos);
+    EXPECT_GE(testhelpers::CountOccurrences(runBody, "ResolveManualShot(pCmd, pLocal)"), 1u);
+    // Aim assist only mutates angles when the aim key is held, not on pure manual fire.
+    EXPECT_NE(runBody.find("if (aimKeyDown)"), std::string::npos);
+    EXPECT_NE(runBody.find("Aim(pCmd, pLocal, target.AngleTo)"), std::string::npos);
 }
 
 TEST(AimbotAimAssistContracts, ManualShotOwnershipIsCapturedBeforeAimbotMutation) {

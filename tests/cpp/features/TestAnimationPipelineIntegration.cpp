@@ -19,6 +19,8 @@ constexpr const char* kResetLatched =
     "SEOwnedDE/SEOwnedDE/src/App/Hooks/CBaseEntity_ResetLatched.cpp";
 constexpr const char* kLagRecords =
     "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.cpp";
+constexpr const char* kLagRecordsHeader =
+    "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.h";
 }
 
 TEST(AnimationPipelineIntegration, AllParticipatingFilesExist) {
@@ -76,8 +78,9 @@ TEST(AnimationPipelineIntegration, AimbotTickRemapUsesInterpAmount) {
     const auto root = testhelpers::FindRepoRoot();
     const auto hitscan = testhelpers::ReadTextFile(
         root / "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp");
+    const auto lagHeader = testhelpers::ReadTextFile(root / kLagRecordsHeader);
 
-    EXPECT_NE(hitscan.find("SDKUtils::GetLerp()"), std::string::npos);
-    EXPECT_NE(hitscan.find("TIME_TO_TICKS"), std::string::npos);
+    EXPECT_NE(hitscan.find("CLagRecords::GetCommandTick"), std::string::npos);
     EXPECT_NE(hitscan.find("SimulationTime"), std::string::npos);
+    EXPECT_NE(lagHeader.find("TIME_TO_TICKS(flPoseTime + SDKUtils::GetLerp())"), std::string::npos);
 }
