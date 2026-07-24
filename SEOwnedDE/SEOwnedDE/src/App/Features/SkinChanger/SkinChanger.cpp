@@ -302,17 +302,20 @@ bool CSkinChanger::SetRuntimeAttribute(void *pAttributeList, std::uint16_t nAttr
 	return true;
 }
 
-bool CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, const Profile &profile)
+CSkinChanger::ApplyResult CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, const Profile &profile)
 {
 	if (!pWeapon || !profile.m_Settings.m_bEnabled)
-		return false;
+		return ApplyResult::PermanentFailure;
+
+	const auto dwSetRuntimeAttributeValue = Signatures::CAttributeList_SetRuntimeAttributeValue.Get();
+	static int nAttributeListOffset = 0;
+	if (nAttributeListOffset <= 0)
+		nAttributeListOffset = NetVars::GetNetVar("CEconEntity", "m_AttributeList");
+	if (nAttributeListOffset <= 0 || !dwSetRuntimeAttributeValue)
+		return ApplyResult::TransientFailure;
 
 	int &nWeaponItemDefinition = pWeapon->m_iItemDefinitionIndex();
 	nWeaponItemDefinition = nItemDefinition;
-
-	static const int nAttributeListOffset = NetVars::GetNetVar("CEconEntity", "m_AttributeList");
-	if (nAttributeListOffset <= 0)
-		return false;
 
 	auto pAttributeList = reinterpret_cast<void *>(
 		reinterpret_cast<std::uintptr_t>(pWeapon) + static_cast<std::uintptr_t>(nAttributeListOffset)
@@ -372,6 +375,19 @@ bool CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, co
 	if (settings.m_bPipBoyBuildMenu)
 		addAttribute(EEconAttribute::PipBoyBuildMenu, 1.0f);
 
+	if (nAttributeCount == 0)
+		return ApplyResult::Success;
+
+	const auto dwGetItemSchema = Signatures::CEconItemSystem_GetItemSchema.Get();
+	const auto dwGetAttributeDefinition = Signatures::CEconItemSchema_GetAttributeDefinition.Get();
+	if (!dwGetItemSchema || !dwGetAttributeDefinition)
+		return ApplyResult::TransientFailure;
+
+	if (!m_pItemSchema)
+		m_pItemSchema = reinterpret_cast<void *(__fastcall *)()>(dwGetItemSchema)();
+	if (!m_pItemSchema)
+		return ApplyResult::TransientFailure;
+
 	bool bAppliedAllAttributes = true;
 	for (std::size_t i = 0; i < nAttributeCount; ++i)
 	{
@@ -382,7 +398,10 @@ bool CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, co
 		);
 	}
 
-	return bAppliedAllAttributes;
+	if (!bAppliedAllAttributes)
+		return ApplyResult::PermanentFailure;
+
+	return ApplyResult::Success;
 }
 
 void CSkinChanger::Run()
@@ -429,7 +448,9 @@ void CSkinChanger::Run()
 	if (!HasEnabledProfiles())
 		return;
 
-	static const int nWeaponsOffset = NetVars::GetNetVar("CBaseCombatCharacter", "m_hMyWeapons");
+	static int nWeaponsOffset = 0;
+	if (nWeaponsOffset <= 0)
+		nWeaponsOffset = NetVars::GetNetVar("CBaseCombatCharacter", "m_hMyWeapons");
 	if (nWeaponsOffset <= 0)
 		return;
 
@@ -464,8 +485,11 @@ void CSkinChanger::Run()
 			continue;
 		}
 
-		if (ApplyProfile(pWeapon, nItemDefinition, profile->second))
-			applied = { handle.ToInt(), nItemDefinition, profile->second.m_nRevision };
+		const auto result = ApplyProfile(pWeapon, nItemDefinition, profile->second);
+		if (result == ApplyResult::TransientFailure)
+			continue;
+
+		applied = { handle.ToInt(), nItemDefinition, profile->second.m_nRevision };
 	}
 }
 
@@ -477,6 +501,8 @@ void CSkinChanger::ResetRuntimeState()
 	m_nCurrentWeaponIndex = -1;
 	m_bRuntimeRefreshPending = false;
 	m_bAwaitingFullUpdate = false;
+	m_pItemSchema = nullptr;
+	m_mapAttributeDefinitions.clear();
 	ResetAppliedWeapons();
 }
 
@@ -605,7 +631,8 @@ bool CSkinChanger::Load()
 
 	m_mapProfiles.swap(loadedProfiles);
 	ResetAppliedWeapons();
-	ScheduleRuntimeRefresh();
+	if (HasEnabledProfiles())
+		ScheduleRuntimeRefresh();
 	m_bSavePending = false;
 
 	if (bLegacyPath)

@@ -8,6 +8,7 @@
 #include "../SkinChanger/SkinChanger.h"
 #include <algorithm>
 #include <charconv>
+#include <format>
 #include <ranges>
 #include <system_error>
 
@@ -409,6 +410,7 @@ bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
 	const int h = CFG::Menu_InputKey_Height;
 	const int nTextH = H::Fonts->Get(EFonts::Menu).m_nTall;
 	const int nInputY = y + nTextH + CFG::Menu_Spacing_Y;
+	const bool bGeoHovered = IsHoveredSimple(x, nInputY, w, h);
 	const bool bHovered = IsHovered(x, nInputY, w, h, &nVar);
 
 	if (bHovered && H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
@@ -472,12 +474,11 @@ bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
 			SetControlActive(&nVar, false);
 			m_mapTempNumbers.erase(&nVar);
 		}
-		else if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bHovered)
+		else if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bGeoHovered)
 		{
 			commit();
 			SetControlActive(&nVar, false);
 			m_mapTempNumbers.erase(&nVar);
-			m_bClickConsumed = true;
 		}
 	}
 
@@ -2415,16 +2416,15 @@ void CMenu::MainWindow()
 	if (MainTab == EMainTabs::SKINS)
 	{
 		const int nCurrentWeapon = F::SkinChanger->GetCurrentWeaponIndex();
-		if (nCurrentWeapon != m_nSkinEditorItemDefinition)
+		if (nCurrentWeapon >= 0 && nCurrentWeapon != m_nSkinEditorItemDefinition)
 		{
 			m_nSkinEditorItemDefinition = nCurrentWeapon;
-			m_SkinEditorSettings = nCurrentWeapon >= 0
-				? F::SkinChanger->GetSettings(nCurrentWeapon)
-				: SkinChangerSettings{};
+			m_SkinEditorSettings = F::SkinChanger->GetSettings(nCurrentWeapon);
 			m_mapTempNumbers.clear();
 			m_pActiveControl = nullptr;
 		}
 
+		const int nEditorWeapon = m_nSkinEditorItemDefinition;
 		const auto previousSettings = m_SkinEditorSettings;
 		bool bExternalSettingsChange = false;
 
@@ -2435,9 +2435,14 @@ void CMenu::MainWindow()
 
 		GroupBoxStart("Weapon", nGroupWidth);
 		{
-			Label(F::SkinChanger->GetCurrentWeaponLabel().c_str());
-
 			if (nCurrentWeapon >= 0)
+				Label(F::SkinChanger->GetCurrentWeaponLabel().c_str());
+			else if (nEditorWeapon >= 0)
+				Label(std::format("Item [{}]", nEditorWeapon).c_str());
+			else
+				Label("No active weapon");
+
+			if (nEditorWeapon >= 0)
 			{
 				CheckBox("Active", m_SkinEditorSettings.m_bEnabled);
 				InputInt("Paint Kit", m_SkinEditorSettings.m_nPaintKit, 0, 65535);
@@ -2449,8 +2454,8 @@ void CMenu::MainWindow()
 			}
 			if (Button("Save"))
 			{
-				if (nCurrentWeapon >= 0)
-					F::SkinChanger->SetSettings(nCurrentWeapon, m_SkinEditorSettings);
+				if (nEditorWeapon >= 0)
+					F::SkinChanger->SetSettings(nEditorWeapon, m_SkinEditorSettings);
 				F::SkinChanger->Save();
 			}
 
@@ -2458,22 +2463,22 @@ void CMenu::MainWindow()
 			{
 				if (F::SkinChanger->Load())
 				{
-					if (nCurrentWeapon >= 0)
-						m_SkinEditorSettings = F::SkinChanger->GetSettings(nCurrentWeapon);
+					if (nEditorWeapon >= 0)
+						m_SkinEditorSettings = F::SkinChanger->GetSettings(nEditorWeapon);
 					bExternalSettingsChange = true;
 				}
 			}
 
-			if (nCurrentWeapon >= 0 && Button("Reset"))
+			if (nEditorWeapon >= 0 && Button("Reset"))
 			{
-				F::SkinChanger->RemoveSettings(nCurrentWeapon);
+				F::SkinChanger->RemoveSettings(nEditorWeapon);
 				m_SkinEditorSettings = {};
 				bExternalSettingsChange = true;
 			}
 		}
 		GroupBoxEnd();
 
-		if (nCurrentWeapon >= 0)
+		if (nEditorWeapon >= 0)
 		{
 			m_nCursorX = anchor_x + nGroupWidth + (CFG::Menu_Spacing_X * 2);
 			m_nCursorY = anchor_y;
@@ -2535,8 +2540,8 @@ void CMenu::MainWindow()
 			GroupBoxEnd();
 		}
 
-		if (nCurrentWeapon >= 0 && !bExternalSettingsChange && m_SkinEditorSettings != previousSettings)
-			F::SkinChanger->SetSettings(nCurrentWeapon, m_SkinEditorSettings);
+		if (nEditorWeapon >= 0 && !bExternalSettingsChange && m_SkinEditorSettings != previousSettings)
+			F::SkinChanger->SetSettings(nEditorWeapon, m_SkinEditorSettings);
 	}
 
 	if (MainTab == EMainTabs::PLAYERS)

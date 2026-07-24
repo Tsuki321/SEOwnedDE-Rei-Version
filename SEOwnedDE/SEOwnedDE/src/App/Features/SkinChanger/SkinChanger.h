@@ -76,9 +76,16 @@ class CSkinChanger
 	void ScheduleSave();
 	void FlushScheduledSave();
 	bool HasEnabledProfiles() const;
+	enum class ApplyResult
+	{
+		Success,
+		TransientFailure,
+		PermanentFailure
+	};
+
 	void *GetAttributeDefinition(std::uint16_t nAttributeIndex);
 	bool SetRuntimeAttribute(void *pAttributeList, std::uint16_t nAttributeIndex, float flValue);
-	bool ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, const Profile &profile);
+	ApplyResult ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, const Profile &profile);
 
 public:
 	CSkinChanger();

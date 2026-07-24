@@ -30,6 +30,9 @@ TEST(SkinChangerContracts, UsesIdaVerifiedSignaturesAndDynamicAttributeLayout) {
     EXPECT_NE(source.find("NetVars::GetNetVar(\"CEconEntity\", \"m_AttributeList\")"),
               std::string::npos);
     EXPECT_EQ(source.find("0xDB8"), std::string::npos);
+    EXPECT_EQ(source.find("static const int nAttributeListOffset"), std::string::npos);
+    EXPECT_NE(source.find("static int nAttributeListOffset = 0"), std::string::npos);
+    EXPECT_NE(source.find("static int nWeaponsOffset = 0"), std::string::npos);
 }
 
 TEST(SkinChangerContracts, RunsInTheNativeMenuWithoutAWebController) {
@@ -62,6 +65,14 @@ TEST(SkinChangerContracts, DebouncesRefreshAndCachesAppliedWeapons) {
     EXPECT_NE(source.find("m_nDeltaTick = -1"), std::string::npos);
     EXPECT_NE(header.find("m_arrAppliedWeapons"), std::string::npos);
     EXPECT_NE(header.find("m_nRevision"), std::string::npos);
+    EXPECT_NE(header.find("TransientFailure"), std::string::npos);
+    EXPECT_NE(header.find("PermanentFailure"), std::string::npos);
+    EXPECT_NE(source.find("result == ApplyResult::TransientFailure"), std::string::npos);
+    EXPECT_NE(source.find("if (HasEnabledProfiles())\n\t\tScheduleRuntimeRefresh()"),
+              std::string::npos);
+    EXPECT_NE(source.find("m_mapAttributeDefinitions.clear()"), std::string::npos);
+    EXPECT_NE(source.find("m_pItemSchema = nullptr"), std::string::npos);
+    EXPECT_NE(source.find("previous.m_bEnabled || sanitized.m_bEnabled"), std::string::npos);
 }
 
 TEST(SkinChangerContracts, IsIntegratedWithRuntimeAndPersistenceLifecycle) {
@@ -76,4 +87,28 @@ TEST(SkinChangerContracts, IsIntegratedWithRuntimeAndPersistenceLifecycle) {
     EXPECT_NE(app.find("F::SkinChanger->Save()"), std::string::npos);
     EXPECT_NE(project.find("Features\\SkinChanger\\SkinChanger.cpp"), std::string::npos);
     EXPECT_NE(project.find("Features\\SkinChanger\\SkinChanger.h"), std::string::npos);
+}
+
+TEST(SkinChangerContracts, PreservesSkinsEditorAcrossTemporaryWeaponLoss) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto menu = testhelpers::ReadTextFile(root / kMenuSource);
+
+    EXPECT_NE(menu.find(
+                  "if (nCurrentWeapon >= 0 && nCurrentWeapon != m_nSkinEditorItemDefinition)"),
+              std::string::npos);
+    EXPECT_NE(menu.find("const int nEditorWeapon = m_nSkinEditorItemDefinition"),
+              std::string::npos);
+    EXPECT_NE(menu.find("SetSettings(nEditorWeapon, m_SkinEditorSettings)"),
+              std::string::npos);
+    EXPECT_NE(menu.find("const bool bGeoHovered = IsHoveredSimple(x, nInputY, w, h)"),
+              std::string::npos);
+    EXPECT_NE(menu.find(
+                  "else if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bGeoHovered)"),
+              std::string::npos);
+
+    const auto outsideClick = menu.find(
+        "else if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bGeoHovered)");
+    ASSERT_NE(outsideClick, std::string::npos);
+    const auto outsideBlock = menu.substr(outsideClick, 220);
+    EXPECT_EQ(outsideBlock.find("m_bClickConsumed = true"), std::string::npos);
 }
