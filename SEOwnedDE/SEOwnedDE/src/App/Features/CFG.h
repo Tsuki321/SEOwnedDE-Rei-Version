@@ -89,9 +89,8 @@ namespace CFG
 
 	CFGVAR(Triggerbot_AutoBackstab_Active, true);
 	CFGVAR(Triggerbot_AutoBackstab_Knife_If_Lethal, true);
-	CFGVAR(Triggerbot_AutoBackstab_Mode, 1); //0 Legit 1 Rage
-	CFGVAR(Triggerbot_AutoBackstab_Aim_Mode, 1); //0 Normal 1 Silent 2 Smooth
 	CFGVAR(Triggerbot_AutoBackstab_Use_LagRecords, true);
+	CFGVAR(Triggerbot_AutoBackstab_Max_Backtrack_Time, 90.0f); // ms - max lag record age for autobackstab
 	CFGVAR(Triggerbot_AutoBackstab_FOV, 90.0f);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Friends, true);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Invisible, false);

@@ -89,45 +89,6 @@ bool CanKnifeOneShot(C_TFPlayer* target, bool crit, bool miniCrit)
 	return target->m_iHealth() <= 40 * dmgMult;
 }
 
-static bool ApplyAimMode(CUserCmd* pCmd, const Vec3& angleTo)
-{
-	switch (CFG::Triggerbot_AutoBackstab_Aim_Mode)
-	{
-		case 0:
-		{
-			pCmd->viewangles = angleTo;
-			return true;
-		}
-
-		case 1:
-		{
-			pCmd->viewangles = angleTo;
-			G::bPSilentAngles = true;
-			return true;
-		}
-
-		case 2:
-		{
-			Vec3 vDelta = angleTo - pCmd->viewangles;
-			Math::ClampAngles(vDelta);
-
-			if (vDelta.Length() > 0.0f)
-			{
-				pCmd->viewangles += vDelta / 6.0f;
-				Math::ClampAngles(pCmd->viewangles);
-			}
-
-			Vec3 vRemaining = angleTo - pCmd->viewangles;
-			Math::ClampAngles(vRemaining);
-			return vRemaining.Length() <= 1.0f;
-		}
-
-		default: break;
-	}
-
-	return true;
-}
-
 void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd)
 {
 	if (!CFG::Triggerbot_AutoBackstab_Active)
@@ -140,15 +101,16 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		return;
 	}
 
-	const bool bLegitMode = CFG::Triggerbot_AutoBackstab_Mode == 0;
 	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
 	// Hoist invariant reads. pLocal->GetShootPos() was being called 3x per
 	// target (FOV check, angle calc, trace) and pLocal->GetCenter() once.
 	const Vec3 vShootPos = pLocal->GetShootPos();
 	const Vec3 vLocalCenter = pLocal->GetCenter();
-	constexpr float kMaxBackstabCandidateRange = 384.0f;
+	// Knife swing range 48 + melee trace hull 18 + ~24 player half-width ~= 90 units.
+	constexpr float kMaxBackstabCandidateRange = 90.0f;
 	constexpr float kMaxBackstabCandidateRangeSqr = kMaxBackstabCandidateRange * kMaxBackstabCandidateRange;
+	const float flSwingRange = pWeapon->GetSwingRange(); // knife returns 48; matches the game's real melee reach
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
@@ -193,7 +155,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			canKnife = CanKnifeOneShot(pPlayer, pLocal->IsCritBoosted(), pLocal->IsMiniCritBoosted());
 		}
 
-		if (bLegitMode && CFG::Triggerbot_AutoBackstab_FOV > 0.0f)
+		if (CFG::Triggerbot_AutoBackstab_FOV > 0.0f)
 		{
 			const Vec3 vAngToTarget = Math::CalcAngle(vShootPos, vTargetCenter);
 			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngToTarget);
@@ -204,31 +166,15 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			}
 		}
 
-		auto angleTo{ vLocalAngles };
-
-		if (!bLegitMode)
-		{
-			angleTo = Math::CalcAngle(vShootPos, vTargetCenter);
-		}
-
-		if (bLiveTargetInRange && (canKnife || IsBehindAndFacingTarget(vLocalCenter, angleTo, vTargetCenter, pPlayer->GetEyeAngles())))
+		if (bLiveTargetInRange && (canKnife || IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, vTargetCenter, pPlayer->GetEyeAngles())))
 		{
 			Vec3 forward{};
-			Math::AngleVectors(angleTo, &forward);
+			Math::AngleVectors(vLocalAngles, &forward);
 
-			auto to = vShootPos + (forward * 47.0f);
+			auto to = vShootPos + (forward * flSwingRange);
 
 			if (H::AimUtils->TraceEntityMelee(pPlayer, vShootPos, to))
 			{
-				bool bReadyToAttack = true;
-				if (!bLegitMode)
-				{
-					bReadyToAttack = ApplyAimMode(pCmd, angleTo);
-				}
-
-				if (!bReadyToAttack)
-					return;
-
 				pCmd->buttons |= IN_ATTACK;
 
 				pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
@@ -237,57 +183,50 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			}
 		}
 
-	if (!CFG::Triggerbot_AutoBackstab_Use_LagRecords)
-	{
-		continue;
-	}
-
-	int numRecords = 0;
-
-	if (!F::LagRecords->HasRecords(pPlayer, &numRecords))
-	{
-		continue;
-	}
-
-	const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
-
-	for (int n = 0; n < numRecords; n++)
-	{
-		const auto record = F::LagRecords->GetRecord(pPlayer, n);
-
-		if (!CLagRecords::IsRecordUsable(record, cachedState))
+		if (!CFG::Triggerbot_AutoBackstab_Use_LagRecords)
+		{
 			continue;
+		}
 
-		if (vShootPos.DistToSqr(record->Center) > kMaxBackstabCandidateRangeSqr)
+		int numRecords = 0;
+
+		if (!F::LagRecords->HasRecords(pPlayer, &numRecords))
+		{
 			continue;
+		}
 
-			if (!bLegitMode)
-			{
-				angleTo = Math::CalcAngle(vShootPos, record->Center);
-			}
+		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-			if (canKnife || IsBehindAndFacingTarget(vLocalCenter, angleTo, record->Center, record->EyeAngles))
+		const float flMaxBacktrackAge = CFG::Triggerbot_AutoBackstab_Max_Backtrack_Time / 1000.0f;
+		const float flCurSimTime = pPlayer->m_flSimulationTime();
+
+		for (int n = 0; n < numRecords; n++)
+		{
+			const auto record = F::LagRecords->GetRecord(pPlayer, n);
+
+			if (!CLagRecords::IsRecordUsable(record, cachedState))
+				continue;
+
+			// Records are stored newest-first; once one is too old, all remaining are older.
+			if (flCurSimTime - record->SimulationTime > flMaxBacktrackAge)
+				break;
+
+			if (vShootPos.DistToSqr(record->Center) > kMaxBackstabCandidateRangeSqr)
+				continue;
+
+			if (canKnife || IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, record->Center, record->EyeAngles))
 			{
 				{
 					CLagRecordScope scope(record);
 
 					Vec3 forward{};
-					Math::AngleVectors(angleTo, &forward);
+					Math::AngleVectors(vLocalAngles, &forward);
 
-					auto to = vShootPos + (forward * 47.0f);
+					auto to = vShootPos + (forward * flSwingRange);
 
 					if (!H::AimUtils->TraceEntityMelee(pPlayer, vShootPos, to))
 						continue;
 				}
-
-				bool bReadyToAttack = true;
-				if (!bLegitMode)
-				{
-					bReadyToAttack = ApplyAimMode(pCmd, angleTo);
-				}
-
-				if (!bReadyToAttack)
-					return;
 
 				pCmd->buttons |= IN_ATTACK;
 
