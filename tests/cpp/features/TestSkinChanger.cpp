@@ -94,6 +94,28 @@ TEST(SkinChangerContracts, IsIntegratedWithRuntimeAndPersistenceLifecycle) {
     EXPECT_NE(project.find("Features\\SkinChanger\\SkinChanger.h"), std::string::npos);
 }
 
+TEST(SkinChangerContracts, DetectsGameClearedRuntimeAttributes) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kSkinChangerSource);
+    const auto header = testhelpers::ReadTextFile(root / kSkinChangerHeader);
+
+    // Verify the new GetAttributeListCount helper exists
+    EXPECT_NE(header.find("GetAttributeListCount(C_TFWeaponBase *pWeapon)"),
+              std::string::npos);
+    EXPECT_NE(source.find("int CSkinChanger::GetAttributeListCount(C_TFWeaponBase *pWeapon)"),
+              std::string::npos);
+
+    // Verify it reads from the correct offset (0x18 for CUtlVector::m_Size on x64)
+    EXPECT_NE(source.find("pAttributeList + 0x18"), std::string::npos);
+
+    // Verify the Run() function checks for game-cleared attributes
+    EXPECT_NE(source.find("GetAttributeListCount(pWeapon)"), std::string::npos);
+    EXPECT_NE(source.find("nCurrentAttrCount != 0"), std::string::npos);
+
+    // Verify the comment explaining the behavior
+    EXPECT_NE(source.find("game may clear runtime attributes"), std::string::npos);
+}
+
 TEST(SkinChangerContracts, PreservesSkinsEditorAcrossTemporaryWeaponLoss) {
     const auto root = testhelpers::FindRepoRoot();
     const auto menu = testhelpers::ReadTextFile(root / kMenuSource);

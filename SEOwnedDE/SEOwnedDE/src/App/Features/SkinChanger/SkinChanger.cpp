@@ -302,6 +302,20 @@ bool CSkinChanger::SetRuntimeAttribute(void *pAttributeList, std::uint16_t nAttr
 	return true;
 }
 
+int CSkinChanger::GetAttributeListCount(C_TFWeaponBase *pWeapon)
+{
+	static int nAttributeListOffset = 0;
+	if (nAttributeListOffset <= 0)
+		nAttributeListOffset = NetVars::GetNetVar("CEconEntity", "m_AttributeList");
+
+	if (nAttributeListOffset <= 0 || !pWeapon)
+		return -1;
+
+	const auto pAttributeList = reinterpret_cast<std::uintptr_t>(pWeapon) + static_cast<std::uintptr_t>(nAttributeListOffset);
+	// CAttributeList::m_Attributes (CUtlVector)::m_Size is at offset 0x18 on x64
+	return *reinterpret_cast<int *>(pAttributeList + 0x18);
+}
+
 CSkinChanger::ApplyResult CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, const Profile &profile)
 {
 	if (!pWeapon || !profile.m_Settings.m_bEnabled)
@@ -482,7 +496,14 @@ void CSkinChanger::Run()
 			&& applied.m_nItemDefinition == nItemDefinition
 			&& applied.m_nRevision == profile->second.m_nRevision)
 		{
-			continue;
+			// The game may clear runtime attributes (especially particle effects)
+			// when updating weapons or processing particle systems. Detect this
+			// by checking if the attribute list is empty while we expect attributes.
+			const int nCurrentAttrCount = GetAttributeListCount(pWeapon);
+			if (nCurrentAttrCount != 0)
+				continue; // Attributes still applied (or couldn't verify), skip
+
+			// Fall through to re-apply - game cleared the runtime attributes
 		}
 
 		const auto result = ApplyProfile(pWeapon, nItemDefinition, profile->second);
