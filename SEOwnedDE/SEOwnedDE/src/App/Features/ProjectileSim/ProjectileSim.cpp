@@ -264,7 +264,9 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 
 		m_pEnv->SetPerformanceSettings(&params);
 		m_pEnv->SetAirDensity(2.0f);
-		m_pEnv->SetGravity({ 0.0f, 0.0f, -(800.0f * info.m_gravity_mod) });
+		// Use live sv_gravity when available; GetGravity() returns 0.0f if the cvar isn't found, so fall back to the TF2 default of 800.
+		const float flGravity{ SDKUtils::GetGravity() };
+		m_pEnv->SetGravity({ 0.0f, 0.0f, -((flGravity > 0.0f ? flGravity : 800.0f) * info.m_gravity_mod) });
 		m_pEnv->ResetSimulationClock();
 	}
 	else

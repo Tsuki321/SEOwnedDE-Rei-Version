@@ -227,6 +227,14 @@ namespace SDKUtils
 		return 0.0f;
 	}
 
+	inline float GetOutgoingLatency()
+	{
+		if (auto pNet = I::EngineClient->GetNetChannelInfo())
+			return pNet->GetLatency(FLOW_OUTGOING);
+
+		return 0.0f;
+	}
+
 	inline float GetGravity()
 	{
 		static ConVar *sv_gravity = I::CVar->FindVar("sv_gravity");
