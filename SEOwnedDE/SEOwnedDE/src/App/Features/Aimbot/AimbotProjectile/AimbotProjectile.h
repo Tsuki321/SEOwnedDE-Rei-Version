@@ -6,6 +6,9 @@ class CAimbotProjectile
 	struct ProjTarget_t : AimTarget_t
 	{
 		float TimeToTarget = 0.0f;
+		float PlannedSpeed = 0.0f;       // > 0: charge-based planned shot (bow/sticky)
+		float PlannedGravityMod = 0.0f;
+		float RequiredChargeTime = 0.0f; // seconds of charge to hold before releasing
 	};
 
 	std::vector<ProjTarget_t> m_vecTargets = {};
@@ -25,8 +28,8 @@ class CAimbotProjectile
 	bool GetProjectileInfo(C_TFWeaponBase* pWeapon);
 	bool CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& vAngleOut, float& flTimeOut);
 	void OffsetPlayerPosition(C_TFWeaponBase* pWeapon, Vec3& vPos, C_TFPlayer* pPlayer, bool bDucked, bool bOnGround, int aimPosition);
-	bool CanArcReach(const Vec3& vFrom, const Vec3& vTo, const Vec3& vAngleTo, float flTargetTime, C_BaseEntity* pTarget);
-	bool CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vFrom, const Vec3& vTo, const ProjTarget_t& target, float flTargetTime);
+	bool CanArcReach(const Vec3& vFrom, const Vec3& vTo, const Vec3& vAngleTo, float flTargetTime, C_BaseEntity* pTarget, float flSpeedOverride = 0.0f, float flGravityModOverride = -1.0f);
+	bool CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vFrom, const Vec3& vTo, const ProjTarget_t& target, float flTargetTime, float flSpeedOverride = 0.0f, float flGravityModOverride = -1.0f);
 	bool SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const CUserCmd* pCmd, ProjTarget_t& target);
 
 	bool RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const CUserCmd* pCmd, const Vec3& vLocalPos, const Vec3& center, ProjTarget_t& target);

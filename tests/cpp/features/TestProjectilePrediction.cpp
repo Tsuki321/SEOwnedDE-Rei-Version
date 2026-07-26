@@ -627,3 +627,146 @@ TEST(QuarticNewton, FindsSecondPositiveRoot) {
 	float t = BallisticSolver::SolveQuarticNewton(1.0f, 0.0f, -5.0f, 0.0f, 4.0f, 3.0f);
 	EXPECT_NEAR(t, 2.0f, 1e-4f);
 }
+
+// =============================================================================
+// Scan Meeting Tick (full-path scan, robust to non-monotonic residuals)
+// =============================================================================
+
+TEST(ScanMeetingTick, FindsCorrectTick_StationaryTarget) {
+	std::vector<Vec3> path;
+	for (int i = 0; i < 100; i++)
+		path.push_back(Vec3(1000.0f, 0.0f, 0.0f));
+
+	// travel time is exactly 1.0s -> 1.0 / 0.015 = 66.67, best tick is 67
+	int tick = BallisticSolver::ScanMeetingTick(
+		path, 0.015f, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, 1.5f, false);
+
+	EXPECT_GE(tick, 65);
+	EXPECT_LE(tick, 68);
+}
+
+TEST(ScanMeetingTick, TimingBiasShiftsTickOutward) {
+	std::vector<Vec3> path;
+	for (int i = 0; i < 100; i++)
+		path.push_back(Vec3(1000.0f, 0.0f, 0.0f));
+
+	int unbiased = BallisticSolver::ScanMeetingTick(
+		path, 0.015f, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, 1.5f, false, 0.0f);
+
+	// 0.15s bias = 10 ticks, expect the meeting tick to move out by roughly that
+	int biased = BallisticSolver::ScanMeetingTick(
+		path, 0.015f, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, 1.5f, false, 0.15f);
+
+	EXPECT_GE(unbiased, 0);
+	EXPECT_GE(biased, unbiased + 8);
+}
+
+TEST(ScanMeetingTick, NonMonotonicPath_StillFinds) {
+	std::vector<Vec3> path;
+	Vec3 pos(800.0f, 0.0f, 0.0f);
+	for (int i = 0; i < 100; i++)
+	{
+		path.push_back(pos);
+		pos.x += 5.0f;
+		pos.z = 50.0f * std::sin((i + 1) * 0.06); // jump-like height oscillation
+	}
+
+	int tick = BallisticSolver::ScanMeetingTick(
+		path, 0.015f, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, 1.5f, false);
+
+	EXPECT_GE(tick, 0);
+	EXPECT_LT(tick, static_cast<int>(path.size()));
+}
+
+TEST(ScanMeetingTick, EmptyPath_ReturnsNegativeOne) {
+	std::vector<Vec3> path;
+	int tick = BallisticSolver::ScanMeetingTick(
+		path, 0.015f, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, 1.5f, false);
+	EXPECT_EQ(tick, -1);
+}
+
+// =============================================================================
+// View-Up Muzzle Compensation (opt-in)
+// =============================================================================
+
+TEST(ViewUpMuzzle, DefaultOff_MatchesLegacyBehavior) {
+	BallisticSolver::SolverParams p;
+	p.ShootPos = Vec3(0, 0, 0);
+	p.TargetPos = Vec3(1000, 0, 0);
+	p.TargetVel = Vec3(0, 0, 0);
+	p.Speed = 1200.0f;
+	p.Gravity = 800.0f;
+	p.MuzzleUpZ = 200.0f;
+	p.DragCoeff = 0.0f;
+	// UseViewUpMuzzle left at default (false)
+
+	BallisticSolver::SolveResult r = BallisticSolver::SolveBallistic(p);
+
+	ASSERT_TRUE(r.Valid);
+	EXPECT_GT(r.Direction.z, 0.0f);
+}
+
+TEST(ViewUpMuzzle, Enabled_ProducesValidUnitDirection) {
+	BallisticSolver::SolverParams p;
+	p.ShootPos = Vec3(0, 0, 0);
+	p.TargetPos = Vec3(1000, 0, 0);
+	p.TargetVel = Vec3(0, 0, 0);
+	p.Speed = 1200.0f;
+	p.Gravity = 800.0f;
+	p.MuzzleUpZ = 200.0f;
+	p.UseViewUpMuzzle = true;
+	p.DragCoeff = 0.0f;
+
+	BallisticSolver::SolveResult r = BallisticSolver::SolveBallistic(p);
+
+	ASSERT_TRUE(r.Valid);
+	EXPECT_GT(r.Time, 0.0f);
+	EXPECT_NEAR(r.Direction.LengthSqr(), 1.0f, 2e-3f);
+}
+
+TEST(ViewUpMuzzle, Enabled_DiffersSlightlyFromLegacy) {
+	BallisticSolver::SolverParams p;
+	p.ShootPos = Vec3(0, 0, 0);
+	p.TargetPos = Vec3(1000, 0, 0);
+	p.TargetVel = Vec3(0, 0, 0);
+	p.Speed = 1200.0f;
+	p.Gravity = 800.0f;
+	p.MuzzleUpZ = 200.0f;
+	p.DragCoeff = 0.0f;
+
+	BallisticSolver::SolverParams pViewUp = p;
+	pViewUp.UseViewUpMuzzle = true;
+
+	BallisticSolver::SolveResult rLegacy = BallisticSolver::SolveBallistic(p);
+	BallisticSolver::SolveResult rViewUp = BallisticSolver::SolveBallistic(pViewUp);
+
+	ASSERT_TRUE(rLegacy.Valid);
+	ASSERT_TRUE(rViewUp.Valid);
+
+	// refinement should only be a small correction, not a wildly different arc
+	EXPECT_NEAR(rLegacy.Time, rViewUp.Time, 0.1f);
+}
+
+// =============================================================================
+// Newton Refinement - Timing Bias
+// =============================================================================
+
+TEST(NewtonRefine, TimingBiasShiftsTickOutward) {
+	std::vector<Vec3> path;
+	Vec3 pos(800.0f, 0.0f, 0.0f);
+	for (int i = 0; i < 100; i++)
+	{
+		path.push_back(pos);
+		pos.x += 5.0f;
+	}
+
+	BallisticSolver::NewtonRefineResult rUnbiased = BallisticSolver::NewtonRefineOverPath(
+		path, 0.015f, 0, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, false, 3, 0.0f);
+
+	BallisticSolver::NewtonRefineResult rBiased = BallisticSolver::NewtonRefineOverPath(
+		path, 0.015f, 0, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, false, 3, 0.15f);
+
+	EXPECT_TRUE(rUnbiased.Valid);
+	EXPECT_TRUE(rBiased.Valid);
+	EXPECT_GE(rBiased.Tick, rUnbiased.Tick);
+}

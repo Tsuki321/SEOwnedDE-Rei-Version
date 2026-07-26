@@ -42,6 +42,7 @@ namespace CFG
 	CFGVAR(Aimbot_Projectile_Active, true);
 	CFGVAR(Aimbot_Projectile_NoSpread, true);
 	CFGVAR(Aimbot_Projectile_Auto_Double_Donk, true);
+	CFGVAR(Aimbot_Projectile_Charge_Shot, true); // charge bow/sticky to the time-optimal speed instead of tap-firing
 	CFGVAR(Aimbot_Projectile_High_Arc, false);
 	CFGVAR(Aimbot_Projectile_Advanced_Head_Aim, true);
 	CFGVAR(Aimbot_Projectile_Ground_Strafe_Prediction, true);

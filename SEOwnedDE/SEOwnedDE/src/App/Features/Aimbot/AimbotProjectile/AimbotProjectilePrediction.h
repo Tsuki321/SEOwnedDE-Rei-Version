@@ -244,6 +244,7 @@ namespace BallisticSolver
 		float Speed         = 0.0f;
 		float Gravity       = 0.0f;
 		float MuzzleUpZ     = 0.0f;
+		bool  UseViewUpMuzzle = false; // model MuzzleUpZ along the view up-vector (game-accurate) instead of world +Z
 		bool  UseHighArc    = false;
 		float DragCoeff     = 0.0f;
 		int   DragIters     = 3;
@@ -251,131 +252,153 @@ namespace BallisticSolver
 
 	inline SolveResult SolveBallistic(const SolverParams& p) noexcept
 	{
-		SolveResult result = {};
+		// Core solve for a given muzzle "up" vector. The muzzle-up kick is folded
+		// into the relative frame by subtracting it from the target velocity, so
+		// up = (0,0,1) reproduces the classic world +Z approximation exactly.
+		auto solveWithUp = [&](const Vec3& upVec) noexcept -> SolveResult
+		{
+			SolveResult result = {};
 
-		const Vec3 D = p.TargetPos - p.ShootPos;
-		const float s = p.Speed;
-		if (s <= 0.0f)
+			const Vec3 D = p.TargetPos - p.ShootPos;
+			const float s = p.Speed;
+			if (s <= 0.0f)
+				return result;
+
+			const float g = p.Gravity;
+			const Vec3 vEff = p.TargetVel - upVec * p.MuzzleUpZ;
+			const float Vpz = vEff.z;
+
+			const float Dhx = D.x, Dhy = D.y;
+			const float Vtx = vEff.x, Vty = vEff.y;
+			const float Dz = D.z;
+
+			const float DhLenSq = Dhx * Dhx + Dhy * Dhy;
+			const float VthLenSq = Vtx * Vtx + Vty * Vty;
+			const float DLenSq = DhLenSq + Dz * Dz;
+			const float DhDotVth = Dhx * Vtx + Dhy * Vty;
+			const float DzVpz = Dz * Vpz;
+
+			float speed = s;
+
+			for (int dragIter = 0; dragIter <= p.DragIters; ++dragIter)
+			{
+				const float s2 = speed * speed;
+
+				if (g > 1e-6f)
+				{
+					const float a4 = 0.25f * g * g;
+					const float a3 = g * Vpz;
+					const float a2 = VthLenSq + Vpz * Vpz + g * Dz - s2;
+					const float a1 = 2.0f * (DhDotVth + DzVpz);
+					const float a0 = DLenSq;
+
+					float t;
+					if (a4 < 1e-10f && a3 < 1e-10f)
+					{
+						t = SolveQuadratic(a2, a1, a0);
+						if (t <= 0.0f)
+							return result;
+					}
+					else
+					{
+						float tInit = Simd::FastSqrt(DLenSq) / std::max(speed, 1.0f);
+						t = SolveQuarticNewton(a4, a3, a2, a1, a0, tInit);
+
+						if (EvaluateQuartic(a4, a3, a2, a1, a0, t) > 1.0f)
+						{
+							return result;
+						}
+						if (t <= 0.0f)
+							return result;
+					}
+
+					if (p.UseHighArc && g > 1e-6f)
+					{
+						float tLo = t;
+						for (int i = 0; i < 30; ++i)
+						{
+							if (tLo <= 0.001f)
+								break;
+
+							const float tNext = SolveQuarticNewton(a4, a3, a2, a1, a0, tLo * 1.5f);
+							if (tNext == tLo)
+								break;
+
+							tLo = tNext;
+						}
+						if (tLo > t)
+							t = tLo;
+					}
+
+					const float invST = 1.0f / (speed * t);
+					Vec3 dir(
+						(D.x + Vtx * t) * invST,
+						(D.y + Vty * t) * invST,
+						(Dz + Vpz * t + 0.5f * g * t * t) * invST
+					);
+
+					result.Direction = dir;
+					result.Time = t;
+					result.Valid = true;
+
+					if (p.DragCoeff > 0.0f && dragIter < p.DragIters)
+					{
+						speed = ExponentialDragEffectiveSpeed(s, p.DragCoeff, t);
+					}
+					else
+					{
+						break;
+					}
+				}
+				else
+				{
+					const float a2 = VthLenSq + Vpz * Vpz - s2;
+					const float a1 = 2.0f * (DhDotVth + DzVpz);
+					const float a0 = DLenSq;
+
+					float t = SolveQuadratic(a2, a1, a0);
+					if (t <= 0.0f)
+						return result;
+
+					const float invST = 1.0f / (speed * t);
+					Vec3 dir(
+						(D.x + Vtx * t) * invST,
+						(D.y + Vty * t) * invST,
+						(Dz + Vpz * t) * invST
+					);
+
+					result.Direction = dir;
+					result.Time = t;
+					result.Valid = true;
+
+					if (p.DragCoeff > 0.0f && dragIter < p.DragIters)
+					{
+						speed = ExponentialDragEffectiveSpeed(s, p.DragCoeff, t);
+					}
+					else
+					{
+						break;
+					}
+				}
+			}
+
+			return result;
+		};
+
+		SolveResult result = solveWithUp(Vec3(0.0f, 0.0f, 1.0f));
+
+		if (!p.UseViewUpMuzzle || std::fabs(p.MuzzleUpZ) <= 1e-6f || !result.Valid)
 			return result;
 
-		const float g = p.Gravity;
-		const float Vpz = p.TargetVel.z - p.MuzzleUpZ;
+		// Refine once with the true view up-vector of the solved direction:
+		// up = (-sinP * cosY, -sinP * sinY, cosP) for unit forward d.
+		const Vec3& d = result.Direction;
+		const float flHorizLen = Simd::FastSqrt(d.x * d.x + d.y * d.y);
+		if (flHorizLen < 1e-4f)
+			return result; // near-vertical shot, world +Z approximation is fine
 
-		const float Dhx = D.x, Dhy = D.y;
-		const float Vtx = p.TargetVel.x, Vty = p.TargetVel.y;
-		const float Dz = D.z;
-
-		const float DhLenSq = Dhx * Dhx + Dhy * Dhy;
-		const float VthLenSq = Vtx * Vtx + Vty * Vty;
-		const float DLenSq = DhLenSq + Dz * Dz;
-		const float DhDotVth = Dhx * Vtx + Dhy * Vty;
-		const float DzVpz = Dz * Vpz;
-
-		float speed = s;
-
-		for (int dragIter = 0; dragIter <= p.DragIters; ++dragIter)
-		{
-			const float s2 = speed * speed;
-
-			if (g > 1e-6f)
-			{
-				const float a4 = 0.25f * g * g;
-				const float a3 = g * Vpz;
-				const float a2 = VthLenSq + Vpz * Vpz + g * Dz - s2;
-				const float a1 = 2.0f * (DhDotVth + DzVpz);
-				const float a0 = DLenSq;
-
-				float t;
-				if (a4 < 1e-10f && a3 < 1e-10f)
-				{
-					t = SolveQuadratic(a2, a1, a0);
-					if (t <= 0.0f)
-						return result;
-				}
-				else
-				{
-					float tInit = Simd::FastSqrt(DLenSq) / std::max(speed, 1.0f);
-					t = SolveQuarticNewton(a4, a3, a2, a1, a0, tInit);
-
-					if (EvaluateQuartic(a4, a3, a2, a1, a0, t) > 1.0f)
-					{
-						return result;
-					}
-					if (t <= 0.0f)
-						return result;
-				}
-
-				if (p.UseHighArc && g > 1e-6f)
-				{
-					float tLo = t;
-					for (int i = 0; i < 30; ++i)
-					{
-						if (tLo <= 0.001f)
-							break;
-
-						const float tNext = SolveQuarticNewton(a4, a3, a2, a1, a0, tLo * 1.5f);
-						if (tNext == tLo)
-							break;
-
-						tLo = tNext;
-					}
-					if (tLo > t)
-						t = tLo;
-				}
-
-				const float invST = 1.0f / (speed * t);
-				Vec3 dir(
-					(D.x + Vtx * t) * invST,
-					(D.y + Vty * t) * invST,
-					(Dz + Vpz * t + 0.5f * g * t * t) * invST
-				);
-
-				result.Direction = dir;
-				result.Time = t;
-				result.Valid = true;
-
-				if (p.DragCoeff > 0.0f && dragIter < p.DragIters)
-				{
-					speed = ExponentialDragEffectiveSpeed(s, p.DragCoeff, t);
-				}
-				else
-				{
-					break;
-				}
-			}
-			else
-			{
-				const float a2 = VthLenSq + Vpz * Vpz - s2;
-				const float a1 = 2.0f * (DhDotVth + DzVpz);
-				const float a0 = DLenSq;
-
-				float t = SolveQuadratic(a2, a1, a0);
-				if (t <= 0.0f)
-					return result;
-
-				const float invST = 1.0f / (speed * t);
-				Vec3 dir(
-					(D.x + Vtx * t) * invST,
-					(D.y + Vty * t) * invST,
-					(Dz + Vpz * t) * invST
-				);
-
-				result.Direction = dir;
-				result.Time = t;
-				result.Valid = true;
-
-				if (p.DragCoeff > 0.0f && dragIter < p.DragIters)
-				{
-					speed = ExponentialDragEffectiveSpeed(s, p.DragCoeff, t);
-				}
-				else
-				{
-					break;
-				}
-			}
-		}
-
-		return result;
+		const Vec3 vViewUp(-d.z * d.x / flHorizLen, -d.z * d.y / flHorizLen, flHorizLen);
+		return solveWithUp(vViewUp);
 	}
 
 	inline Vec3 DirectionToAngles(const Vec3& dir) noexcept
@@ -389,7 +412,7 @@ namespace BallisticSolver
 	                                   const Vec3& shootPos, float speed, float gravity,
 	                                   float muzzleUpZ, float dragCoeff,
 	                                   float maxSimTime, bool useHighArc,
-	                                   float tolerance = 0.0f) noexcept
+	                                   float tolerance = 0.0f, float timingBias = 0.0f) noexcept
 	{
 		if (path.empty() || tickInterval <= 0.0f)
 			return -1;
@@ -419,6 +442,7 @@ namespace BallisticSolver
 			params.Speed = speed;
 			params.Gravity = gravity;
 			params.MuzzleUpZ = muzzleUpZ;
+			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
 			params.UseHighArc = useHighArc;
 			params.DragCoeff = dragCoeff;
 			params.DragIters = 0;
@@ -432,7 +456,7 @@ namespace BallisticSolver
 			}
 
 			const float simTime = mid * tickInterval;
-			const float residual = res.Time - simTime;
+			const float residual = (res.Time + timingBias) - simTime;
 
 			if (std::fabs(residual) < std::fabs(bestResidual))
 			{
@@ -454,6 +478,7 @@ namespace BallisticSolver
 			params.Speed = speed;
 			params.Gravity = gravity;
 			params.MuzzleUpZ = muzzleUpZ;
+			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
 			params.UseHighArc = useHighArc;
 			params.DragCoeff = dragCoeff;
 			params.DragIters = 0;
@@ -462,7 +487,7 @@ namespace BallisticSolver
 			if (res.Valid)
 			{
 				const float simTime = mid * tickInterval;
-				const float residual = std::fabs(res.Time - simTime);
+				const float residual = std::fabs((res.Time + timingBias) - simTime);
 				if (residual < std::fabs(bestResidual))
 				{
 					bestTick = mid;
@@ -474,6 +499,52 @@ namespace BallisticSolver
 			return bestTick;
 
 		return -1;
+	}
+
+	// Full-path scan for the meeting tick. Robust to non-monotonic residuals
+	// (e.g. jumping/falling targets) where BinarySearchMeetingTick can miss the bracket.
+	inline int ScanMeetingTick(const std::vector<Vec3>& path, float tickInterval,
+	                           const Vec3& shootPos, float speed, float gravity,
+	                           float muzzleUpZ, float dragCoeff,
+	                           float maxSimTime, bool useHighArc,
+	                           float timingBias = 0.0f) noexcept
+	{
+		if (path.empty() || tickInterval <= 0.0f)
+			return -1;
+
+		const int maxTicks = std::min(static_cast<int>(path.size()) - 1, static_cast<int>(maxSimTime / tickInterval));
+
+		float bestResidual = std::numeric_limits<float>::max();
+		int bestTick = -1;
+
+		for (int tick = 0; tick <= maxTicks; ++tick)
+		{
+			SolverParams params;
+			params.ShootPos = shootPos;
+			params.TargetPos = path[tick];
+			params.Speed = speed;
+			params.Gravity = gravity;
+			params.MuzzleUpZ = muzzleUpZ;
+			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
+			params.UseHighArc = useHighArc;
+			params.DragCoeff = dragCoeff;
+			params.DragIters = 0;
+
+			SolveResult res = SolveBallistic(params);
+			if (!res.Valid)
+				continue;
+
+			const float simTime = tick * tickInterval;
+			const float residual = std::fabs((res.Time + timingBias) - simTime);
+
+			if (residual < bestResidual) // strict less-than: ties prefer the smaller tick
+			{
+				bestResidual = residual;
+				bestTick = tick;
+			}
+		}
+
+		return bestTick;
 	}
 
 	struct NewtonRefineResult
@@ -488,7 +559,7 @@ namespace BallisticSolver
 		const std::vector<Vec3>& path, float tickInterval,
 		int startTick, const Vec3& shootPos, float speed,
 		float gravity, float muzzleUpZ, float dragCoeff,
-		bool useHighArc, int maxIters = 3) noexcept
+		bool useHighArc, int maxIters = 3, float timingBias = 0.0f) noexcept
 	{
 		NewtonRefineResult result = {};
 
@@ -512,6 +583,7 @@ namespace BallisticSolver
 			params.Speed = speed;
 			params.Gravity = gravity;
 			params.MuzzleUpZ = muzzleUpZ;
+			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
 			params.UseHighArc = useHighArc;
 			params.DragCoeff = dragCoeff;
 			params.DragIters = 3;
@@ -521,7 +593,7 @@ namespace BallisticSolver
 				break;
 
 			const float simTime = tick * tickInterval;
-			const float residual = res.Time - simTime;
+			const float residual = (res.Time + timingBias) - simTime; // bias only shifts WHICH tick is chosen, result.Time stays raw travel time
 			const float absResidual = std::fabs(residual);
 
 			if (absResidual < bestResidual)
@@ -555,6 +627,7 @@ namespace BallisticSolver
 			params.Speed = speed;
 			params.Gravity = gravity;
 			params.MuzzleUpZ = muzzleUpZ;
+			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
 			params.UseHighArc = useHighArc;
 			params.DragCoeff = dragCoeff;
 			params.DragIters = 3;
