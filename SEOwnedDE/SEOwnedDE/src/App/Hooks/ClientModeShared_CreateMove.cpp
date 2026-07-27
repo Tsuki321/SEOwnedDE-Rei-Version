@@ -3,6 +3,7 @@
 #include "../Features/CFG.h"
 
 #include "../Features/Aimbot/Aimbot.h"
+#include "../Features/Aimbot/AimbotProjectile/AimbotProjectile.h"
 #include "../Features/EnginePrediction/EnginePrediction.h"
 #include "../Features/Misc/Misc.h"
 #include "../Features/RapidFire/RapidFire.h"
@@ -34,12 +35,30 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	);
 
 	F::AutoVaccinator->PreventReload(pCmd);
+	bool* pSendPacket = reinterpret_cast<bool*>(uintptr_t(_AddressOfReturnAddress()) + 0x128);
+	Vec3 vOldAngles = pCmd->viewangles;
+	float flOldSide = pCmd->sidemove;
+	float flOldForward = pCmd->forwardmove;
+	static bool bWasSet = false;
+
+	// Charge ownership must be serviced before any CreateMove early return.
+	// Resolve the command's entities here and reuse them below.
+	C_TFPlayer* pLocal = H::Entities->GetLocal();
+	C_TFWeaponBase* pWeapon = pLocal ? H::Entities->GetWeapon() : nullptr;
+	F::AimbotProjectile->RunChargeLifecycle(pCmd, pLocal, pWeapon);
 
 	if (F::RapidFire->ShouldExitCreateMove(pCmd))
 	{
 		F::Crits->Run(pCmd);
+		F::AimbotProjectile->FinalizeChargeCommand(pCmd, pLocal, pWeapon);
+		if (G::bPSilentAngles)
+		{
+			*pSendPacket = false;
+			bWasSet = true;
+		}
 
-		return F::RapidFire->GetShiftSilentAngles() ? false : CALL_ORIGINAL(ecx, flInputSampleTime, pCmd);
+		return F::RapidFire->GetShiftSilentAngles() || G::bSilentAngles || G::bPSilentAngles
+			? false : CALL_ORIGINAL(ecx, flInputSampleTime, pCmd);
 	}
 
 	if (Shifting::bRecharging)
@@ -48,20 +67,16 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 		{
 			pCmd->buttons &= ~IN_JUMP;
 		}
+		F::AimbotProjectile->FinalizeChargeCommand(pCmd, pLocal, pWeapon);
+		if (G::bPSilentAngles)
+		{
+			*pSendPacket = false;
+			bWasSet = true;
+		}
 
-		return CALL_ORIGINAL(ecx, flInputSampleTime, pCmd);
+		return G::bSilentAngles || G::bPSilentAngles
+			? false : CALL_ORIGINAL(ecx, flInputSampleTime, pCmd);
 	}
-
-	bool* pSendPacket = reinterpret_cast<bool*>(uintptr_t(_AddressOfReturnAddress()) + 0x128);
-
-	Vec3 vOldAngles = pCmd->viewangles;
-	float flOldSide = pCmd->sidemove;
-	float flOldForward = pCmd->forwardmove;
-
-	// Resolve local/weapon once for this cmd. Attack readiness and the rest of
-	// CreateMove reuse these pointers instead of re-walking the entity list.
-	C_TFPlayer* pLocal = H::Entities->GetLocal();
-	C_TFWeaponBase* pWeapon = pLocal ? H::Entities->GetWeapon() : nullptr;
 
 	G::bCanPrimaryAttack = false;
 	G::bCanSecondaryAttack = false;
@@ -215,10 +230,12 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 		}
 	}
 
+	// Apply a pending charged release before pseudo-silent packet handling, but
+	// retain ownership so the final pass can reassert it after later writers.
+	F::AimbotProjectile->FinalizeChargeCommand(pCmd, pLocal, pWeapon, false);
+
 	//pSilent
 	{
-		static bool bWasSet = false;
-
 		if (G::bPSilentAngles)
 		{
 			*pSendPacket = false;
@@ -246,6 +263,7 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	}
 
 	F::RapidFire->Run(pCmd, pSendPacket);
+	F::AimbotProjectile->FinalizeChargeCommand(pCmd, pLocal, pWeapon);
 
 	G::nOldButtons = pCmd->buttons;
 	G::vUserCmdAngles = pCmd->viewangles;

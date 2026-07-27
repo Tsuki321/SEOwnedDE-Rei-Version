@@ -59,6 +59,7 @@ void CAimbot::Run(CUserCmd* pCmd)
 {
 	const auto pLocal = H::Entities->GetLocal();
 	const auto pWeapon = H::Entities->GetWeapon();
+	F::AimbotProjectile->RunChargeLifecycle(pCmd, pLocal, pWeapon);
 
 	// Capture manual ownership before RunMain can add IN_ATTACK itself. The
 	// triggerbot runs after the aimbot and must not replace this command's

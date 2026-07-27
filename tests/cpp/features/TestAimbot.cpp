@@ -8,6 +8,7 @@ namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/Aimbot.cpp";
 constexpr const char* kProjectileSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotProjectile/AimbotProjectile.cpp";
+constexpr const char* kCreateMoveSource = "SEOwnedDE/SEOwnedDE/src/App/Hooks/ClientModeShared_CreateMove.cpp";
 constexpr const char* kProjectilePredictionHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotProjectile/AimbotProjectilePrediction.h";
 constexpr const char* kCommonHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotCommon/AimbotCommon.h";
 constexpr const char* kHitscanSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp";
@@ -94,9 +95,10 @@ TEST(AimbotContracts, HotPathWorkIsDemandDrivenAndBatched) {
     EXPECT_NE(hitscanSource.find("BONE_USED_BY_HITBOX"), std::string::npos);
     EXPECT_EQ(hitscanSource.find("GetHitboxPos(n)"), std::string::npos);
 
-    EXPECT_NE(projectileSource.find("simulateToTickCount"), std::string::npos);
-    EXPECT_NE(projectileSource.find("refineResult.Tick"), std::string::npos);
-    EXPECT_NE(projectilePredictionHeader.find("if (tNext == tLo)"), std::string::npos);
+	EXPECT_NE(projectileSource.find("m_TargetStates.push_back"), std::string::npos);
+	EXPECT_NE(projectileSource.find("refineResult.Tick"), std::string::npos);
+	EXPECT_NE(projectilePredictionHeader.find("FindPositiveQuarticRoots"), std::string::npos);
+	EXPECT_NE(projectilePredictionHeader.find("HorizonLimited"), std::string::npos);
 
     EXPECT_NE(projectileSource.find("GetRocketSplashSpherePoints"), std::string::npos);
     EXPECT_NE(projectileSource.find("std::array<RocketSplashCandidate"), std::string::npos);
@@ -119,6 +121,86 @@ TEST(AimbotPredictionMath, TemporalToleranceClampsNegativeInputs) {
 	EXPECT_FALSE(ProjectilePredictionMath::IsWithinTemporalTolerance(farResidual, tolerance));
 	EXPECT_TRUE(ProjectilePredictionMath::IsWithinTemporalTolerance(-nearResidual, tolerance));
 	EXPECT_TRUE(ProjectilePredictionMath::IsWithinTemporalTolerance(0.0f, -tolerance));
+}
+
+TEST(AimbotContracts, ProjectileChargeHoldIsWeaponBoundAndLossSafe) {
+	const auto root = testhelpers::FindRepoRoot();
+	const auto projectileSource = testhelpers::ReadTextFile(root / kProjectileSource);
+	const auto mainSource = testhelpers::ReadTextFile(root / kMainSource);
+	const auto createMoveSource = testhelpers::ReadTextFile(root / kCreateMoveSource);
+
+	EXPECT_NE(projectileSource.find("m_ChargeHold.Weapon = pWeapon"), std::string::npos);
+	EXPECT_NE(projectileSource.find("m_ChargeHold.Target = target.Entity"), std::string::npos);
+	EXPECT_NE(projectileSource.find("m_ChargeHold.LastSolvedAngle = target.AngleTo"), std::string::npos);
+	EXPECT_NE(projectileSource.find("m_ChargeHold.LastSolvedCommandNumber = pCmd->command_number"), std::string::npos);
+	EXPECT_NE(projectileSource.find("m_ChargeHold.Weapon.Get() == pWeapon"), std::string::npos);
+	EXPECT_NE(projectileSource.find("MaintainChargeHold(pCmd, pLocal, pWeapon)"), std::string::npos);
+	EXPECT_NE(projectileSource.find("QueueChargeRelease(pCmd)"), std::string::npos);
+	EXPECT_NE(projectileSource.find("QueueChargeRelease(pCmd, true)"), std::string::npos);
+	EXPECT_NE(projectileSource.find("m_ChargeHold.ChargeObserved"), std::string::npos);
+	EXPECT_NE(projectileSource.find("m_ChargeHold.AbortRelease"), std::string::npos);
+	EXPECT_NE(projectileSource.find("pCmd->buttons |= IN_ATTACK;"), std::string::npos);
+	EXPECT_NE(projectileSource.find("ResetChargeHold();"), std::string::npos);
+
+	const auto maintainCharge = projectileSource.find("bool CAimbotProjectile::MaintainChargeHold");
+	const auto staleCharge = projectileSource.find("m_ChargeHold.ChargeObserved || !pWeapon->HasPrimaryAmmoForShot()", maintainCharge);
+	const auto stoppedContext = projectileSource.find("const bool bContextStopped", maintainCharge);
+	const auto abortRelease = projectileSource.find("QueueChargeRelease(pCmd, true)", stoppedContext);
+	const auto lossSafeHold = projectileSource.find("pCmd->buttons |= IN_ATTACK;", abortRelease);
+	ASSERT_NE(maintainCharge, std::string::npos);
+	ASSERT_NE(staleCharge, std::string::npos);
+	ASSERT_NE(stoppedContext, std::string::npos);
+	ASSERT_NE(abortRelease, std::string::npos);
+	ASSERT_NE(lossSafeHold, std::string::npos);
+	EXPECT_LT(staleCharge, stoppedContext);
+	EXPECT_LT(stoppedContext, abortRelease);
+	EXPECT_LT(abortRelease, lossSafeHold);
+
+	const auto mainLifecycle = mainSource.find("RunChargeLifecycle(pCmd, pLocal, pWeapon)");
+	const auto mainDispatch = mainSource.find("RunMain(pCmd)");
+	ASSERT_NE(mainLifecycle, std::string::npos);
+	ASSERT_NE(mainDispatch, std::string::npos);
+	EXPECT_LT(mainLifecycle, mainDispatch);
+
+	const auto createLifecycle = createMoveSource.find("RunChargeLifecycle(pCmd, pLocal, pWeapon)");
+	const auto sendPacket = createMoveSource.find("bool* pSendPacket");
+	const auto rapidFireExit = createMoveSource.find("ShouldExitCreateMove(pCmd)");
+	const auto preSilentFinalize = createMoveSource.find("FinalizeChargeCommand(pCmd, pLocal, pWeapon, false)");
+	const auto pseudoSilent = createMoveSource.find("//pSilent");
+	const auto finalizeCharge = createMoveSource.rfind("FinalizeChargeCommand(pCmd, pLocal, pWeapon)");
+	const auto finalRapidFire = createMoveSource.find("F::RapidFire->Run(pCmd, pSendPacket)");
+	const auto recordButtons = createMoveSource.find("G::nOldButtons = pCmd->buttons");
+	ASSERT_NE(createLifecycle, std::string::npos);
+	ASSERT_NE(sendPacket, std::string::npos);
+	ASSERT_NE(rapidFireExit, std::string::npos);
+	ASSERT_NE(preSilentFinalize, std::string::npos);
+	ASSERT_NE(pseudoSilent, std::string::npos);
+	ASSERT_NE(finalizeCharge, std::string::npos);
+	ASSERT_NE(finalRapidFire, std::string::npos);
+	ASSERT_NE(recordButtons, std::string::npos);
+	EXPECT_LT(sendPacket, createLifecycle);
+	EXPECT_LT(createLifecycle, rapidFireExit);
+	EXPECT_LT(preSilentFinalize, pseudoSilent);
+	EXPECT_LT(finalRapidFire, finalizeCharge);
+	EXPECT_LT(finalizeCharge, recordButtons);
+	EXPECT_GE(testhelpers::CountOccurrences(createMoveSource, "FinalizeChargeCommand(pCmd, pLocal, pWeapon)"), 2u);
+	EXPECT_GE(testhelpers::CountOccurrences(createMoveSource, "if (G::bPSilentAngles)"), 3u);
+}
+
+TEST(AimbotContracts, ProjectileSplashAndMultipointUseFinalTimingAndLaunchState) {
+	const auto root = testhelpers::FindRepoRoot();
+	const auto projectileSource = testhelpers::ReadTextFile(root / kProjectileSource);
+
+	EXPECT_NE(projectileSource.find("flTimingBias + flRemainingChargeWait + flImpactTime"), std::string::npos);
+	EXPECT_NE(projectileSource.find("GetTargetStateAtTime(flTargetTime)"), std::string::npos);
+	EXPECT_NE(projectileSource.find("GetProjectileHull(launch, projectileMins, projectileMaxs)"), std::string::npos);
+	EXPECT_NE(projectileSource.find("vImpact.DistTo(vTargetPoint) > radius"), std::string::npos);
+	EXPECT_NE(projectileSource.find("constexpr float kRocketExplosionRadius = 146.0f"), std::string::npos);
+	EXPECT_NE(projectileSource.find("AttribHookValue(kRocketExplosionRadius, \"mult_explosion_radius\", pWeapon)"), std::string::npos);
+	EXPECT_EQ(projectileSource.find("radius = 130.0f"), std::string::npos);
+	EXPECT_NE(projectileSource.find("mpPath, TICK_INTERVAL, mpRefine.Tick, mpLaunch.m_pos"), std::string::npos);
+	EXPECT_NE(projectileSource.find("mpRefine.SimulatedTime - (target.TimeToTarget + flTimingBias)"), std::string::npos);
+	EXPECT_EQ(projectileSource.find("traceVal.fraction < 0.9f"), std::string::npos);
 }
 
 TEST(AimbotContracts, SharedTargetScoringIsCentralizedAcrossModes) {

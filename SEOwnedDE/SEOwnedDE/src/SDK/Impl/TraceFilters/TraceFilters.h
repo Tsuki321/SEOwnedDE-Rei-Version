@@ -43,4 +43,7 @@ public:
 	{
 		return TRACE_EVERYTHING;
 	}
+
+	C_BaseEntity* m_pIgnore = nullptr;
+	C_BaseEntity* m_pIgnore2 = nullptr;
 };

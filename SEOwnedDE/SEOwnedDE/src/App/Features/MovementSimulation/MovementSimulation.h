@@ -2,6 +2,67 @@
 
 #include "../../../SDK/SDK.h"
 #include <array>
+#include <cmath>
+
+namespace MovementPredictionMath
+{
+	inline float NormalizeYawDelta(float flCurrentYaw, float flPreviousYaw)
+	{
+		return Math::NormalizeAngle(flCurrentYaw - flPreviousYaw);
+	}
+
+	inline float ComputeYawDeltaPerTick(float flCurrentYaw, float flPreviousYaw,
+		float flElapsedTime, float flTickInterval)
+	{
+		if (!std::isfinite(flElapsedTime) || !std::isfinite(flTickInterval)
+			|| flElapsedTime <= 0.0f || flTickInterval <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		return NormalizeYawDelta(flCurrentYaw, flPreviousYaw) * flTickInterval / flElapsedTime;
+	}
+
+	inline void ProjectHorizontalVelocity(const Vec3& vVelocity, const Vec3& vForward,
+		const Vec3& vRight, float& flForwardMove, float& flSideMove)
+	{
+		const float flForwardLengthSqr = vForward.x * vForward.x + vForward.y * vForward.y;
+		const float flRightLengthSqr = vRight.x * vRight.x + vRight.y * vRight.y;
+
+		flForwardMove = flForwardLengthSqr > 0.000001f
+			? (vVelocity.x * vForward.x + vVelocity.y * vForward.y) / flForwardLengthSqr
+			: 0.0f;
+		flSideMove = flRightLengthSqr > 0.000001f
+			? (vVelocity.x * vRight.x + vVelocity.y * vRight.y) / flRightLengthSqr
+			: 0.0f;
+	}
+
+	inline Vec3 RotateHorizontalVelocity(const Vec3& vVelocity, float flYawDelta)
+	{
+		const float flRadians = DEG2RAD(flYawDelta);
+		const float flSin = std::sin(flRadians);
+		const float flCos = std::cos(flRadians);
+
+		return
+		{
+			vVelocity.x * flCos - vVelocity.y * flSin,
+			vVelocity.x * flSin + vVelocity.y * flCos,
+			vVelocity.z
+		};
+	}
+
+	inline Vec3 ReconcileHorizontalTurn(const Vec3& vPreviousVelocity,
+		const Vec3& vAccelerationVelocity, float flDesiredYawDelta)
+	{
+		if (vPreviousVelocity.Length2D() <= 0.001f || vAccelerationVelocity.Length2D() <= 0.001f)
+			return vAccelerationVelocity;
+
+		const float flPreviousYaw = Math::VelocityToAngles(vPreviousVelocity).y;
+		const float flAccelerationYaw = Math::VelocityToAngles(vAccelerationVelocity).y;
+		const float flAccelerationYawDelta = NormalizeYawDelta(flAccelerationYaw, flPreviousYaw);
+		return RotateHorizontalVelocity(vAccelerationVelocity, flDesiredYawDelta - flAccelerationYawDelta);
+	}
+}
 
 class CMovementSimulation
 {
@@ -71,7 +132,6 @@ class CMovementSimulation
 	Vec3 m_vAdaptiveVelocity = {};
 	Vec3 m_vMethod2Accel = {};
 	Vec3 m_vMethod2Velocity = {};
-	Vec3 m_vMethod3OriginalVelocity = {};
 
 	struct MoveRecord_t
 	{
@@ -79,10 +139,25 @@ class CMovementSimulation
 		Vec3 m_vDirection = {};
 		float m_flSimTime = 0.0f;
 		int m_iFlags = 0;
+		bool m_bHasDirection = false;
+	};
+
+	struct MoveHistoryState_t
+	{
+		int m_iEntityHandle = -1;
+		float m_flDeathTime = 0.0f;
+		float m_flLastRecordTime = 0.0f;
+		float m_flLastYawTime = 0.0f;
+		float m_flLastYaw = 0.0f;
+		float m_flYawTurnRate = 0.0f;
+		float m_flExpectedYaw = 0.0f;
+		bool m_bInitialized = false;
+		bool m_bHasLastYaw = false;
+		bool m_bHasExpectedYaw = false;
 	};
 	static constexpr int MOVE_RECORD_CAPACITY = 66;
-	std::array<float, MAX_PLAYERS> m_afLastYaw = {};
-	std::array<float, MAX_PLAYERS> m_afExpectedYaw = {};
+	static constexpr int MAX_HISTORY_GAP_TICKS = 16;
+	std::array<MoveHistoryState_t, MAX_PLAYERS> m_aMoveHistoryStates = {};
 	// Fixed per-player ring buffer keyed by entindex (bounded to MAX_PLAYERS),
 	// replacing an unordered_map<int, deque> that hashed + churned heap blocks
 	// every frame. Logical index 0 is the most recent record.
@@ -103,6 +178,11 @@ class CMovementSimulation
 	float m_flOldFrametime = 0.0f;
 
 	void SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveData);
+	bool PrepareMoveHistory(C_TFPlayer* pPlayer, int& iEntIndex);
+	void ResetMoveHistory(int iEntIndex, int iEntityHandle, float flDeathTime);
+	void UpdateYawTurnRate(C_TFPlayer* pPlayer);
+	bool IsStrafePredictionActive() const;
+	float GetStrafeYawStep(float flTimeToTarget) const;
 
 public:
 	bool Initialize(C_TFPlayer* pPlayer);

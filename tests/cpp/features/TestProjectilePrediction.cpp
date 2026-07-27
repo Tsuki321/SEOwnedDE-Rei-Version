@@ -69,6 +69,11 @@ TEST(ProjectileTiming, IsWithinTemporalTolerance_Exceeds) {
 	EXPECT_FALSE(ProjectilePredictionMath::IsWithinTemporalTolerance(0.06f, 0.05f));
 }
 
+TEST(ProjectileTiming, DefaultTolerance_IsHalfTick) {
+	EXPECT_NEAR(ProjectilePredictionMath::ResolveTemporalTolerance(0.015f), 0.0075f, 1e-6f);
+	EXPECT_NEAR(ProjectilePredictionMath::ResolveTemporalTolerance(0.015f, 0.02f), 0.0075f, 1e-6f);
+}
+
 // =============================================================================
 // Drag Coefficient from vPhysics Basis
 // =============================================================================
@@ -201,6 +206,49 @@ TEST(QuarticSolver, StationaryTarget_Gravity_LowArc) {
 
 	float dirLen = std::sqrt(r.Direction.x * r.Direction.x + r.Direction.y * r.Direction.y + r.Direction.z * r.Direction.z);
 	EXPECT_NEAR(dirLen, 1.0f, 1e-3f);
+}
+
+TEST(QuarticSolver, StationaryTarget_Gravity_SelectsDistinctLowAndHighArcs) {
+	BallisticSolver::SolverParams lowParams;
+	lowParams.ShootPos = Vec3(0, 0, 0);
+	lowParams.TargetPos = Vec3(100, 0, 0);
+	lowParams.Speed = 1000.0f;
+	lowParams.Gravity = 800.0f;
+
+	BallisticSolver::SolverParams highParams = lowParams;
+	highParams.UseHighArc = true;
+
+	const BallisticSolver::SolveResult low = BallisticSolver::SolveBallistic(lowParams);
+	const BallisticSolver::SolveResult high = BallisticSolver::SolveBallistic(highParams);
+
+	ASSERT_TRUE(low.Valid);
+	ASSERT_TRUE(high.Valid);
+	EXPECT_GE(low.PositiveRootCount, 2);
+	EXPECT_GE(high.PositiveRootCount, 2);
+	EXPECT_LT(low.Time, 0.2f);
+	EXPECT_GT(high.Time, 2.0f);
+	EXPECT_GT(high.Time, low.Time + 1.0f);
+
+	Vec3 lowHit = lowParams.ShootPos + low.Direction * lowParams.Speed * low.Time;
+	lowHit.z -= 0.5f * lowParams.Gravity * low.Time * low.Time;
+	Vec3 highHit = highParams.ShootPos + high.Direction * highParams.Speed * high.Time;
+	highHit.z -= 0.5f * highParams.Gravity * high.Time * high.Time;
+	EXPECT_LT(lowHit.DistTo(lowParams.TargetPos), 0.05f);
+	EXPECT_LT(highHit.DistTo(highParams.TargetPos), 0.05f);
+	EXPECT_LT(low.EndpointError, 0.05f);
+	EXPECT_LT(high.EndpointError, 0.05f);
+}
+
+TEST(QuarticSolver, HighArcOutsideMaxTime_DoesNotFallBackToLowArc) {
+	BallisticSolver::SolverParams p;
+	p.TargetPos = Vec3(100, 0, 0);
+	p.Speed = 1000.0f;
+	p.Gravity = 800.0f;
+	p.UseHighArc = true;
+	p.MaxTime = 1.0f;
+
+	const BallisticSolver::SolveResult result = BallisticSolver::SolveBallistic(p);
+	EXPECT_FALSE(result.Valid);
 }
 
 TEST(QuarticSolver, StationaryTarget_Gravity_DirectionIsUnitVector) {
@@ -370,6 +418,7 @@ TEST(QuarticSolver, WithDrag_LongerTimeThanNoDrag) {
 
 	ASSERT_TRUE(rNoDrag.Valid);
 	ASSERT_TRUE(rWithDrag.Valid);
+	EXPECT_TRUE(rWithDrag.DragConverged);
 
 	EXPECT_GT(rWithDrag.Time, rNoDrag.Time);
 }
@@ -387,9 +436,29 @@ TEST(QuarticSolver, WithDrag_StillReachesTarget) {
 
 	ASSERT_TRUE(r.Valid);
 	EXPECT_GT(r.Time, 0.0f);
+	EXPECT_TRUE(r.DragConverged);
 
-	float lenSq = r.Direction.LengthSqr();
-	EXPECT_NEAR(lenSq, 1.0f, 1e-2f);
+	const float dragDistance = p.Speed * (1.0f - std::exp(-p.DragCoeff * r.Time)) / p.DragCoeff;
+	Vec3 hitPos = p.ShootPos + r.Direction * dragDistance;
+	hitPos.z -= 0.5f * p.Gravity * r.Time * r.Time;
+	EXPECT_LT(hitPos.DistTo(p.TargetPos), 0.25f);
+	EXPECT_LT(r.EndpointError, 0.05f);
+}
+
+TEST(QuarticSolver, WithDrag_ExhaustedIterationBudgetIsInvalid) {
+	BallisticSolver::SolverParams p;
+	p.ShootPos = Vec3(0, 0, 0);
+	p.TargetPos = Vec3(800, 0, 0);
+	p.Speed = 1200.0f;
+	p.Gravity = 800.0f;
+	p.DragCoeff = BallisticSolver::ComputeDragCoefficient(BallisticSolver::WeaponClass::GrenadeLauncher);
+	p.DragIters = 0;
+
+	const BallisticSolver::SolveResult r = BallisticSolver::SolveBallistic(p);
+
+	EXPECT_FALSE(r.Valid);
+	EXPECT_FALSE(r.DragConverged);
+	EXPECT_GT(r.Time, 0.0f);
 }
 
 // =============================================================================
@@ -414,7 +483,7 @@ TEST(BinarySearchMeetingTick, FindsCorrectTick_LinearMotion) {
 	for (int i = 0; i < 100; i++)
 	{
 		path.push_back(pos);
-		pos.x += 15.0f;
+		pos.x += 3.0f;
 	}
 
 	int tick = BallisticSolver::BinarySearchMeetingTick(
@@ -455,7 +524,7 @@ TEST(NewtonRefine, ConvergesOnMovingPath) {
 	for (int i = 0; i < 100; i++)
 	{
 		path.push_back(pos);
-		pos.x += 15.0f;
+		pos.x += 3.0f;
 	}
 
 	int startTick = BallisticSolver::BinarySearchMeetingTick(
@@ -469,6 +538,38 @@ TEST(NewtonRefine, ConvergesOnMovingPath) {
 	EXPECT_TRUE(r.Valid);
 	EXPECT_GE(r.Tick, 0);
 	EXPECT_LT(r.Tick, static_cast<int>(path.size()));
+	EXPECT_LE(r.TemporalResidual, 0.5f * 0.015f);
+}
+
+TEST(NewtonRefine, ShortPathRejectsHorizonLimitedIntercept) {
+	std::vector<Vec3> path(20, Vec3(1000.0f, 0.0f, 0.0f));
+
+	const BallisticSolver::NewtonRefineResult r = BallisticSolver::NewtonRefineOverPath(
+		path, 0.015f, 10, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, false, 3);
+
+	EXPECT_FALSE(r.Valid);
+	EXPECT_TRUE(r.HorizonLimited);
+	EXPECT_TRUE(r.AtPathBoundary);
+	EXPECT_GT(r.RequiredTime, r.PathHorizon);
+	EXPECT_GT(r.TemporalResidual, 0.5f * 0.015f);
+}
+
+TEST(NewtonRefine, SubTickInterpolationConvergesFromPoorInitialGuess) {
+	std::vector<Vec3> path;
+	Vec3 position(800.0f, 0.0f, 0.0f);
+	for (int i = 0; i < 100; ++i)
+	{
+		path.push_back(position);
+		position.x += 5.0f;
+	}
+
+	const BallisticSolver::NewtonRefineResult r = BallisticSolver::NewtonRefineOverPath(
+		path, 0.015f, 0, Vec3(0, 0, 0), 1000.0f, 0.0f, 0.0f, 0.0f, false, 1);
+
+	ASSERT_TRUE(r.Valid);
+	EXPECT_LT(r.TemporalResidual, 1e-4f);
+	EXPECT_NEAR(r.RequiredTime, r.SimulatedTime, 1e-4f);
+	EXPECT_GT(r.SimulatedTime, 1.0f);
 }
 
 TEST(NewtonRefine, InvalidStartTick_ReturnsInvalid) {
@@ -628,6 +729,15 @@ TEST(QuarticNewton, FindsSecondPositiveRoot) {
 	EXPECT_NEAR(t, 2.0f, 1e-4f);
 }
 
+TEST(QuarticRoots, BracketIsolationReturnsOrderedPositiveRoots) {
+	const BallisticSolver::QuarticRoots roots = BallisticSolver::FindPositiveQuarticRoots(
+		1.0, 0.0, -5.0, 0.0, 4.0);
+
+	ASSERT_EQ(roots.Count, 2);
+	EXPECT_NEAR(roots.Values[0], 1.0, 1e-7);
+	EXPECT_NEAR(roots.Values[1], 2.0, 1e-7);
+}
+
 // =============================================================================
 // Scan Meeting Tick (full-path scan, robust to non-monotonic residuals)
 // =============================================================================
@@ -659,6 +769,29 @@ TEST(ScanMeetingTick, TimingBiasShiftsTickOutward) {
 
 	EXPECT_GE(unbiased, 0);
 	EXPECT_GE(biased, unbiased + 8);
+}
+
+TEST(ScanMeetingTick, DragUsesConvergedFlightTime) {
+	std::vector<Vec3> path(200, Vec3(1500.0f, 0.0f, 0.0f));
+	const float dragCoeff = BallisticSolver::ComputeDragCoefficient(
+		BallisticSolver::WeaponClass::Cannonball);
+
+	BallisticSolver::SolverParams params;
+	params.TargetPos = path.front();
+	params.Speed = 1200.0f;
+	params.DragCoeff = dragCoeff;
+	params.DragIters = 3;
+	const BallisticSolver::SolveResult solve = BallisticSolver::SolveBallistic(params);
+	ASSERT_TRUE(solve.Valid);
+	ASSERT_TRUE(solve.DragConverged);
+
+	const int tick = BallisticSolver::ScanMeetingTick(
+		path, 0.015f, Vec3(0, 0, 0), 1200.0f, 0.0f, 0.0f,
+		dragCoeff, 2.5f, false);
+	const int expectedTick = static_cast<int>(std::round(solve.Time / 0.015f));
+
+	EXPECT_NEAR(tick, expectedTick, 1);
+	EXPECT_GE(tick, 85);
 }
 
 TEST(ScanMeetingTick, NonMonotonicPath_StillFinds) {
@@ -722,6 +855,33 @@ TEST(ViewUpMuzzle, Enabled_ProducesValidUnitDirection) {
 	ASSERT_TRUE(r.Valid);
 	EXPECT_GT(r.Time, 0.0f);
 	EXPECT_NEAR(r.Direction.LengthSqr(), 1.0f, 2e-3f);
+}
+
+TEST(ViewUpMuzzle, Enabled_ReconstructsVerticalImpulseEndpoint) {
+	BallisticSolver::SolverParams p;
+	p.ShootPos = Vec3(10, -20, 30);
+	p.TargetPos = Vec3(1000, 250, 80);
+	p.TargetVel = Vec3(75, -20, 0);
+	p.Speed = 1200.0f;
+	p.Gravity = 800.0f;
+	p.MuzzleUpZ = 200.0f;
+	p.UseViewUpMuzzle = true;
+
+	const BallisticSolver::SolveResult r = BallisticSolver::SolveBallistic(p);
+	ASSERT_TRUE(r.Valid);
+
+	const float horizontalLength = std::sqrt(
+		r.Direction.x * r.Direction.x + r.Direction.y * r.Direction.y);
+	ASSERT_GT(horizontalLength, 1e-4f);
+	const Vec3 viewUp(
+		-r.Direction.z * r.Direction.x / horizontalLength,
+		-r.Direction.z * r.Direction.y / horizontalLength,
+		horizontalLength);
+
+	Vec3 projectileAtImpact = p.ShootPos + r.Direction * p.Speed * r.Time + viewUp * p.MuzzleUpZ * r.Time;
+	projectileAtImpact.z -= 0.5f * p.Gravity * r.Time * r.Time;
+	const Vec3 targetAtImpact = p.TargetPos + p.TargetVel * r.Time;
+	EXPECT_LT(projectileAtImpact.DistTo(targetAtImpact), 0.1f);
 }
 
 TEST(ViewUpMuzzle, Enabled_DiffersSlightlyFromLegacy) {

@@ -1331,6 +1331,7 @@ void CMenu::MainWindow()
 				CheckBox("Active", CFG::Aimbot_Projectile_Active);
 				CheckBox("No Spread", CFG::Aimbot_Projectile_NoSpread);
 				CheckBox("Auto Double Donk", CFG::Aimbot_Projectile_Auto_Double_Donk);
+				CheckBox("Charge Shot", CFG::Aimbot_Projectile_Charge_Shot);
 				CheckBox("High Arc", CFG::Aimbot_Projectile_High_Arc);
 				CheckBox("Advanced Head Aim", CFG::Aimbot_Projectile_Advanced_Head_Aim);
 				CheckBox("Ground Strafe Prediction", CFG::Aimbot_Projectile_Ground_Strafe_Prediction);

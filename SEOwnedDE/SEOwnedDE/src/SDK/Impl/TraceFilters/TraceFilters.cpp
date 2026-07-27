@@ -101,6 +101,9 @@ bool CTraceFilterWorldCustom::ShouldHitEntity(IHandleEntity *pServerEntity, int 
 
 bool CTraceFilterArc::ShouldHitEntity(IHandleEntity* pServerEntity, int contentsMask)
 {
+	if (!pServerEntity || pServerEntity == m_pIgnore || pServerEntity == m_pIgnore2)
+		return false;
+
 	if (const auto pEntity = static_cast<IClientEntity*>(pServerEntity)->As<C_BaseEntity>())
 	{
 		switch (pEntity->GetClassId())

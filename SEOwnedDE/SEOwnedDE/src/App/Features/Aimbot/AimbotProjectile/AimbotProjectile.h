@@ -1,8 +1,21 @@
 #pragma once
 #include "../AimbotCommon/AimbotCommon.h"
 
+struct ProjectileInfo;
+
 class CAimbotProjectile
 {
+	struct PredictedTargetState_t
+	{
+		Vec3 Origin = {};
+		Vec3 Mins = {};
+		Vec3 Maxs = {};
+		Vec3 HeadOffset = {};
+		float ModelScale = 1.0f;
+		bool Ducked = false;
+		bool OnGround = false;
+	};
+
 	struct ProjTarget_t : AimTarget_t
 	{
 		float TimeToTarget = 0.0f;
@@ -13,7 +26,23 @@ class CAimbotProjectile
 
 	std::vector<ProjTarget_t> m_vecTargets = {};
 	std::vector<Vec3> m_TargetPath = {};
+	std::vector<PredictedTargetState_t> m_TargetStates = {};
 	int m_LastAimPos = 0; // 0 = feet, 1 = body, 2 = head
+
+	struct ChargeHoldState_t
+	{
+		CHandle<C_TFWeaponBase> Weapon = {};
+		CHandle<C_BaseEntity> Target = {};
+		Vec3 LastSolvedAngle = {};
+		float RequiredChargeTime = 0.0f;
+		int LastSolvedCommandNumber = -1;
+		bool Active = false;
+		bool ChargeObserved = false;
+		bool ReleasePending = false;
+		bool AbortRelease = false;
+	};
+
+	ChargeHoldState_t m_ChargeHold = {};
 
 	struct ProjectileInfo_t
 	{
@@ -26,10 +55,16 @@ class CAimbotProjectile
 	ProjectileInfo_t m_CurProjInfo = {};
 
 	bool GetProjectileInfo(C_TFWeaponBase* pWeapon);
-	bool CalcProjAngle(const Vec3& vFrom, const Vec3& vTo, Vec3& vAngleOut, float& flTimeOut);
-	void OffsetPlayerPosition(C_TFWeaponBase* pWeapon, Vec3& vPos, C_TFPlayer* pPlayer, bool bDucked, bool bOnGround, int aimPosition);
-	bool CanArcReach(const Vec3& vFrom, const Vec3& vTo, const Vec3& vAngleTo, float flTargetTime, C_BaseEntity* pTarget, float flSpeedOverride = 0.0f, float flGravityModOverride = -1.0f);
-	bool CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vFrom, const Vec3& vTo, const ProjTarget_t& target, float flTargetTime, float flSpeedOverride = 0.0f, float flGravityModOverride = -1.0f);
+	bool SolveProjectile(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vTo, float flSpeed, float flGravityMod,
+		Vec3& vViewAngleOut, float& flTimeOut, ProjectileInfo& launchOut);
+	PredictedTargetState_t CaptureTargetState(C_TFPlayer* pPlayer, const Vec3& vOrigin,
+		float flModelScale, const Vec3& vHeadOffset) const;
+	PredictedTargetState_t GetTargetStateAtTime(float flTime) const;
+	Vec3 GetAimPoint(C_TFWeaponBase* pWeapon, const PredictedTargetState_t& state, int aimPosition);
+	bool CanArcReach(const ProjectileInfo& launch, float flTargetTime,
+		const PredictedTargetState_t& targetState, C_BaseEntity* pTarget);
+	bool CanSee(const ProjectileInfo& launch, const PredictedTargetState_t& targetState,
+		C_BaseEntity* pTarget, float flTargetTime);
 	bool SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const CUserCmd* pCmd, ProjTarget_t& target);
 
 	bool RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const CUserCmd* pCmd, const Vec3& vLocalPos, const Vec3& center, ProjTarget_t& target);
@@ -38,8 +73,13 @@ class CAimbotProjectile
 	void Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vAngles);
 	bool ShouldFire(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void HandleFire(CUserCmd* pCmd, C_TFWeaponBase* pWeapon, C_TFPlayer* pLocal, const ProjTarget_t& target);
+	void ResetChargeHold();
+	bool MaintainChargeHold(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
+	void QueueChargeRelease(CUserCmd* pCmd, bool bAbortRelease = false);
 
 public:
+	void RunChargeLifecycle(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
+	void FinalizeChargeCommand(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, bool bConsume = true);
 	bool IsFiring(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 };

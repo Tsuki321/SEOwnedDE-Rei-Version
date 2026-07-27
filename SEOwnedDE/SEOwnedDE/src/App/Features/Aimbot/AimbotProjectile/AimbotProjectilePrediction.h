@@ -35,6 +35,20 @@ namespace ProjectilePredictionMath
 		return std::fabs((ClampNonNegative(travelTime) + ClampNonNegative(timingBias)) - ClampNonNegative(simulatedTime));
 	}
 
+	inline float ComputeSignedTemporalResidual(float simulatedTime, float travelTime, float timingBias)
+	{
+		return (ClampNonNegative(travelTime) + ClampNonNegative(timingBias)) - ClampNonNegative(simulatedTime);
+	}
+
+	inline float ResolveTemporalTolerance(float tickInterval, float requestedTolerance = 0.0f)
+	{
+		const float halfTick = 0.5f * ClampNonNegative(tickInterval);
+		if (requestedTolerance <= 0.0f)
+			return halfTick;
+
+		return std::min(requestedTolerance, halfTick);
+	}
+
 	inline bool IsWithinTemporalTolerance(float residual, float tolerance)
 	{
 		return ClampNonNegative(residual) <= ClampNonNegative(tolerance);
@@ -106,6 +120,9 @@ namespace BallisticSolver
 	{
 		Vec3  Direction = {};
 		float Time      = 0.0f;
+		float EndpointError = std::numeric_limits<float>::infinity();
+		int   PositiveRootCount = 0;
+		bool  DragConverged = true;
 		bool  Valid     = false;
 	};
 
@@ -178,6 +195,201 @@ namespace BallisticSolver
 		return 4.0f * a4 * t2 * t + 3.0f * a3 * t2 + 2.0f * a2 * t + a1;
 	}
 
+	struct QuarticRoots
+	{
+		std::array<double, 4> Values = {};
+		int Count = 0;
+	};
+
+	using Polynomial = std::array<double, 5>;
+
+	inline double EvaluatePolynomial(const Polynomial& coefficients, int degree, double x) noexcept
+	{
+		double value = coefficients[degree];
+		for (int i = degree - 1; i >= 0; --i)
+			value = value * x + coefficients[i];
+		return value;
+	}
+
+	inline double PolynomialMagnitude(const Polynomial& coefficients, int degree, double x) noexcept
+	{
+		const double absX = std::fabs(x);
+		double magnitude = std::fabs(coefficients[degree]);
+		for (int i = degree - 1; i >= 0; --i)
+			magnitude = magnitude * absX + std::fabs(coefficients[i]);
+		return std::max(1.0, magnitude);
+	}
+
+	inline bool IsPolynomialZero(const Polynomial& coefficients, int degree, double x, double value) noexcept
+	{
+		return std::fabs(value) <= 1e-11 * PolynomialMagnitude(coefficients, degree, x);
+	}
+
+	inline void AddUniqueRoot(QuarticRoots& roots, double root) noexcept
+	{
+		if (!std::isfinite(root))
+			return;
+
+		for (int i = 0; i < roots.Count; ++i)
+		{
+			const double existing = roots.Values[i];
+			if (std::fabs(existing - root) <= 1e-8 * std::max({ 1.0, std::fabs(existing), std::fabs(root) }))
+				return;
+		}
+
+		if (roots.Count < static_cast<int>(roots.Values.size()))
+			roots.Values[roots.Count++] = root;
+	}
+
+	inline double BisectPolynomialRoot(const Polynomial& coefficients, int degree,
+	                                  double lo, double hi) noexcept
+	{
+		double fLo = EvaluatePolynomial(coefficients, degree, lo);
+		const double fHi = EvaluatePolynomial(coefficients, degree, hi);
+
+		if (IsPolynomialZero(coefficients, degree, lo, fLo))
+			return lo;
+		if (IsPolynomialZero(coefficients, degree, hi, fHi))
+			return hi;
+
+		for (int iteration = 0; iteration < 80; ++iteration)
+		{
+			const double mid = lo + (hi - lo) * 0.5;
+			const double fMid = EvaluatePolynomial(coefficients, degree, mid);
+
+			if (IsPolynomialZero(coefficients, degree, mid, fMid) ||
+			    (hi - lo) <= 1e-10 * std::max(1.0, std::fabs(mid)))
+			{
+				return mid;
+			}
+
+			if (std::signbit(fLo) != std::signbit(fMid))
+			{
+				hi = mid;
+			}
+			else
+			{
+				lo = mid;
+				fLo = fMid;
+			}
+		}
+
+		return lo + (hi - lo) * 0.5;
+	}
+
+	// Recursively isolate roots between derivative roots. Each resulting interval is
+	// monotonic, so bisection cannot jump from the low arc to the high arc.
+	inline QuarticRoots FindPolynomialRootsInInterval(
+		const Polynomial& coefficients, int degree, double minX, double maxX) noexcept
+	{
+		QuarticRoots roots;
+		if (degree <= 0 || !std::isfinite(minX) || !std::isfinite(maxX) || maxX < minX)
+			return roots;
+
+		while (degree > 0 && std::fabs(coefficients[degree]) <= 1e-18)
+			--degree;
+
+		if (degree <= 0)
+			return roots;
+
+		if (degree == 1)
+		{
+			const double root = -coefficients[0] / coefficients[1];
+			if (root >= minX && root <= maxX)
+				AddUniqueRoot(roots, root);
+			return roots;
+		}
+
+		Polynomial derivative = {};
+		for (int i = 1; i <= degree; ++i)
+			derivative[i - 1] = coefficients[i] * static_cast<double>(i);
+
+		QuarticRoots criticalPoints = FindPolynomialRootsInInterval(
+			derivative, degree - 1, minX, maxX);
+		std::sort(criticalPoints.Values.begin(), criticalPoints.Values.begin() + criticalPoints.Count);
+
+		std::array<double, 5> boundaries = {};
+		int boundaryCount = 0;
+		boundaries[boundaryCount++] = minX;
+		for (int i = 0; i < criticalPoints.Count; ++i)
+		{
+			const double point = criticalPoints.Values[i];
+			if (point > minX && point < maxX)
+				boundaries[boundaryCount++] = point;
+		}
+		boundaries[boundaryCount++] = maxX;
+		std::sort(boundaries.begin(), boundaries.begin() + boundaryCount);
+
+		for (int i = 0; i < boundaryCount; ++i)
+		{
+			const double point = boundaries[i];
+			const double value = EvaluatePolynomial(coefficients, degree, point);
+			if (IsPolynomialZero(coefficients, degree, point, value))
+				AddUniqueRoot(roots, point);
+		}
+
+		for (int i = 0; i + 1 < boundaryCount; ++i)
+		{
+			const double lo = boundaries[i];
+			const double hi = boundaries[i + 1];
+			const double fLo = EvaluatePolynomial(coefficients, degree, lo);
+			const double fHi = EvaluatePolynomial(coefficients, degree, hi);
+
+			if (std::signbit(fLo) != std::signbit(fHi))
+				AddUniqueRoot(roots, BisectPolynomialRoot(coefficients, degree, lo, hi));
+		}
+
+		std::sort(roots.Values.begin(), roots.Values.begin() + roots.Count);
+		return roots;
+	}
+
+	inline double ComputePolynomialRootBound(const Polynomial& coefficients, int degree) noexcept
+	{
+		const double leading = std::fabs(coefficients[degree]);
+		if (leading <= 1e-18)
+			return 0.0;
+
+		double bound = 0.0;
+		for (int i = 0; i < degree; ++i)
+		{
+			const double ratio = std::fabs(coefficients[i]) / leading;
+			if (ratio > 0.0)
+				bound = std::max(bound, std::pow(ratio, 1.0 / static_cast<double>(degree - i)));
+		}
+
+		// Fujiwara's bound is twice the largest scaled coefficient root.
+		return std::max(0.001, 2.0 * bound + 0.001);
+	}
+
+	inline QuarticRoots FindPositiveQuarticRoots(double a4, double a3, double a2,
+	                                            double a1, double a0,
+	                                            double maxTime = 0.0) noexcept
+	{
+		QuarticRoots result;
+		const Polynomial coefficients = { a0, a1, a2, a3, a4 };
+		double searchLimit = ComputePolynomialRootBound(coefficients, 4);
+		if (maxTime > 0.0)
+			searchLimit = std::min(searchLimit, maxTime);
+
+		if (!(searchLimit > 1e-6) || !std::isfinite(searchLimit))
+			return result;
+
+		const QuarticRoots roots = FindPolynomialRootsInInterval(
+			coefficients, 4, 1e-6, searchLimit);
+
+		for (int i = 0; i < roots.Count; ++i)
+		{
+			const double root = roots.Values[i];
+			if (root <= 1e-6 || !std::isfinite(root))
+				continue;
+			if (result.Count >= static_cast<int>(result.Values.size()))
+				break;
+			result.Values[result.Count++] = root;
+		}
+
+		return result;
+	}
+
 	inline float SolveQuarticNewton(float a4, float a3, float a2, float a1, float a0,
 	                                 float tInit, int maxIter = 8, float epsilon = 1e-5f) noexcept
 	{
@@ -248,138 +460,188 @@ namespace BallisticSolver
 		bool  UseHighArc    = false;
 		float DragCoeff     = 0.0f;
 		int   DragIters     = 3;
+		float MaxTime       = 0.0f; // zero leaves the polynomial's positive-root bound unconstrained
 	};
 
 	inline SolveResult SolveBallistic(const SolverParams& p) noexcept
 	{
-		// Core solve for a given muzzle "up" vector. The muzzle-up kick is folded
-		// into the relative frame by subtracting it from the target velocity, so
-		// up = (0,0,1) reproduces the classic world +Z approximation exactly.
 		auto solveWithUp = [&](const Vec3& upVec) noexcept -> SolveResult
 		{
 			SolveResult result = {};
 
 			const Vec3 D = p.TargetPos - p.ShootPos;
-			const float s = p.Speed;
+			const double s = static_cast<double>(p.Speed);
 			if (s <= 0.0f)
 				return result;
 
-			const float g = p.Gravity;
+			const double g = static_cast<double>(p.Gravity);
 			const Vec3 vEff = p.TargetVel - upVec * p.MuzzleUpZ;
-			const float Vpz = vEff.z;
+			const double Vtx = static_cast<double>(vEff.x);
+			const double Vty = static_cast<double>(vEff.y);
+			const double Vtz = static_cast<double>(vEff.z);
+			const double Dx = static_cast<double>(D.x);
+			const double Dy = static_cast<double>(D.y);
+			const double Dz = static_cast<double>(D.z);
 
-			const float Dhx = D.x, Dhy = D.y;
-			const float Vtx = vEff.x, Vty = vEff.y;
-			const float Dz = D.z;
+			const double velocityLengthSq = Vtx * Vtx + Vty * Vty + Vtz * Vtz;
+			const double distanceLengthSq = Dx * Dx + Dy * Dy + Dz * Dz;
+			const double distanceDotVelocity = Dx * Vtx + Dy * Vty + Dz * Vtz;
 
-			const float DhLenSq = Dhx * Dhx + Dhy * Dhy;
-			const float VthLenSq = Vtx * Vtx + Vty * Vty;
-			const float DLenSq = DhLenSq + Dz * Dz;
-			const float DhDotVth = Dhx * Vtx + Dhy * Vty;
-			const float DzVpz = Dz * Vpz;
-
-			float speed = s;
-
-			for (int dragIter = 0; dragIter <= p.DragIters; ++dragIter)
+			auto solveQuadraticRoots = [](double a2, double a1, double a0,
+			                              std::array<double, 2>& roots) noexcept -> int
 			{
-				const float s2 = speed * speed;
-
-				if (g > 1e-6f)
+				if (std::fabs(a2) <= 1e-14)
 				{
-					const float a4 = 0.25f * g * g;
-					const float a3 = g * Vpz;
-					const float a2 = VthLenSq + Vpz * Vpz + g * Dz - s2;
-					const float a1 = 2.0f * (DhDotVth + DzVpz);
-					const float a0 = DLenSq;
-
-					float t;
-					if (a4 < 1e-10f && a3 < 1e-10f)
+					if (std::fabs(a1) <= 1e-14)
+						return 0;
+					const double root = -a0 / a1;
+					if (root > 1e-6 && std::isfinite(root))
 					{
-						t = SolveQuadratic(a2, a1, a0);
-						if (t <= 0.0f)
-							return result;
+						roots[0] = root;
+						return 1;
 					}
-					else
-					{
-						float tInit = Simd::FastSqrt(DLenSq) / std::max(speed, 1.0f);
-						t = SolveQuarticNewton(a4, a3, a2, a1, a0, tInit);
+					return 0;
+				}
 
-						if (EvaluateQuartic(a4, a3, a2, a1, a0, t) > 1.0f)
-						{
-							return result;
-						}
-						if (t <= 0.0f)
-							return result;
-					}
+				const double discriminant = a1 * a1 - 4.0 * a2 * a0;
+				if (discriminant < 0.0)
+					return 0;
 
-					if (p.UseHighArc && g > 1e-6f)
-					{
-						float tLo = t;
-						for (int i = 0; i < 30; ++i)
-						{
-							if (tLo <= 0.001f)
-								break;
-
-							const float tNext = SolveQuarticNewton(a4, a3, a2, a1, a0, tLo * 1.5f);
-							if (tNext == tLo)
-								break;
-
-							tLo = tNext;
-						}
-						if (tLo > t)
-							t = tLo;
-					}
-
-					const float invST = 1.0f / (speed * t);
-					Vec3 dir(
-						(D.x + Vtx * t) * invST,
-						(D.y + Vty * t) * invST,
-						(Dz + Vpz * t + 0.5f * g * t * t) * invST
-					);
-
-					result.Direction = dir;
-					result.Time = t;
-					result.Valid = true;
-
-					if (p.DragCoeff > 0.0f && dragIter < p.DragIters)
-					{
-						speed = ExponentialDragEffectiveSpeed(s, p.DragCoeff, t);
-					}
-					else
-					{
-						break;
-					}
+				const double sqrtDiscriminant = std::sqrt(discriminant);
+				const double q = -0.5 * (a1 + std::copysign(sqrtDiscriminant, a1));
+				double candidates[2] = {};
+				int candidateCount = 0;
+				if (std::fabs(q) > 1e-14)
+				{
+					candidates[candidateCount++] = q / a2;
+					candidates[candidateCount++] = a0 / q;
 				}
 				else
 				{
-					const float a2 = VthLenSq + Vpz * Vpz - s2;
-					const float a1 = 2.0f * (DhDotVth + DzVpz);
-					const float a0 = DLenSq;
-
-					float t = SolveQuadratic(a2, a1, a0);
-					if (t <= 0.0f)
-						return result;
-
-					const float invST = 1.0f / (speed * t);
-					Vec3 dir(
-						(D.x + Vtx * t) * invST,
-						(D.y + Vty * t) * invST,
-						(Dz + Vpz * t) * invST
-					);
-
-					result.Direction = dir;
-					result.Time = t;
-					result.Valid = true;
-
-					if (p.DragCoeff > 0.0f && dragIter < p.DragIters)
-					{
-						speed = ExponentialDragEffectiveSpeed(s, p.DragCoeff, t);
-					}
-					else
-					{
-						break;
-					}
+					candidates[candidateCount++] = -a1 / (2.0 * a2);
 				}
+
+				int count = 0;
+				for (int i = 0; i < candidateCount; ++i)
+				{
+					const double root = candidates[i];
+					if (root <= 1e-6 || !std::isfinite(root))
+						continue;
+					if (count > 0 && std::fabs(roots[0] - root) <= 1e-8 * std::max(1.0, std::fabs(root)))
+						continue;
+					roots[count++] = root;
+				}
+
+				if (count == 2 && roots[1] < roots[0])
+					std::swap(roots[0], roots[1]);
+				return count;
+			};
+
+			auto solveTime = [&](double effectiveSpeed, double& time, int& rootCount) noexcept -> bool
+			{
+				const double speedSq = effectiveSpeed * effectiveSpeed;
+				if (g > 1e-6)
+				{
+					const double a4 = 0.25 * g * g;
+					const double a3 = g * Vtz;
+					const double a2 = velocityLengthSq + g * Dz - speedSq;
+					const double a1 = 2.0 * distanceDotVelocity;
+					const double a0 = distanceLengthSq;
+					const QuarticRoots roots = FindPositiveQuarticRoots(a4, a3, a2, a1, a0);
+					rootCount = roots.Count;
+					if (roots.Count == 0)
+						return false;
+
+					time = p.UseHighArc ? roots.Values[roots.Count - 1] : roots.Values[0];
+					if (p.MaxTime > 0.0f && time > static_cast<double>(p.MaxTime))
+						return false;
+					return true;
+				}
+
+				std::array<double, 2> roots = {};
+				rootCount = solveQuadraticRoots(
+					velocityLengthSq - speedSq, 2.0 * distanceDotVelocity,
+					distanceLengthSq, roots);
+				if (rootCount == 0)
+					return false;
+
+				time = p.UseHighArc ? roots[rootCount - 1] : roots[0];
+				if (p.MaxTime > 0.0f && time > static_cast<double>(p.MaxTime))
+					return false;
+				return true;
+			};
+
+			double effectiveSpeed = s;
+			const int dragRefinements = p.DragCoeff > 0.0f ? std::clamp(p.DragIters, 0, 8) : 0;
+			result.DragConverged = p.DragCoeff <= 0.0f;
+
+			for (int dragIteration = 0; dragIteration <= dragRefinements; ++dragIteration)
+			{
+				double time = 0.0;
+				int rootCount = 0;
+				if (!solveTime(effectiveSpeed, time, rootCount) || !(time > 0.0) || !std::isfinite(time))
+					return {};
+
+				const double requiredX = Dx + Vtx * time;
+				const double requiredY = Dy + Vty * time;
+				const double requiredZ = Dz + Vtz * time + 0.5 * g * time * time;
+				const double launchDistance = effectiveSpeed * time;
+				if (!(launchDistance > 0.0) || !std::isfinite(launchDistance))
+					return {};
+
+				const double requiredLength = std::sqrt(
+					requiredX * requiredX + requiredY * requiredY + requiredZ * requiredZ);
+				if (!(requiredLength > 0.0) || !std::isfinite(requiredLength))
+					return {};
+
+				const Vec3 direction(
+					static_cast<float>(requiredX / requiredLength),
+					static_cast<float>(requiredY / requiredLength),
+					static_cast<float>(requiredZ / requiredLength));
+
+				const double errorX = static_cast<double>(direction.x) * launchDistance - requiredX;
+				const double errorY = static_cast<double>(direction.y) * launchDistance - requiredY;
+				const double errorZ = static_cast<double>(direction.z) * launchDistance - requiredZ;
+				const double endpointError = std::sqrt(errorX * errorX + errorY * errorY + errorZ * errorZ);
+				const double endpointTolerance = std::max(0.01, launchDistance * 2e-6);
+				if (!std::isfinite(endpointError) || endpointError > endpointTolerance)
+					return {};
+
+				result.Direction = direction;
+				result.Time = static_cast<float>(time);
+				result.EndpointError = static_cast<float>(endpointError);
+				result.PositiveRootCount = rootCount;
+				result.Valid = p.DragCoeff <= 0.0f;
+
+				if (p.DragCoeff <= 0.0f)
+					break;
+
+				const double kt = static_cast<double>(p.DragCoeff) * time;
+				double nextEffectiveSpeed = s;
+				if (kt > 0.0)
+				{
+					if (kt < 1e-4)
+						nextEffectiveSpeed = s * (1.0 - kt * 0.5 + kt * kt / 6.0);
+					else
+						nextEffectiveSpeed = s * (-std::expm1(-kt) / kt);
+				}
+
+				// Convergence is measured as endpoint displacement. One thirty-second
+				// of a world unit is below Source's useful positional resolution while
+				// still rejecting materially unconverged fixed-point seeds.
+				const double dragDisplacementError = std::fabs(nextEffectiveSpeed - effectiveSpeed) * time;
+				const double dragConvergenceTolerance = std::max(1.0 / 32.0, launchDistance * 2e-6);
+				if (dragDisplacementError <= dragConvergenceTolerance)
+				{
+					result.DragConverged = true;
+					result.Valid = true;
+					break;
+				}
+
+				if (dragIteration == dragRefinements)
+					break;
+
+				effectiveSpeed = nextEffectiveSpeed;
 			}
 
 			return result;
@@ -390,15 +652,31 @@ namespace BallisticSolver
 		if (!p.UseViewUpMuzzle || std::fabs(p.MuzzleUpZ) <= 1e-6f || !result.Valid)
 			return result;
 
-		// Refine once with the true view up-vector of the solved direction:
-		// up = (-sinP * cosY, -sinP * sinY, cosP) for unit forward d.
-		const Vec3& d = result.Direction;
-		const float flHorizLen = Simd::FastSqrt(d.x * d.x + d.y * d.y);
-		if (flHorizLen < 1e-4f)
-			return result; // near-vertical shot, world +Z approximation is fine
+		// The view-up impulse depends on the solved view angle. Iterate the small
+		// angle/up-vector fixed point so the returned direction reconstructs using
+		// its own view-up vector rather than the previous iteration's vector.
+		for (int iteration = 0; iteration < 6; ++iteration)
+		{
+			const Vec3 previousDirection = result.Direction;
+			const float horizontalLength = Simd::FastSqrt(
+				previousDirection.x * previousDirection.x + previousDirection.y * previousDirection.y);
+			if (horizontalLength < 1e-4f)
+				return result;
 
-		const Vec3 vViewUp(-d.z * d.x / flHorizLen, -d.z * d.y / flHorizLen, flHorizLen);
-		return solveWithUp(vViewUp);
+			const Vec3 viewUp(
+				-previousDirection.z * previousDirection.x / horizontalLength,
+				-previousDirection.z * previousDirection.y / horizontalLength,
+				horizontalLength);
+			SolveResult refined = solveWithUp(viewUp);
+			if (!refined.Valid)
+				return {};
+
+			result = refined;
+			if ((result.Direction - previousDirection).LengthSqr() <= 1e-10f)
+				break;
+		}
+
+		return result;
 	}
 
 	inline Vec3 DirectionToAngles(const Vec3& dir) noexcept
@@ -417,51 +695,53 @@ namespace BallisticSolver
 		if (path.empty() || tickInterval <= 0.0f)
 			return -1;
 
-		int lo = 0;
-		int hi = static_cast<int>(path.size()) - 1;
-
-		if (hi == 0)
-			return 0;
-
-		const int maxTicks = static_cast<int>(maxSimTime / tickInterval);
-		hi = std::min(hi, maxTicks);
+		const int maxTicks = std::max(0, static_cast<int>(ProjectilePredictionMath::ClampNonNegative(maxSimTime) / tickInterval));
+		const int hi = std::min(static_cast<int>(path.size()) - 1, maxTicks);
+		const float temporalTolerance = ProjectilePredictionMath::ResolveTemporalTolerance(tickInterval, tolerance);
 
 		float bestResidual = std::numeric_limits<float>::max();
 		int bestTick = -1;
+		auto evaluateTick = [&](int tick, float* signedResidual = nullptr) noexcept -> bool
+		{
+			SolverParams params;
+			params.ShootPos = shootPos;
+			params.TargetPos = path[tick];
+			params.Speed = speed;
+			params.Gravity = gravity;
+			params.MuzzleUpZ = muzzleUpZ;
+			params.UseViewUpMuzzle = true;
+			params.UseHighArc = useHighArc;
+			params.DragCoeff = dragCoeff;
+			params.DragIters = dragCoeff > 0.0f ? 3 : 0;
+
+			const SolveResult solve = SolveBallistic(params);
+			if (!solve.Valid)
+				return false;
+
+			const float residual = ProjectilePredictionMath::ComputeSignedTemporalResidual(
+				tick * tickInterval, solve.Time, timingBias);
+			const float absResidual = std::fabs(residual);
+			if (absResidual < bestResidual)
+			{
+				bestResidual = absResidual;
+				bestTick = tick;
+			}
+			if (signedResidual)
+				*signedResidual = residual;
+			return true;
+		};
 
 		int lo2 = 0;
 		int hi2 = hi;
 
 		while (hi2 - lo2 > 1)
 		{
-			int mid = (lo2 + hi2) / 2;
-
-			SolverParams params;
-			params.ShootPos = shootPos;
-			params.TargetPos = path[mid];
-			params.Speed = speed;
-			params.Gravity = gravity;
-			params.MuzzleUpZ = muzzleUpZ;
-			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
-			params.UseHighArc = useHighArc;
-			params.DragCoeff = dragCoeff;
-			params.DragIters = 0;
-
-			SolveResult res = SolveBallistic(params);
-
-			if (!res.Valid)
+			const int mid = (lo2 + hi2) / 2;
+			float residual = 0.0f;
+			if (!evaluateTick(mid, &residual))
 			{
 				hi2 = mid;
 				continue;
-			}
-
-			const float simTime = mid * tickInterval;
-			const float residual = (res.Time + timingBias) - simTime;
-
-			if (std::fabs(residual) < std::fabs(bestResidual))
-			{
-				bestResidual = residual;
-				bestTick = mid;
 			}
 
 			if (residual > 0.0f)
@@ -470,32 +750,11 @@ namespace BallisticSolver
 				hi2 = mid;
 		}
 
-		{
-			int mid = lo2;
-			SolverParams params;
-			params.ShootPos = shootPos;
-			params.TargetPos = path[mid];
-			params.Speed = speed;
-			params.Gravity = gravity;
-			params.MuzzleUpZ = muzzleUpZ;
-			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
-			params.UseHighArc = useHighArc;
-			params.DragCoeff = dragCoeff;
-			params.DragIters = 0;
+		evaluateTick(lo2);
+		if (hi2 != lo2)
+			evaluateTick(hi2);
 
-			SolveResult res = SolveBallistic(params);
-			if (res.Valid)
-			{
-				const float simTime = mid * tickInterval;
-				const float residual = std::fabs((res.Time + timingBias) - simTime);
-				if (residual < std::fabs(bestResidual))
-				{
-					bestTick = mid;
-				}
-			}
-		}
-
-		if (bestTick >= 0 && bestTick <= maxTicks)
+		if (bestTick >= 0 && bestTick <= maxTicks && bestResidual <= temporalTolerance)
 			return bestTick;
 
 		return -1;
@@ -507,12 +766,16 @@ namespace BallisticSolver
 	                           const Vec3& shootPos, float speed, float gravity,
 	                           float muzzleUpZ, float dragCoeff,
 	                           float maxSimTime, bool useHighArc,
-	                           float timingBias = 0.0f) noexcept
+	                           float timingBias = 0.0f,
+	                           float tolerance = 0.0f) noexcept
 	{
 		if (path.empty() || tickInterval <= 0.0f)
 			return -1;
 
-		const int maxTicks = std::min(static_cast<int>(path.size()) - 1, static_cast<int>(maxSimTime / tickInterval));
+		const int maxTicks = std::min(
+			static_cast<int>(path.size()) - 1,
+			std::max(0, static_cast<int>(ProjectilePredictionMath::ClampNonNegative(maxSimTime) / tickInterval)));
+		const float temporalTolerance = ProjectilePredictionMath::ResolveTemporalTolerance(tickInterval, tolerance);
 
 		float bestResidual = std::numeric_limits<float>::max();
 		int bestTick = -1;
@@ -528,14 +791,14 @@ namespace BallisticSolver
 			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
 			params.UseHighArc = useHighArc;
 			params.DragCoeff = dragCoeff;
-			params.DragIters = 0;
+			params.DragIters = dragCoeff > 0.0f ? 3 : 0;
 
 			SolveResult res = SolveBallistic(params);
 			if (!res.Valid)
 				continue;
 
-			const float simTime = tick * tickInterval;
-			const float residual = std::fabs((res.Time + timingBias) - simTime);
+			const float residual = ProjectilePredictionMath::ComputeTemporalResidual(
+				tick * tickInterval, res.Time, timingBias);
 
 			if (residual < bestResidual) // strict less-than: ties prefer the smaller tick
 			{
@@ -544,14 +807,21 @@ namespace BallisticSolver
 			}
 		}
 
-		return bestTick;
+		return bestResidual <= temporalTolerance ? bestTick : -1;
 	}
 
 	struct NewtonRefineResult
 	{
 		Vec3  AimPoint = {};
 		float Time     = 0.0f;
+		float SimulatedTime = 0.0f;
+		float RequiredTime = 0.0f;
+		float PathHorizon = 0.0f;
+		float TemporalResidual = std::numeric_limits<float>::infinity();
+		float SignedTemporalResidual = std::numeric_limits<float>::infinity();
 		int   Tick     = -1;
+		bool  AtPathBoundary = false;
+		bool  HorizonLimited = false;
 		bool  Valid    = false;
 	};
 
@@ -559,82 +829,194 @@ namespace BallisticSolver
 		const std::vector<Vec3>& path, float tickInterval,
 		int startTick, const Vec3& shootPos, float speed,
 		float gravity, float muzzleUpZ, float dragCoeff,
-		bool useHighArc, int maxIters = 3, float timingBias = 0.0f) noexcept
+		bool useHighArc, int maxIters = 3, float timingBias = 0.0f,
+		float tolerance = 0.0f) noexcept
 	{
 		NewtonRefineResult result = {};
 
 		if (path.empty() || startTick < 0 || startTick >= static_cast<int>(path.size()))
 			return result;
 
-		int tick = startTick;
-		float bestResidual = std::numeric_limits<float>::max();
-		Vec3 bestAimPoint = {};
-		int bestTick = -1;
-		bool found = false;
+		const float pathHorizon = static_cast<float>(path.size() - 1) * tickInterval;
+		const float temporalTolerance = ProjectilePredictionMath::ResolveTemporalTolerance(tickInterval, tolerance);
+		const float clampedTimingBias = ProjectilePredictionMath::ClampNonNegative(timingBias);
+		result.PathHorizon = pathHorizon;
 
-		for (int iter = 0; iter < maxIters; ++iter)
+		struct PathSample
 		{
-			if (tick < 0 || tick >= static_cast<int>(path.size()))
-				break;
+			Vec3 AimPoint = {};
+			float SimulatedTime = 0.0f;
+			float TravelTime = 0.0f;
+			float SignedResidual = std::numeric_limits<float>::infinity();
+			bool Valid = false;
+		};
+
+		auto evaluateTime = [&](float requestedTime) noexcept -> PathSample
+		{
+			PathSample sample;
+			sample.SimulatedTime = std::clamp(requestedTime, 0.0f, pathHorizon);
+
+			const float pathIndex = sample.SimulatedTime / tickInterval;
+			const int lowerTick = std::clamp(
+				static_cast<int>(std::floor(pathIndex)), 0, static_cast<int>(path.size()) - 1);
+			const int upperTick = std::min(lowerTick + 1, static_cast<int>(path.size()) - 1);
+			const float fraction = std::clamp(pathIndex - static_cast<float>(lowerTick), 0.0f, 1.0f);
+			sample.AimPoint = path[lowerTick] + (path[upperTick] - path[lowerTick]) * fraction;
 
 			SolverParams params;
 			params.ShootPos = shootPos;
-			params.TargetPos = path[tick];
+			params.TargetPos = sample.AimPoint;
 			params.Speed = speed;
 			params.Gravity = gravity;
 			params.MuzzleUpZ = muzzleUpZ;
-			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
+			params.UseViewUpMuzzle = true;
 			params.UseHighArc = useHighArc;
 			params.DragCoeff = dragCoeff;
 			params.DragIters = 3;
 
-			SolveResult res = SolveBallistic(params);
-			if (!res.Valid)
-				break;
+			const SolveResult solve = SolveBallistic(params);
+			if (!solve.Valid)
+				return sample;
 
-			const float simTime = tick * tickInterval;
-			const float residual = (res.Time + timingBias) - simTime; // bias only shifts WHICH tick is chosen, result.Time stays raw travel time
-			const float absResidual = std::fabs(residual);
+			sample.TravelTime = solve.Time;
+			sample.SignedResidual = ProjectilePredictionMath::ComputeSignedTemporalResidual(
+				sample.SimulatedTime, solve.Time, clampedTimingBias);
+			sample.Valid = true;
+			return sample;
+		};
 
-			if (absResidual < bestResidual)
+		PathSample bestSample;
+		bool found = false;
+		auto considerSample = [&](const PathSample& sample) noexcept
+		{
+			if (!sample.Valid)
+				return;
+
+			if (!found || std::fabs(sample.SignedResidual) < std::fabs(bestSample.SignedResidual))
 			{
-				bestResidual = absResidual;
-				bestAimPoint = path[tick];
-				bestTick = tick;
+				bestSample = sample;
 				found = true;
 			}
+		};
 
-			if (absResidual < 0.5f * tickInterval)
+		auto evaluateTick = [&](int tick) noexcept -> PathSample
+		{
+			const PathSample sample = evaluateTime(static_cast<float>(tick) * tickInterval);
+			considerSample(sample);
+			return sample;
+		};
+
+		PathSample bracketLeft;
+		PathSample bracketRight;
+		bool hasBracket = false;
+		float bestBracketScore = std::numeric_limits<float>::infinity();
+		auto considerBracket = [&](const PathSample& left, const PathSample& right) noexcept
+		{
+			if (!left.Valid || !right.Valid)
+				return;
+			if (std::signbit(left.SignedResidual) == std::signbit(right.SignedResidual) &&
+			    left.SignedResidual != 0.0f && right.SignedResidual != 0.0f)
+			{
+				return;
+			}
+
+			const float score = std::min(std::fabs(left.SignedResidual), std::fabs(right.SignedResidual));
+			if (score < bestBracketScore)
+			{
+				bestBracketScore = score;
+				bracketLeft = left;
+				bracketRight = right;
+				hasBracket = true;
+			}
+		};
+
+		int tick = startTick;
+		for (int iteration = 0; iteration < std::clamp(maxIters, 1, 16); ++iteration)
+		{
+			const PathSample sample = evaluateTick(tick);
+			if (!sample.Valid || std::fabs(sample.SignedResidual) <= temporalTolerance)
 				break;
 
-			int tickDelta = static_cast<int>(std::round(residual / tickInterval));
+			int tickDelta = static_cast<int>(std::round(sample.SignedResidual / tickInterval));
 			if (tickDelta == 0)
-				break;
+				tickDelta = sample.SignedResidual > 0.0f ? 1 : -1;
 
-			tick += tickDelta;
-			tick = std::max(0, std::min(tick, static_cast<int>(path.size()) - 1));
+			const int nextTick = std::clamp(
+				tick + tickDelta, 0, static_cast<int>(path.size()) - 1);
+			if (nextTick == tick)
+				break;
+			tick = nextTick;
 		}
 
 		if (found)
 		{
-			result.AimPoint = bestAimPoint;
-			result.Tick = bestTick;
-			result.Valid = true;
+			const int nearestTick = std::clamp(
+				static_cast<int>(std::round(bestSample.SimulatedTime / tickInterval)),
+				0, static_cast<int>(path.size()) - 1);
+			const int firstTick = std::max(0, nearestTick - 1);
+			const int lastTick = std::min(static_cast<int>(path.size()) - 1, nearestTick + 1);
+			PathSample previous;
+			bool havePrevious = false;
+			for (int localTick = firstTick; localTick <= lastTick; ++localTick)
+			{
+				const PathSample current = evaluateTick(localTick);
+				if (havePrevious)
+					considerBracket(previous, current);
+				previous = current;
+				havePrevious = true;
+			}
+		}
 
-			SolverParams params;
-			params.ShootPos = shootPos;
-			params.TargetPos = bestAimPoint;
-			params.Speed = speed;
-			params.Gravity = gravity;
-			params.MuzzleUpZ = muzzleUpZ;
-			params.UseViewUpMuzzle = true; // pipes always kick along the view up-vector; no-op when muzzleUpZ == 0
-			params.UseHighArc = useHighArc;
-			params.DragCoeff = dragCoeff;
-			params.DragIters = 3;
+		if ((!found || std::fabs(bestSample.SignedResidual) > temporalTolerance) && !hasBracket)
+		{
+			PathSample previous = evaluateTick(0);
+			for (int pathTick = 1; pathTick < static_cast<int>(path.size()); ++pathTick)
+			{
+				const PathSample current = evaluateTick(pathTick);
+				considerBracket(previous, current);
+				previous = current;
+			}
+		}
 
-			SolveResult res = SolveBallistic(params);
-			if (res.Valid)
-				result.Time = res.Time;
+		if (hasBracket)
+		{
+			PathSample left = bracketLeft;
+			PathSample right = bracketRight;
+			for (int iteration = 0; iteration < 32; ++iteration)
+			{
+				const PathSample middle = evaluateTime(
+					left.SimulatedTime + (right.SimulatedTime - left.SimulatedTime) * 0.5f);
+				if (!middle.Valid)
+					break;
+
+				considerSample(middle);
+				if (std::fabs(middle.SignedResidual) <= std::min(1e-5f, temporalTolerance * 0.01f))
+					break;
+
+				if (std::signbit(left.SignedResidual) != std::signbit(middle.SignedResidual))
+					right = middle;
+				else
+					left = middle;
+			}
+		}
+
+		if (found)
+		{
+			result.AimPoint = bestSample.AimPoint;
+			result.Time = bestSample.TravelTime;
+			result.SimulatedTime = bestSample.SimulatedTime;
+			result.RequiredTime = bestSample.TravelTime + clampedTimingBias;
+			result.TemporalResidual = std::fabs(bestSample.SignedResidual);
+			result.SignedTemporalResidual = bestSample.SignedResidual;
+			result.Tick = std::clamp(
+				static_cast<int>(std::round(bestSample.SimulatedTime / tickInterval)),
+				0, static_cast<int>(path.size()) - 1);
+			const float boundaryEpsilon = std::max(1e-5f, tickInterval * 0.001f);
+			result.AtPathBoundary = bestSample.SimulatedTime <= boundaryEpsilon ||
+				bestSample.SimulatedTime >= pathHorizon - boundaryEpsilon;
+			result.HorizonLimited = bestSample.SimulatedTime >= pathHorizon - boundaryEpsilon &&
+				bestSample.SignedResidual > boundaryEpsilon;
+			result.Valid = result.TemporalResidual <= temporalTolerance && !result.HorizonLimited;
 		}
 
 		return result;

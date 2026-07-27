@@ -38,7 +38,8 @@ bool CLagRecords::AreConsumersActive()
 		&& CFG::Aimbot_Target_Players
 		&& CFG::Aimbot_Projectile_Active
 		&& (CFG::Aimbot_Projectile_Ground_Strafe_Prediction
-			|| CFG::Aimbot_Projectile_Air_Strafe_Prediction);
+			|| CFG::Aimbot_Projectile_Air_Strafe_Prediction
+			|| CFG::Aimbot_Projectile_Aim_Prediction_Method == 1);
 	const bool bBackstab = CFG::Triggerbot_Active
 		&& CFG::Triggerbot_AutoBackstab_Active
 		&& CFG::Triggerbot_AutoBackstab_Use_LagRecords;

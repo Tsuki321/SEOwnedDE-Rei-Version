@@ -201,8 +201,6 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 				m_vAccelTrend.z = 0.0f;
 			}
 
-			m_vMethod3OriginalVelocity = m_vAdaptiveVelocity;
-
 			const float flAccelMag = m_vAccelTrend.Length2D();
 			const float flMaxAccel = pMoveData->m_flMaxSpeed * 0.15f;
 			if (flAccelMag > flMaxAccel && flAccelMag > 0.001f)
@@ -218,23 +216,8 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 		Vec3 vForward = {}, vRight = {};
 		Math::AngleVectors(pMoveData->m_vecViewAngles, &vForward, &vRight, nullptr);
 
-		if (fabsf(vRight.x) > 0.001f)
-		{
-			const float flRatio = vRight.y / vRight.x;
-			const float flDenom = vForward.y - flRatio * vForward.x;
-
-			if (fabsf(flDenom) > 0.001f)
-				pMoveData->m_flForwardMove = (m_vAdaptiveVelocity.y - flRatio * m_vAdaptiveVelocity.x) / flDenom;
-			else
-				pMoveData->m_flForwardMove = 0.0f;
-
-			pMoveData->m_flSideMove = (m_vAdaptiveVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
-		}
-		else
-		{
-			pMoveData->m_flForwardMove = 450.0f;
-			pMoveData->m_flSideMove = 0.0f;
-		}
+		MovementPredictionMath::ProjectHorizontalVelocity(m_vAdaptiveVelocity, vForward, vRight,
+			pMoveData->m_flForwardMove, pMoveData->m_flSideMove);
 	}
 
 	else
@@ -243,23 +226,8 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 		Vec3 vForward = {}, vRight = {};
 		Math::AngleVectors(pMoveData->m_vecViewAngles, &vForward, &vRight, nullptr);
 
-		if (fabsf(vRight.x) > 0.001f)
-		{
-			const float flRatio = vRight.y / vRight.x;
-			const float flDenom = vForward.y - flRatio * vForward.x;
-
-			if (fabsf(flDenom) > 0.001f)
-				pMoveData->m_flForwardMove = (pMoveData->m_vecVelocity.y - flRatio * pMoveData->m_vecVelocity.x) / flDenom;
-			else
-				pMoveData->m_flForwardMove = 0.0f;
-
-			pMoveData->m_flSideMove = (pMoveData->m_vecVelocity.x - vForward.x * pMoveData->m_flForwardMove) / vRight.x;
-		}
-		else
-		{
-			pMoveData->m_flForwardMove = 450.0f;
-			pMoveData->m_flSideMove = 0.0f;
-		}
+		MovementPredictionMath::ProjectHorizontalVelocity(pMoveData->m_vecVelocity, vForward, vRight,
+			pMoveData->m_flForwardMove, pMoveData->m_flSideMove);
 	}
 
 	const float flSpeed = pPlayer->m_vecVelocity().Length2D();
@@ -279,40 +247,116 @@ void CMovementSimulation::SetupMoveData(C_TFPlayer* pPlayer, CMoveData* pMoveDat
 	pMoveData->m_flConstraintWidth = pPlayer->m_flConstraintWidth();
 	pMoveData->m_flConstraintSpeedFactor = pPlayer->m_flConstraintSpeedFactor();
 
+	UpdateYawTurnRate(pPlayer);
+}
+
+void CMovementSimulation::ResetMoveHistory(int iEntIndex, int iEntityHandle, float flDeathTime)
+{
+	if (iEntIndex < 1 || iEntIndex >= MAX_PLAYERS)
+		return;
+
+	m_aMoveRecordHead[iEntIndex] = 0;
+	m_aMoveRecordCount[iEntIndex] = 0;
+	m_aMoveHistoryStates[iEntIndex] = {};
+	m_aMoveHistoryStates[iEntIndex].m_iEntityHandle = iEntityHandle;
+	m_aMoveHistoryStates[iEntIndex].m_flDeathTime = flDeathTime;
+	m_aMoveHistoryStates[iEntIndex].m_bInitialized = true;
+}
+
+bool CMovementSimulation::PrepareMoveHistory(C_TFPlayer* pPlayer, int& iEntIndex)
+{
+	if (!pPlayer)
+		return false;
+
+	iEntIndex = pPlayer->entindex();
+	if (iEntIndex < 1 || iEntIndex >= MAX_PLAYERS)
+		return false;
+
+	const int iEntityHandle = pPlayer->GetRefEHandle().ToInt();
+	const float flDeathTime = pPlayer->m_flDeathTime();
+	const float flSimulationTime = pPlayer->m_flSimulationTime();
+	auto& state = m_aMoveHistoryStates[iEntIndex];
+
+	bool bReset = !state.m_bInitialized
+		|| state.m_iEntityHandle != iEntityHandle
+		|| state.m_flDeathTime != flDeathTime;
+
+	const float flLastHistoryTime = std::max(state.m_flLastRecordTime, state.m_flLastYawTime);
+	if (!bReset && flLastHistoryTime > 0.0f)
+	{
+		const float flElapsedTime = flSimulationTime - flLastHistoryTime;
+		bReset = flElapsedTime < -TICK_INTERVAL * 0.5f;
+	}
+
+	if (bReset)
+		ResetMoveHistory(iEntIndex, iEntityHandle, flDeathTime);
+
+	return true;
+}
+
+void CMovementSimulation::UpdateYawTurnRate(C_TFPlayer* pPlayer)
+{
 	m_flYawTurnRate = 0.0f;
 
-	// Wraps a yaw angle difference to [-180, 180] to handle Â±180Â° boundary crossings
-	const auto NormalizeYawDiff = [](float yawNew, float yawOld) -> float
+	int iEntIndex = 0;
+	if (!PrepareMoveHistory(pPlayer, iEntIndex))
+		return;
+
+	auto& state = m_aMoveHistoryStates[iEntIndex];
+	if (pPlayer->m_vecVelocity().Length2D() <= 10.0f)
 	{
-		float diff = yawNew - yawOld;
-		while (diff > 180.0f) diff -= 360.0f;
-		while (diff < -180.0f) diff += 360.0f;
-		return diff;
-	};
-
-	if (pPlayer->m_vecVelocity().Length2D() > 10.0f)
-	{
-		const Vec3 vCurrentDirection = Math::VelocityToAngles(pPlayer->m_vecVelocity());
-
-		const float flCurrentYaw = vCurrentDirection.y;
-		const float flLastYaw = m_afLastYaw[pPlayer->entindex()];
-
-		if (flLastYaw != 0.0f)
-		{
-			const float flYawChange = NormalizeYawDiff(flCurrentYaw, flLastYaw);
-			m_flYawTurnRate = fabsf(flYawChange);
-		}
-
-		m_afLastYaw[pPlayer->entindex()] = flCurrentYaw;
+		state.m_bHasLastYaw = false;
+		state.m_flYawTurnRate = 0.0f;
+		return;
 	}
+
+	const float flCurrentYaw = Math::VelocityToAngles(pPlayer->m_vecVelocity()).y;
+	const float flSimulationTime = pPlayer->m_flSimulationTime();
+	const float flElapsedTime = flSimulationTime - state.m_flLastYawTime;
+	const float flMaxHistoryGap = TICK_INTERVAL * static_cast<float>(MAX_HISTORY_GAP_TICKS);
+	if (state.m_bHasLastYaw && flElapsedTime > flMaxHistoryGap)
+	{
+		state.m_bHasLastYaw = false;
+		state.m_flYawTurnRate = 0.0f;
+	}
+	else if (state.m_bHasLastYaw && flElapsedTime > 0.0f)
+	{
+		state.m_flYawTurnRate = MovementPredictionMath::ComputeYawDeltaPerTick(
+			flCurrentYaw, state.m_flLastYaw, flElapsedTime, TICK_INTERVAL);
+	}
+
+	state.m_flLastYaw = flCurrentYaw;
+	state.m_flLastYawTime = flSimulationTime;
+	state.m_bHasLastYaw = true;
+	m_flYawTurnRate = state.m_flYawTurnRate;
 }
 
 void CMovementSimulation::StoreMoveRecord(C_TFPlayer* pPlayer)
 {
-	if (!pPlayer || pPlayer->deadflag())
+	if (!pPlayer)
 		return;
 
-	const int iEntIndex = pPlayer->entindex();
+	int iEntIndex = 0;
+	if (!PrepareMoveHistory(pPlayer, iEntIndex))
+		return;
+
+	if (pPlayer->deadflag())
+	{
+		ResetMoveHistory(iEntIndex, pPlayer->GetRefEHandle().ToInt(), pPlayer->m_flDeathTime());
+		return;
+	}
+
+	auto& state = m_aMoveHistoryStates[iEntIndex];
+	const float flSimulationTime = pPlayer->m_flSimulationTime();
+	if (state.m_flLastRecordTime > 0.0f)
+	{
+		const float flElapsedTime = flSimulationTime - state.m_flLastRecordTime;
+		const float flMaxHistoryGap = TICK_INTERVAL * static_cast<float>(MAX_HISTORY_GAP_TICKS);
+		if (flElapsedTime < -TICK_INTERVAL * 0.5f || flElapsedTime > flMaxHistoryGap)
+			ResetMoveHistory(iEntIndex, pPlayer->GetRefEHandle().ToInt(), pPlayer->m_flDeathTime());
+		else if (flElapsedTime <= 0.0f)
+			return;
+	}
 
 	// Push a new "logical 0" (most recent) into the ring: step head back one slot
 	// (wrapping), write there, and grow the count up to capacity.
@@ -321,9 +365,11 @@ void CMovementSimulation::StoreMoveRecord(C_TFPlayer* pPlayer)
 
 	MoveRecord_t& record = m_aMoveRecords[iEntIndex][iHead];
 	record.m_vVelocity = pPlayer->m_vecVelocity();
-	record.m_vDirection = pPlayer->m_vecVelocity().Length2D() > 1.0f ? Math::VelocityToAngles(pPlayer->m_vecVelocity()) : Vec3{};
-	record.m_flSimTime = pPlayer->m_flSimulationTime();
+	record.m_bHasDirection = pPlayer->m_vecVelocity().Length2D() > 1.0f;
+	record.m_vDirection = record.m_bHasDirection ? Math::VelocityToAngles(pPlayer->m_vecVelocity()) : Vec3{};
+	record.m_flSimTime = flSimulationTime;
 	record.m_iFlags = pPlayer->m_fFlags();
+	state.m_flLastRecordTime = flSimulationTime;
 
 	if (m_aMoveRecordCount[iEntIndex] < MOVE_RECORD_CAPACITY)
 		m_aMoveRecordCount[iEntIndex]++;
@@ -334,7 +380,18 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 	if (!pPlayer)
 		return 0.0f;
 
-	const int iEntIndex = pPlayer->entindex();
+	int iEntIndex = 0;
+	if (!PrepareMoveHistory(pPlayer, iEntIndex))
+		return 0.0f;
+
+	const float flLastRecordTime = m_aMoveHistoryStates[iEntIndex].m_flLastRecordTime;
+	if (flLastRecordTime > 0.0f
+		&& pPlayer->m_flSimulationTime() - flLastRecordTime > TICK_INTERVAL * static_cast<float>(MAX_HISTORY_GAP_TICKS))
+	{
+		ResetMoveHistory(iEntIndex, pPlayer->GetRefEHandle().ToInt(), pPlayer->m_flDeathTime());
+	}
+
+	iSamples = std::max(iSamples, 1);
 	const int iStored = GetMoveRecordCount(iEntIndex);
 	if (iStored < 3)
 		return 1.0f;
@@ -355,7 +412,7 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 		const auto& record1 = GetMoveRecord(iEntIndex, i);
 		const auto& record2 = GetMoveRecord(iEntIndex, i + 1);
 
-		if (record1.m_vDirection.IsZero() || record2.m_vDirection.IsZero())
+		if (!record1.m_bHasDirection || !record2.m_bHasDirection)
 			continue;
 
 		const float flYaw1 = record1.m_vDirection.y;
@@ -372,15 +429,17 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 		{
 			const float flSampleAvg = flAverageYaw / static_cast<float>(iSampleCount);
 
-			const float flExpected = m_afExpectedYaw[pPlayer->entindex()];
+			auto& state = m_aMoveHistoryStates[iEntIndex];
+			const float flExpected = state.m_flExpectedYaw;
 
-			if (flExpected != 0.0f && fabsf(flExpected - flSampleAvg) > 1.5f)
+			if (state.m_bHasExpectedYaw && fabsf(flExpected - flSampleAvg) > 1.5f)
 			{
 				const float flPenalty = 1.0f / (static_cast<float>((iRecordCount - 1) / iSamples) + 1.0f);
 				flCurrentChance -= flPenalty;
 			}
 
-			m_afExpectedYaw[pPlayer->entindex()] = flSampleAvg;
+			state.m_flExpectedYaw = flSampleAvg;
+			state.m_bHasExpectedYaw = true;
 			flAverageYaw = 0.0f;
 			iSampleCount = 0;
 		}
@@ -471,7 +530,6 @@ void CMovementSimulation::Restore()
 	m_vAdaptiveVelocity = {};
 	m_vMethod2Accel = {};
 	m_vMethod2Velocity = {};
-	m_vMethod3OriginalVelocity = {};
 
 	std::memset(&m_MoveData, 0, sizeof(CMoveData));
 	std::memset(&m_PlayerDataBackup, 0, sizeof(CPlayerDataBackup));
@@ -494,61 +552,56 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 		return;
 	}
 
-	if (CFG::Aimbot_Projectile_Ground_Strafe_Prediction && (m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && (m_pPlayer->m_fFlags() & FL_ONGROUND))
-	{
-		m_MoveData.m_vecViewAngles.y += m_flYawTurnRate * Math::RemapValClamped(flTimeToTarget, 0.0f, 1.0f, 1.0f, 0.5f);
-	}
-
-	if (CFG::Aimbot_Projectile_Air_Strafe_Prediction && !(m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && !(m_pPlayer->m_fFlags() & FL_ONGROUND))
-	{
-		m_MoveData.m_vecViewAngles.y += m_flYawTurnRate;
-	}
+	const float flStrafeYawStep = GetStrafeYawStep(flTimeToTarget);
+	const bool bStrafePredictionActive = IsStrafePredictionActive();
+	if (CFG::Aimbot_Projectile_Aim_Prediction_Method != 1 && bStrafePredictionActive)
+		m_MoveData.m_vecViewAngles.y = Math::NormalizeAngle(m_MoveData.m_vecViewAngles.y + flStrafeYawStep);
 
 	// Acceleration-based prediction: advance predicted velocity by the
 	// regression-derived accel trend and recompute movement inputs to match
 	if (CFG::Aimbot_Projectile_Aim_Prediction_Method == 1 && m_vAdaptiveVelocity.Length2D() > 1.0f)
 	{
+		const Vec3 vPreviousAdaptiveVelocity = m_vAdaptiveVelocity;
 		m_vAdaptiveVelocity.x += m_vAccelTrend.x;
 		m_vAdaptiveVelocity.y += m_vAccelTrend.y;
 
-		const float flPredSpeed = m_vAdaptiveVelocity.Length2D();
+		float flPredSpeed = m_vAdaptiveVelocity.Length2D();
 		if (flPredSpeed > m_MoveData.m_flMaxSpeed * 1.1f && flPredSpeed > 0.001f)
 		{
 			const float flScale = m_MoveData.m_flMaxSpeed * 1.1f / flPredSpeed;
 			m_vAdaptiveVelocity.x *= flScale;
 			m_vAdaptiveVelocity.y *= flScale;
+			flPredSpeed = m_vAdaptiveVelocity.Length2D();
 		}
 
-		if (m_vMethod3OriginalVelocity.Length2D() > 1.0f && flPredSpeed > 0.001f)
+		const float flPreviousSpeed = vPreviousAdaptiveVelocity.Length2D();
+		if (flPreviousSpeed > 1.0f && flPredSpeed > 0.001f)
 		{
-			const float flDot = (m_vAdaptiveVelocity.x * m_vMethod3OriginalVelocity.x
-								+ m_vAdaptiveVelocity.y * m_vMethod3OriginalVelocity.y)
-								/ (flPredSpeed * m_vMethod3OriginalVelocity.Length2D());
+			const float flDot = (m_vAdaptiveVelocity.x * vPreviousAdaptiveVelocity.x
+								+ m_vAdaptiveVelocity.y * vPreviousAdaptiveVelocity.y)
+								/ (flPredSpeed * flPreviousSpeed);
 			const float flAngleDeg = RAD2DEG(acosf(std::clamp(flDot, -1.0f, 1.0f)));
 
 			if (flAngleDeg > 15.0f)
 			{
 				m_vAccelTrend.x = 0.0f;
 				m_vAccelTrend.y = 0.0f;
+				m_vAdaptiveVelocity = vPreviousAdaptiveVelocity;
 			}
+		}
+
+		if (bStrafePredictionActive)
+		{
+			m_vAdaptiveVelocity = MovementPredictionMath::ReconcileHorizontalTurn(
+				vPreviousAdaptiveVelocity, m_vAdaptiveVelocity, flStrafeYawStep);
 		}
 
 		const Vec3 vNewAngles = { 0.0f, Math::VelocityToAngles(m_vAdaptiveVelocity).y, 0.0f };
 		Vec3 vForward = {}, vRight = {};
 		Math::AngleVectors(vNewAngles, &vForward, &vRight, nullptr);
 
-		if (fabsf(vRight.x) > 0.001f)
-		{
-			const float flRatio = vRight.y / vRight.x;
-			const float flDenom = vForward.y - flRatio * vForward.x;
-
-			if (fabsf(flDenom) > 0.001f)
-				m_MoveData.m_flForwardMove = (m_vAdaptiveVelocity.y - flRatio * m_vAdaptiveVelocity.x) / flDenom;
-			else
-				m_MoveData.m_flForwardMove = 0.0f;
-
-			m_MoveData.m_flSideMove = (m_vAdaptiveVelocity.x - vForward.x * m_MoveData.m_flForwardMove) / vRight.x;
-		}
+		MovementPredictionMath::ProjectHorizontalVelocity(m_vAdaptiveVelocity, vForward, vRight,
+			m_MoveData.m_flForwardMove, m_MoveData.m_flSideMove);
 
 		m_MoveData.m_vecViewAngles = vNewAngles;
 		m_MoveData.m_vecAngles = vNewAngles;
@@ -560,4 +613,28 @@ void CMovementSimulation::RunTick(float flTimeToTarget)
 	I::GameMovement->ProcessMovement(m_pPlayer, &m_MoveData);
 
 	m_bRunning = false;
+}
+
+bool CMovementSimulation::IsStrafePredictionActive() const
+{
+	if (CFG::Aimbot_Projectile_Ground_Strafe_Prediction
+		&& (m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && (m_pPlayer->m_fFlags() & FL_ONGROUND))
+		return true;
+
+	if (CFG::Aimbot_Projectile_Air_Strafe_Prediction
+		&& !(m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && !(m_pPlayer->m_fFlags() & FL_ONGROUND))
+		return true;
+
+	return false;
+}
+
+float CMovementSimulation::GetStrafeYawStep(float flTimeToTarget) const
+{
+	if (!IsStrafePredictionActive())
+		return 0.0f;
+
+	if ((m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && (m_pPlayer->m_fFlags() & FL_ONGROUND))
+		return m_flYawTurnRate * Math::RemapValClamped(flTimeToTarget, 0.0f, 1.0f, 1.0f, 0.5f);
+
+	return m_flYawTurnRate;
 }
