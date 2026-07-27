@@ -67,14 +67,7 @@ TEST(SkinChangerContracts, DebouncesRefreshAndCachesAppliedWeapons) {
     EXPECT_NE(header.find("m_nRevision"), std::string::npos);
     EXPECT_NE(header.find("TransientFailure"), std::string::npos);
     EXPECT_NE(header.find("PermanentFailure"), std::string::npos);
-    EXPECT_NE(source.find("result == ApplyResult::TransientFailure"), std::string::npos);
-    EXPECT_NE(source.find("if (HasEnabledProfiles())"), std::string::npos);
-    {
-        const auto enabledGate = source.find("if (HasEnabledProfiles())");
-        ASSERT_NE(enabledGate, std::string::npos);
-        EXPECT_NE(source.find("ScheduleRuntimeRefresh()", enabledGate), std::string::npos);
-        EXPECT_LT(source.find("ScheduleRuntimeRefresh()", enabledGate), enabledGate + 80);
-    }
+    EXPECT_NE(source.find("result != ApplyResult::Success"), std::string::npos);
     EXPECT_NE(source.find("m_mapAttributeDefinitions.clear()"), std::string::npos);
     EXPECT_NE(source.find("m_pItemSchema = nullptr"), std::string::npos);
     EXPECT_NE(source.find("previous.m_bEnabled || sanitized.m_bEnabled"), std::string::npos);
@@ -86,34 +79,124 @@ TEST(SkinChangerContracts, IsIntegratedWithRuntimeAndPersistenceLifecycle) {
     const auto app = testhelpers::ReadTextFile(root / kAppSource);
     const auto project = testhelpers::ReadTextFile(root / kProjectSource);
 
-    EXPECT_NE(frameStage.find("FRAME_NET_UPDATE_POSTDATAUPDATE_END"), std::string::npos);
-    EXPECT_NE(frameStage.find("F::SkinChanger->Run()"), std::string::npos);
+    const auto postDataUpdate = frameStage.find("FRAME_NET_UPDATE_POSTDATAUPDATE_END");
+    const auto run = frameStage.find("F::SkinChanger->Run()");
+    const auto original = frameStage.find("CALL_ORIGINAL(ecx, curStage)");
+    ASSERT_NE(postDataUpdate, std::string::npos);
+    ASSERT_NE(run, std::string::npos);
+    ASSERT_NE(original, std::string::npos);
+    EXPECT_LT(postDataUpdate, run);
+    EXPECT_LT(run, original);
     EXPECT_NE(app.find("F::SkinChanger->Load()"), std::string::npos);
     EXPECT_NE(app.find("F::SkinChanger->Save()"), std::string::npos);
     EXPECT_NE(project.find("Features\\SkinChanger\\SkinChanger.cpp"), std::string::npos);
     EXPECT_NE(project.find("Features\\SkinChanger\\SkinChanger.h"), std::string::npos);
 }
 
-TEST(SkinChangerContracts, DetectsGameClearedRuntimeAttributes) {
+TEST(SkinChangerContracts, ValidatesEveryDesiredRuntimeAttributeByIdAndValue) {
     const auto root = testhelpers::FindRepoRoot();
     const auto source = testhelpers::ReadTextFile(root / kSkinChangerSource);
     const auto header = testhelpers::ReadTextFile(root / kSkinChangerHeader);
 
-    // Verify the new GetAttributeListCount helper exists
-    EXPECT_NE(header.find("GetAttributeListCount(C_TFWeaponBase *pWeapon)"),
+    EXPECT_EQ(header.find("GetAttributeListCount"), std::string::npos);
+    EXPECT_EQ(source.find("GetAttributeListCount"), std::string::npos);
+    EXPECT_EQ(source.find("nCurrentAttrCount"), std::string::npos);
+
+    const auto validatorStart = source.find("bool HasRuntimeAttributes(");
+    const auto validatorEnd = source.find("int ParseItemDefinition(", validatorStart);
+    ASSERT_NE(validatorStart, std::string::npos);
+    ASSERT_NE(validatorEnd, std::string::npos);
+    ASSERT_LT(validatorStart, validatorEnd);
+
+    const auto validator = source.substr(validatorStart, validatorEnd - validatorStart);
+    EXPECT_NE(validator.find("desiredIndex < desired.m_nCount"), std::string::npos);
+    EXPECT_NE(validator.find("expected.m_Attribute"), std::string::npos);
+    EXPECT_NE(validator.find("std::bit_cast<std::uint32_t>(expected.m_flValue)"),
               std::string::npos);
-    EXPECT_NE(source.find("int CSkinChanger::GetAttributeListCount(C_TFWeaponBase *pWeapon)"),
+    EXPECT_NE(validator.find("current.m_nDefinitionIndex == nExpectedIndex"),
               std::string::npos);
+    EXPECT_NE(validator.find("current.m_nRawValue == nExpectedValue"),
+              std::string::npos);
+    EXPECT_NE(validator.find("if (!bFound)"), std::string::npos);
 
-    // Verify it reads from the correct offset (0x18 for CUtlVector::m_Size on x64)
-    EXPECT_NE(source.find("pAttributeList + 0x18"), std::string::npos);
+    EXPECT_NE(source.find("BuildRuntimeAttributes(profile->second.m_Settings)"),
+              std::string::npos);
+    EXPECT_NE(source.find("HasRuntimeAttributes(pWeapon,"), std::string::npos);
+}
 
-    // Verify the Run() function checks for game-cleared attributes
-    EXPECT_NE(source.find("GetAttributeListCount(pWeapon)"), std::string::npos);
-    EXPECT_NE(source.find("nCurrentAttrCount != 0"), std::string::npos);
+TEST(SkinChangerContracts, EnforcesRawItemDefinitionBeforeCacheAcceptance) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kSkinChangerSource);
 
-    // Verify the comment explaining the behavior
-    EXPECT_NE(source.find("game may clear runtime attributes"), std::string::npos);
+    const auto runStart = source.find("void CSkinChanger::Run()");
+    const auto runEnd = source.find("void CSkinChanger::ResetRuntimeState()", runStart);
+    ASSERT_NE(runStart, std::string::npos);
+    ASSERT_NE(runEnd, std::string::npos);
+    ASSERT_LT(runStart, runEnd);
+
+    const auto run = source.substr(runStart, runEnd - runStart);
+    const auto rawCapture = run.find("int &nRawItemDefinition");
+    const auto rawEnforcement = run.find("nRawItemDefinition = nItemDefinition", rawCapture);
+    const auto cacheCheck = run.find("applied.m_nHandle", rawEnforcement);
+    const auto attributeValidation = run.find("HasRuntimeAttributes", cacheCheck);
+    ASSERT_NE(rawCapture, std::string::npos);
+    ASSERT_NE(rawEnforcement, std::string::npos);
+    ASSERT_NE(cacheCheck, std::string::npos);
+    ASSERT_NE(attributeValidation, std::string::npos);
+    EXPECT_LT(rawCapture, rawEnforcement);
+    EXPECT_LT(rawEnforcement, cacheCheck);
+    EXPECT_LT(cacheCheck, attributeValidation);
+    EXPECT_NE(run.find("!bItemDefinitionReverted", cacheCheck), std::string::npos);
+}
+
+TEST(SkinChangerContracts, AdvancesAppliedStateOnlyAfterCompleteSuccess) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kSkinChangerSource);
+
+    const auto runStart = source.find("void CSkinChanger::Run()");
+    const auto runEnd = source.find("void CSkinChanger::ResetRuntimeState()", runStart);
+    ASSERT_NE(runStart, std::string::npos);
+    ASSERT_NE(runEnd, std::string::npos);
+    ASSERT_LT(runStart, runEnd);
+
+    const auto run = source.substr(runStart, runEnd - runStart);
+    const auto invalidate = run.find("applied = {}");
+    const auto apply = run.find("const auto result = ApplyProfile", invalidate);
+    const auto successGate = run.find("result != ApplyResult::Success", apply);
+    const auto advance = run.find("applied = { handle.ToInt()", successGate);
+    ASSERT_NE(invalidate, std::string::npos);
+    ASSERT_NE(apply, std::string::npos);
+    ASSERT_NE(successGate, std::string::npos);
+    ASSERT_NE(advance, std::string::npos);
+    EXPECT_LT(invalidate, apply);
+    EXPECT_LT(apply, successGate);
+    EXPECT_LT(successGate, advance);
+    EXPECT_EQ(testhelpers::CountOccurrences(run, "applied = { handle.ToInt()"), 1u);
+    EXPECT_EQ(run.find("result == ApplyResult::TransientFailure"), std::string::npos);
+}
+
+TEST(SkinChangerContracts, LoadingEmptyProfilesRefreshesPreviouslyEnabledRuntimeState) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kSkinChangerSource);
+
+    const auto loadStart = source.find("bool CSkinChanger::Load()");
+    const auto loadEnd = source.find("bool CSkinChanger::Save()", loadStart);
+    ASSERT_NE(loadStart, std::string::npos);
+    ASSERT_NE(loadEnd, std::string::npos);
+    ASSERT_LT(loadStart, loadEnd);
+
+    const auto load = source.substr(loadStart, loadEnd - loadStart);
+    const auto oldEnabled = load.find("const bool bHadEnabledProfiles = HasEnabledProfiles()");
+    const auto swap = load.find("m_mapProfiles.swap(loadedProfiles)", oldEnabled);
+    const auto refreshGate = load.find("bHadEnabledProfiles || HasEnabledProfiles()", swap);
+    const auto refresh = load.find("ScheduleRuntimeRefresh()", refreshGate);
+    ASSERT_NE(oldEnabled, std::string::npos);
+    ASSERT_NE(swap, std::string::npos);
+    ASSERT_NE(refreshGate, std::string::npos);
+    ASSERT_NE(refresh, std::string::npos);
+    EXPECT_LT(oldEnabled, swap);
+    EXPECT_LT(swap, refreshGate);
+    EXPECT_LT(refreshGate, refresh);
 }
 
 TEST(SkinChangerContracts, PreservesSkinsEditorAcrossTemporaryWeaponLoss) {

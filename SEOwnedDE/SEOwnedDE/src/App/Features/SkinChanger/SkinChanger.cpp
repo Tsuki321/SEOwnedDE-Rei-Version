@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -56,6 +58,162 @@ namespace
 	};
 
 	constexpr std::size_t kMaxRuntimeAttributes = 21;
+	constexpr int kMaxAttributeListEntries = 256;
+
+	struct RuntimeAttributeSet
+	{
+		std::array<RuntimeAttribute, kMaxRuntimeAttributes> m_Attributes = {};
+		std::size_t m_nCount = 0;
+
+		void Add(EEconAttribute attribute, float flValue)
+		{
+			if (m_nCount < m_Attributes.size())
+				m_Attributes[m_nCount++] = { attribute, flValue };
+		}
+	};
+
+	// x64 CEconItemAttribute/CUtlVector layout used by CEconEntity::m_AttributeList.
+	// Copying these views avoids unaligned and strict-aliasing reads from engine memory.
+	struct EconItemAttributeLayout
+	{
+		void *m_pVTable = nullptr;
+		std::uint32_t m_nDefinitionIndex = 0;
+		std::uint32_t m_nRawValue = 0;
+		std::int32_t m_nRefundableCurrency = 0;
+	};
+
+	struct AttributeVectorLayout
+	{
+		const EconItemAttributeLayout *m_pMemory = nullptr;
+		std::int32_t m_nAllocationCount = 0;
+		std::int32_t m_nGrowSize = 0;
+		std::int32_t m_nSize = 0;
+		const EconItemAttributeLayout *m_pElements = nullptr;
+	};
+
+	struct AttributeListLayout
+	{
+		void *m_pVTable = nullptr;
+		AttributeVectorLayout m_Attributes = {};
+	};
+
+	static_assert(sizeof(void *) == 8);
+	static_assert(offsetof(EconItemAttributeLayout, m_nDefinitionIndex) == 0x8);
+	static_assert(offsetof(EconItemAttributeLayout, m_nRawValue) == 0xC);
+	static_assert(sizeof(EconItemAttributeLayout) == 0x18);
+	static_assert(offsetof(AttributeListLayout, m_Attributes) + offsetof(AttributeVectorLayout, m_nSize) == 0x18);
+	static_assert(offsetof(AttributeListLayout, m_Attributes) + offsetof(AttributeVectorLayout, m_pElements) == 0x20);
+
+	RuntimeAttributeSet BuildRuntimeAttributes(const SkinChangerSettings &settings)
+	{
+		RuntimeAttributeSet result = {};
+
+		if (settings.m_nPaintKit > 0)
+		{
+			result.Add(EEconAttribute::PaintKit, std::bit_cast<float>(settings.m_nPaintKit));
+			result.Add(EEconAttribute::PaintKitWear, settings.m_flWear);
+		}
+		if (settings.m_nSeedLow > 0)
+			result.Add(EEconAttribute::PaintKitSeedLow, static_cast<float>(settings.m_nSeedLow));
+		if (settings.m_nSeedHigh > 0)
+			result.Add(EEconAttribute::PaintKitSeedHigh, static_cast<float>(settings.m_nSeedHigh));
+		if (settings.m_bTeamColored)
+			result.Add(EEconAttribute::TeamColoredPaintKit, 1.0f);
+		if (settings.m_bAllowInspect)
+			result.Add(EEconAttribute::AllowInspect, 1.0f);
+		if (settings.m_nUnusualEffect > 0)
+			result.Add(EEconAttribute::UnusualEffect, static_cast<float>(settings.m_nUnusualEffect));
+		if (settings.m_nUnusualEffectStatic > 0)
+			result.Add(EEconAttribute::UnusualEffectStatic, static_cast<float>(settings.m_nUnusualEffectStatic));
+		if (settings.m_bFestivized)
+			result.Add(EEconAttribute::Festivized, 1.0f);
+		if (settings.m_bAustralium)
+			result.Add(EEconAttribute::Australium, 1.0f);
+		if (settings.m_bDecoratedRarity)
+			result.Add(EEconAttribute::DecoratedRarity, 1.0f);
+		if (settings.m_nStyleOverride > 0)
+			result.Add(EEconAttribute::StyleOverride, static_cast<float>(settings.m_nStyleOverride));
+		if (settings.m_bTurnVictimsToGold)
+			result.Add(EEconAttribute::TurnVictimsToGold, 1.0f);
+		if (settings.m_nKillstreakTier > 0)
+			result.Add(EEconAttribute::KillstreakTier, static_cast<float>(settings.m_nKillstreakTier));
+		if (settings.m_nKillstreakSheen > 0)
+			result.Add(EEconAttribute::KillstreakSheen, static_cast<float>(settings.m_nKillstreakSheen));
+		if (settings.m_nKillstreakEffect > 0)
+			result.Add(EEconAttribute::KillstreakEffect, static_cast<float>(settings.m_nKillstreakEffect));
+		if (settings.m_bPumpkinBombs)
+			result.Add(EEconAttribute::PumpkinBombs, 1.0f);
+		if (settings.m_bHalloweenFlames)
+			result.Add(EEconAttribute::HalloweenFlames, 1.0f);
+		if (settings.m_bHalloweenVoices)
+			result.Add(EEconAttribute::HalloweenVoices, 1.0f);
+		if (settings.m_bJingleFootsteps)
+			result.Add(EEconAttribute::JingleFootsteps, 1.0f);
+		if (settings.m_bPipBoyBuildMenu)
+			result.Add(EEconAttribute::PipBoyBuildMenu, 1.0f);
+
+		return result;
+	}
+
+	void *GetAttributeList(C_TFWeaponBase *pWeapon)
+	{
+		static int nAttributeListOffset = 0;
+		if (nAttributeListOffset <= 0)
+			nAttributeListOffset = NetVars::GetNetVar("CEconEntity", "m_AttributeList");
+
+		if (nAttributeListOffset <= 0 || !pWeapon)
+			return nullptr;
+
+		return reinterpret_cast<void *>(
+			reinterpret_cast<std::uintptr_t>(pWeapon) + static_cast<std::uintptr_t>(nAttributeListOffset)
+		);
+	}
+
+	bool HasRuntimeAttributes(C_TFWeaponBase *pWeapon, const RuntimeAttributeSet &desired)
+	{
+		if (desired.m_nCount == 0)
+			return true;
+
+		const auto pAttributeList = GetAttributeList(pWeapon);
+		if (!pAttributeList)
+			return false;
+
+		AttributeListLayout list = {};
+		std::memcpy(&list, pAttributeList, sizeof(list));
+
+		const auto &attributes = list.m_Attributes;
+		if (attributes.m_nSize < 0
+			|| attributes.m_nAllocationCount < attributes.m_nSize
+			|| attributes.m_nSize > kMaxAttributeListEntries
+			|| (attributes.m_nSize > 0 && !attributes.m_pMemory))
+		{
+			return false;
+		}
+
+		for (std::size_t desiredIndex = 0; desiredIndex < desired.m_nCount; ++desiredIndex)
+		{
+			const auto &expected = desired.m_Attributes[desiredIndex];
+			const auto nExpectedIndex = static_cast<std::uint32_t>(expected.m_Attribute);
+			const auto nExpectedValue = std::bit_cast<std::uint32_t>(expected.m_flValue);
+			bool bFound = false;
+
+			for (int currentIndex = 0; currentIndex < attributes.m_nSize; ++currentIndex)
+			{
+				EconItemAttributeLayout current = {};
+				std::memcpy(&current, attributes.m_pMemory + currentIndex, sizeof(current));
+				if (current.m_nDefinitionIndex == nExpectedIndex && current.m_nRawValue == nExpectedValue)
+				{
+					bFound = true;
+					break;
+				}
+			}
+
+			if (!bFound)
+				return false;
+		}
+
+		return true;
+	}
 
 	int ParseItemDefinition(const std::string &value)
 	{
@@ -302,95 +460,22 @@ bool CSkinChanger::SetRuntimeAttribute(void *pAttributeList, std::uint16_t nAttr
 	return true;
 }
 
-int CSkinChanger::GetAttributeListCount(C_TFWeaponBase *pWeapon)
-{
-	static int nAttributeListOffset = 0;
-	if (nAttributeListOffset <= 0)
-		nAttributeListOffset = NetVars::GetNetVar("CEconEntity", "m_AttributeList");
-
-	if (nAttributeListOffset <= 0 || !pWeapon)
-		return -1;
-
-	const auto pAttributeList = reinterpret_cast<std::uintptr_t>(pWeapon) + static_cast<std::uintptr_t>(nAttributeListOffset);
-	// CAttributeList::m_Attributes (CUtlVector)::m_Size is at offset 0x18 on x64
-	return *reinterpret_cast<int *>(pAttributeList + 0x18);
-}
-
 CSkinChanger::ApplyResult CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, const Profile &profile)
 {
 	if (!pWeapon || !profile.m_Settings.m_bEnabled)
 		return ApplyResult::PermanentFailure;
 
-	const auto dwSetRuntimeAttributeValue = Signatures::CAttributeList_SetRuntimeAttributeValue.Get();
-	static int nAttributeListOffset = 0;
-	if (nAttributeListOffset <= 0)
-		nAttributeListOffset = NetVars::GetNetVar("CEconEntity", "m_AttributeList");
-	if (nAttributeListOffset <= 0 || !dwSetRuntimeAttributeValue)
-		return ApplyResult::TransientFailure;
-
 	int &nWeaponItemDefinition = pWeapon->m_iItemDefinitionIndex();
 	nWeaponItemDefinition = nItemDefinition;
 
-	auto pAttributeList = reinterpret_cast<void *>(
-		reinterpret_cast<std::uintptr_t>(pWeapon) + static_cast<std::uintptr_t>(nAttributeListOffset)
-	);
-
-	const auto &settings = profile.m_Settings;
-	std::array<RuntimeAttribute, kMaxRuntimeAttributes> attributes = {};
-	std::size_t nAttributeCount = 0;
-
-	const auto addAttribute = [&](EEconAttribute attribute, float flValue)
-	{
-		if (nAttributeCount < attributes.size())
-			attributes[nAttributeCount++] = { attribute, flValue };
-	};
-
-	if (settings.m_nPaintKit > 0)
-	{
-		addAttribute(EEconAttribute::PaintKit, std::bit_cast<float>(settings.m_nPaintKit));
-		addAttribute(EEconAttribute::PaintKitWear, settings.m_flWear);
-	}
-	if (settings.m_nSeedLow > 0)
-		addAttribute(EEconAttribute::PaintKitSeedLow, static_cast<float>(settings.m_nSeedLow));
-	if (settings.m_nSeedHigh > 0)
-		addAttribute(EEconAttribute::PaintKitSeedHigh, static_cast<float>(settings.m_nSeedHigh));
-	if (settings.m_bTeamColored)
-		addAttribute(EEconAttribute::TeamColoredPaintKit, 1.0f);
-	if (settings.m_bAllowInspect)
-		addAttribute(EEconAttribute::AllowInspect, 1.0f);
-	if (settings.m_nUnusualEffect > 0)
-		addAttribute(EEconAttribute::UnusualEffect, static_cast<float>(settings.m_nUnusualEffect));
-	if (settings.m_nUnusualEffectStatic > 0)
-		addAttribute(EEconAttribute::UnusualEffectStatic, static_cast<float>(settings.m_nUnusualEffectStatic));
-	if (settings.m_bFestivized)
-		addAttribute(EEconAttribute::Festivized, 1.0f);
-	if (settings.m_bAustralium)
-		addAttribute(EEconAttribute::Australium, 1.0f);
-	if (settings.m_bDecoratedRarity)
-		addAttribute(EEconAttribute::DecoratedRarity, 1.0f);
-	if (settings.m_nStyleOverride > 0)
-		addAttribute(EEconAttribute::StyleOverride, static_cast<float>(settings.m_nStyleOverride));
-	if (settings.m_bTurnVictimsToGold)
-		addAttribute(EEconAttribute::TurnVictimsToGold, 1.0f);
-	if (settings.m_nKillstreakTier > 0)
-		addAttribute(EEconAttribute::KillstreakTier, static_cast<float>(settings.m_nKillstreakTier));
-	if (settings.m_nKillstreakSheen > 0)
-		addAttribute(EEconAttribute::KillstreakSheen, static_cast<float>(settings.m_nKillstreakSheen));
-	if (settings.m_nKillstreakEffect > 0)
-		addAttribute(EEconAttribute::KillstreakEffect, static_cast<float>(settings.m_nKillstreakEffect));
-	if (settings.m_bPumpkinBombs)
-		addAttribute(EEconAttribute::PumpkinBombs, 1.0f);
-	if (settings.m_bHalloweenFlames)
-		addAttribute(EEconAttribute::HalloweenFlames, 1.0f);
-	if (settings.m_bHalloweenVoices)
-		addAttribute(EEconAttribute::HalloweenVoices, 1.0f);
-	if (settings.m_bJingleFootsteps)
-		addAttribute(EEconAttribute::JingleFootsteps, 1.0f);
-	if (settings.m_bPipBoyBuildMenu)
-		addAttribute(EEconAttribute::PipBoyBuildMenu, 1.0f);
-
-	if (nAttributeCount == 0)
+	const auto desired = BuildRuntimeAttributes(profile.m_Settings);
+	if (desired.m_nCount == 0)
 		return ApplyResult::Success;
+
+	const auto pAttributeList = GetAttributeList(pWeapon);
+	const auto dwSetRuntimeAttributeValue = Signatures::CAttributeList_SetRuntimeAttributeValue.Get();
+	if (!pAttributeList || !dwSetRuntimeAttributeValue)
+		return ApplyResult::TransientFailure;
 
 	const auto dwGetItemSchema = Signatures::CEconItemSystem_GetItemSchema.Get();
 	const auto dwGetAttributeDefinition = Signatures::CEconItemSchema_GetAttributeDefinition.Get();
@@ -403,17 +488,17 @@ CSkinChanger::ApplyResult CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, in
 		return ApplyResult::TransientFailure;
 
 	bool bAppliedAllAttributes = true;
-	for (std::size_t i = 0; i < nAttributeCount; ++i)
+	for (std::size_t i = 0; i < desired.m_nCount; ++i)
 	{
 		bAppliedAllAttributes &= SetRuntimeAttribute(
 			pAttributeList,
-			static_cast<std::uint16_t>(attributes[i].m_Attribute),
-			attributes[i].m_flValue
+			static_cast<std::uint16_t>(desired.m_Attributes[i].m_Attribute),
+			desired.m_Attributes[i].m_flValue
 		);
 	}
 
-	if (!bAppliedAllAttributes)
-		return ApplyResult::PermanentFailure;
+	if (!bAppliedAllAttributes || !HasRuntimeAttributes(pWeapon, desired))
+		return ApplyResult::TransientFailure;
 
 	return ApplyResult::Success;
 }
@@ -482,10 +567,15 @@ void CSkinChanger::Run()
 		if (!pWeapon)
 			continue;
 
-		const int nItemDefinition = NormalizeItemDefinition(pWeapon->m_iItemDefinitionIndex());
+		int &nRawItemDefinition = pWeapon->m_iItemDefinitionIndex();
+		const int nItemDefinition = NormalizeItemDefinition(nRawItemDefinition);
 		const auto profile = m_mapProfiles.find(nItemDefinition);
 		if (profile == m_mapProfiles.end() || !profile->second.m_Settings.m_bEnabled)
 			continue;
+
+		const bool bItemDefinitionReverted = nRawItemDefinition != nItemDefinition;
+		if (bItemDefinitionReverted)
+			nRawItemDefinition = nItemDefinition;
 
 		const int nEntryIndex = handle.GetEntryIndex();
 		if (nEntryIndex < 0 || nEntryIndex >= static_cast<int>(m_arrAppliedWeapons.size()))
@@ -494,20 +584,16 @@ void CSkinChanger::Run()
 		auto &applied = m_arrAppliedWeapons[nEntryIndex];
 		if (applied.m_nHandle == handle.ToInt()
 			&& applied.m_nItemDefinition == nItemDefinition
-			&& applied.m_nRevision == profile->second.m_nRevision)
+			&& applied.m_nRevision == profile->second.m_nRevision
+			&& !bItemDefinitionReverted
+			&& HasRuntimeAttributes(pWeapon, BuildRuntimeAttributes(profile->second.m_Settings)))
 		{
-			// The game may clear runtime attributes (especially particle effects)
-			// when updating weapons or processing particle systems. Detect this
-			// by checking if the attribute list is empty while we expect attributes.
-			const int nCurrentAttrCount = GetAttributeListCount(pWeapon);
-			if (nCurrentAttrCount != 0)
-				continue; // Attributes still applied (or couldn't verify), skip
-
-			// Fall through to re-apply - game cleared the runtime attributes
+			continue;
 		}
 
+		applied = {};
 		const auto result = ApplyProfile(pWeapon, nItemDefinition, profile->second);
-		if (result == ApplyResult::TransientFailure)
+		if (result != ApplyResult::Success)
 			continue;
 
 		applied = { handle.ToInt(), nItemDefinition, profile->second.m_nRevision };
@@ -650,9 +736,10 @@ bool CSkinChanger::Load()
 		return false;
 	}
 
+	const bool bHadEnabledProfiles = HasEnabledProfiles();
 	m_mapProfiles.swap(loadedProfiles);
 	ResetAppliedWeapons();
-	if (HasEnabledProfiles())
+	if (bHadEnabledProfiles || HasEnabledProfiles())
 		ScheduleRuntimeRefresh();
 	m_bSavePending = false;
 

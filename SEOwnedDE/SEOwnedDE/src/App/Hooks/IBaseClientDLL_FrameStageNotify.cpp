@@ -10,6 +10,9 @@
 MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35), void, __fastcall,
 	void* ecx, ClientFrameStage_t curStage)
 {
+	if (curStage == FRAME_NET_UPDATE_POSTDATAUPDATE_END)
+		F::SkinChanger->Run();
+
 	CALL_ORIGINAL(ecx, curStage);
 
 	switch (curStage)
@@ -18,12 +21,6 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 		{
 			H::Entities->ClearCache();
 
-			break;
-		}
-
-		case FRAME_NET_UPDATE_POSTDATAUPDATE_END:
-		{
-			F::SkinChanger->Run();
 			break;
 		}
 

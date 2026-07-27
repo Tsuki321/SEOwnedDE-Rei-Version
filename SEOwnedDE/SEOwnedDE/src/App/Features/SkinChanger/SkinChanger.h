@@ -86,7 +86,6 @@ class CSkinChanger
 	void *GetAttributeDefinition(std::uint16_t nAttributeIndex);
 	bool SetRuntimeAttribute(void *pAttributeList, std::uint16_t nAttributeIndex, float flValue);
 	ApplyResult ApplyProfile(C_TFWeaponBase *pWeapon, int nItemDefinition, const Profile &profile);
-	int GetAttributeListCount(C_TFWeaponBase *pWeapon);
 
 public:
 	CSkinChanger();
