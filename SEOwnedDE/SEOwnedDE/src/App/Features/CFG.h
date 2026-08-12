@@ -38,6 +38,7 @@ namespace CFG
 	CFGVAR(Aimbot_Hitscan_Minigun_TapFire, false);
 	CFGVAR(Aimbot_Hitscan_Delay_Fire, false);
 	CFGVAR(Aimbot_Hitscan_Delay_Fire_Time, 0.5f);
+	CFGVAR(Aimbot_Hitscan_Delay_Fire_Switch_Time, 0.25f); // extra settle before acquiring a *different* target
 
 	CFGVAR(Aimbot_Projectile_Active, true);
 	CFGVAR(Aimbot_Projectile_NoSpread, true);
@@ -58,6 +59,9 @@ namespace CFG
 	CFGVAR(Aimbot_Projectile_Max_Processing_Targets, 1);
 	CFGVAR(Aimbot_Projectile_Hitchance_Enabled, false);
 	CFGVAR(Aimbot_Projectile_Hitchance_Minimum, 50.0f); // 0-100%
+	CFGVAR(Aimbot_Projectile_Delay_Fire, false);
+	CFGVAR(Aimbot_Projectile_Delay_Fire_Time, 0.5f);
+	CFGVAR(Aimbot_Projectile_Delay_Fire_Switch_Time, 0.25f); // extra settle before acquiring a *different* target
 
 	CFGVAR(Aimbot_Melee_Active, true);
 	CFGVAR(Aimbot_Melee_Always_Active, false);
@@ -501,7 +505,7 @@ namespace CFG
 	CFGVAR(Color_Invulnerable, Color_t({ 165, 94, 234, 255 }));
 	CFGVAR(Color_Invisible, Color_t({ 209, 216, 224, 255 }));
 	CFGVAR(Color_Cheater, Color_t({ 214, 48, 49, 255 }));
-	CFGVAR(Color_RetardLegit, Color_t({ 48, 218, 70, 255 }));
+	CFGVAR_MIGRATED(Color_SoftLegit, Color_t({ 48, 218, 70, 255 }), "Color_RetardLegit");
 	CFGVAR(Color_OverHeal, Color_t({ 69, 170, 242, 255 }));
 	CFGVAR(Color_Uber, Color_t({ 224, 86, 253, 255 }));
 	CFGVAR(Color_Conds, Color_t({ 249, 202, 36, 255 }));

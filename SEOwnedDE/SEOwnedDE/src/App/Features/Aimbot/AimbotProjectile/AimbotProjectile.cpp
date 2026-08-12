@@ -1040,10 +1040,12 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 			Vec3 vPos = pPlayer->GetCenter();
 			Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-			const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (nSortMode == 0 && flFOVTo > flFOVLimit)
+			// The cone is a hard constraint in every sort mode - sort only orders
+			// candidates that already passed it
+			if (flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(AimTarget_t { pPlayer, vPos, vAngleTo, flFOVTo, flDistTo });
@@ -1069,10 +1071,11 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 			Vec3 vPos = pBuilding->GetCenter();
 			Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-			const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
 			const float flDistTo = vLocalPos.DistTo(vPos);
 
-			if (nSortMode == 0 && flFOVTo > flFOVLimit)
+			// Same hard cone constraint as the player loop
+			if (flFOVTo > flFOVLimit)
 				continue;
 
 			m_vecTargets.emplace_back(AimTarget_t { pBuilding, vPos, vAngleTo, flFOVTo, flDistTo });
@@ -1082,7 +1085,7 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 	if (m_vecTargets.empty())
 		return false;
 
-	F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Projectile_Sort);
+	F::AimbotCommon->Sort(m_vecTargets, nSortMode);
 
 	const auto maxTargets{ std::min(CFG::Aimbot_Projectile_Max_Processing_Targets, static_cast<int>(m_vecTargets.size())) };
 	auto targetsScanned{ 0 };
@@ -1097,7 +1100,9 @@ bool CAimbotProjectile::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 		if (!SolveTarget(pLocal, pWeapon, pCmd, target))
 			continue;
 
-		if (CFG::Aimbot_Projectile_Sort == 0 && Math::CalcFov(vLocalAngles, target.AngleTo) > CFG::Aimbot_Projectile_FOV)
+		// Re-test the cone against the solved angle, which carries the arc loft and
+		// target lead the pre-solve test could not know about
+		if (Math::CalcFov(vLocalAngles, target.AngleTo) > flFOVLimit)
 			continue;
 
 		outTarget = target;
@@ -1402,11 +1407,27 @@ void CAimbotProjectile::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* 
 	if (!GetProjectileInfo(pWeapon))
 		return;
 
-	if (CFG::Aimbot_Projectile_Sort == 0)
-		G::flAimbotFOV = CFG::Aimbot_Projectile_FOV;
+	// The cone constrains both sort modes now, so the indicator applies to both
+	G::flAimbotFOV = CFG::Aimbot_Projectile_FOV;
 
 	if (Shifting::bShifting && !Shifting::bShiftingWarp)
 		return;
+
+	// A release already committed to this command number must be allowed to finish -
+	// the delay gates below would otherwise drop its solved angle and leave the
+	// charge waiting on a release that never lands.
+	const bool bChargeReleaseCommitted = m_ChargeHold.ReleasePending && pCmd
+		&& pCmd->command_number == m_ChargeHold.LastSolvedCommandNumber;
+
+	// Delay check - prevents snap aiming. The delay governs aimbot-initiated fire
+	// only, so flag it for the triggerbot. A charge already in flight keeps being
+	// held by RunChargeLifecycle above and resolves once the window closes.
+	if (CFG::Aimbot_Projectile_Delay_Fire && !bChargeReleaseCommitted
+		&& I::GlobalVars->curtime < m_flDelayFireEndTime)
+	{
+		G::bAimbotFireDelayed = true;
+		return;
+	}
 
 	if (!H::Input->IsDown(CFG::Aimbot_Key))
 		return;
@@ -1414,8 +1435,21 @@ void CAimbotProjectile::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* 
 	ProjTarget_t target = {};
 	if (GetTarget(pLocal, pWeapon, pCmd, target) && target.Entity)
 	{
-		G::nTargetIndexEarly = target.Entity->entindex();
-		G::nTargetIndex = target.Entity->entindex();
+		const int nTargetIndex = target.Entity->entindex();
+
+		// Target switch settle - crossing the fire delay must not license an instant
+		// snap onto a *different* target, which in Silent mode is a full view jump.
+		// Re-acquiring the same target is unaffected.
+		if (CFG::Aimbot_Projectile_Delay_Fire && CFG::Aimbot_Projectile_Delay_Fire_Switch_Time > 0.0f
+			&& !bChargeReleaseCommitted && m_nLastFiredTargetIndex > 0 && nTargetIndex != m_nLastFiredTargetIndex
+			&& I::GlobalVars->curtime < m_flTargetSwitchEndTime)
+		{
+			G::bAimbotFireDelayed = true;
+			return;
+		}
+
+		G::nTargetIndexEarly = nTargetIndex;
+		G::nTargetIndex = nTargetIndex;
 
 		if (ShouldFire(pCmd, pLocal, pWeapon))
 			HandleFire(pCmd, pWeapon, pLocal, target);
@@ -1423,6 +1457,17 @@ void CAimbotProjectile::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* 
 		const bool bIsFiring = IsFiring(pCmd, pLocal, pWeapon);
 
 		G::bFiring = bIsFiring;
+
+		// Reset delay timer after firing
+		if (CFG::Aimbot_Projectile_Delay_Fire && bIsFiring)
+		{
+			m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Projectile_Delay_Fire_Time;
+
+			// Record who we shot so a later switch to a different target has to
+			// settle past the fire delay before it can be acquired
+			m_nLastFiredTargetIndex = nTargetIndex;
+			m_flTargetSwitchEndTime = m_flDelayFireEndTime + CFG::Aimbot_Projectile_Delay_Fire_Switch_Time;
+		}
 
 		if (ShouldAim(pCmd, pLocal, pWeapon) || bIsFiring)
 		{

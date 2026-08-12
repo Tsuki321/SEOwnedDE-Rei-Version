@@ -13,6 +13,7 @@ CFGVAR(test_cfg_float, 3.14f);
 namespace { const Color_t test_cfg_color_init{ 100, 150, 200, 255 }; }
 CFGVAR(test_cfg_color, test_cfg_color_init);
 CFGVAR(test_cfg_string, std::string{ "hello_config" });
+CFGVAR_MIGRATED(test_cfg_renamed, 7, "test_cfg_legacy");
 
 CFGVAR_NOSAVE(test_cfg_nosave_bool, false);
 CFGVAR_NOSAVE(test_cfg_nosave_int, 999);
@@ -105,6 +106,32 @@ TEST_F(ConfigTest, SaveThenLoadRoundTripColor) {
     EXPECT_EQ(test_cfg_color.g, 20u);
     EXPECT_EQ(test_cfg_color.b, 30u);
     EXPECT_EQ(test_cfg_color.a, 40u);
+}
+
+TEST_F(ConfigTest, MigratedVariableLoadsLegacyKeyAndSavesCurrentKey) {
+    nlohmann::json legacy;
+    legacy["test_cfg_legacy"] = 73;
+    {
+        std::ofstream file(m_tempPath);
+        ASSERT_TRUE(file.is_open());
+        file << legacy;
+    }
+
+    test_cfg_renamed = 7;
+    Config::Load(m_tempPath);
+    EXPECT_EQ(test_cfg_renamed, 73);
+
+    Config::Save(m_tempPath);
+
+    nlohmann::json saved;
+    {
+        std::ifstream file(m_tempPath);
+        ASSERT_TRUE(file.is_open());
+        file >> saved;
+    }
+
+    EXPECT_NE(saved.find("test_cfg_renamed"), saved.end());
+    EXPECT_EQ(saved.find("test_cfg_legacy"), saved.end());
 }
 
 TEST_F(ConfigTest, MalformedColorDoesNotPartiallyUpdate) {

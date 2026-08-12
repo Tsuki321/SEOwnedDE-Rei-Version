@@ -57,6 +57,12 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 	if (G::bManualHitscanFiring)
 		return;
 
+	// An aimbot declined to act on this command because its fire delay is still
+	// running. Shooting here anyway would silently defeat that delay, which is
+	// worse than having no delay at all - the user believes the gate is active.
+	if (G::bAimbotFireDelayed)
+		return;
+
 	// Don't fire if we can't attack yet
 	if (!G::bCanPrimaryAttack)
 		return;
@@ -69,7 +75,10 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 	if (CFG::Triggerbot_AutoShoot_Wait_For_Headshot && H::AimUtils->IsWeaponCapableOfHeadshot(pWeapon) && !G::bCanHeadshot)
 		return;
 
-	if (G::bFiring && G::nTargetIndex > 0)
+	// A shot is already resolved for this command - don't stack a second one onto
+	// it. Pairing this with G::nTargetIndex would only dedup when an aimbot claimed
+	// a target, and the -1 no-target sentinel makes that form of the guard fail open.
+	if (G::bFiring)
 		return;
 
 	const Vec3 vLocalPos = pLocal->GetShootPos();

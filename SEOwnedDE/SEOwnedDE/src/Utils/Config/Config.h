@@ -52,6 +52,7 @@ namespace Config
 		void *m_ptr{ nullptr };
 		EConfigVarType m_type{ EConfigVarType::Boolean };
 		bool m_no_save{ false };
+		const char *m_legacy_name{ nullptr };
 	};
 
 	inline std::vector<ConfigVarInitializer> vars{};
@@ -132,7 +133,12 @@ namespace Config
 				continue;
 			}
 
-			const auto valueIt = j.find(var.m_name);
+			auto valueIt = j.find(var.m_name);
+			if (valueIt == j.end() && var.m_legacy_name)
+			{
+				valueIt = j.find(var.m_legacy_name);
+			}
+
 			if (valueIt == j.end())
 			{
 				continue;
@@ -192,6 +198,16 @@ namespace configvar_initializers\
 	inline auto var##_initializer = []()\
 	{\
 		Config::vars.push_back(Config::ConfigVarInitializer{#var, &var, Config::GetConfigVarType<decltype(var)>(), true });\
+		return true;\
+	}();\
+}
+
+#define CFGVAR_MIGRATED(var, val, legacy_name) inline auto var{ val }; \
+namespace configvar_initializers\
+{\
+	inline auto var##_initializer = []()\
+	{\
+		Config::vars.push_back(Config::ConfigVarInitializer{#var, &var, Config::GetConfigVarType<decltype(var)>(), false, legacy_name });\
 		return true;\
 	}();\
 }

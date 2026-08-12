@@ -44,3 +44,15 @@ TEST(PlayersContracts, UsesGuardClausesAndReturns) {
     EXPECT_GE(totalIfs, static_cast<std::size_t>(2));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(1));
 }
+
+TEST(PlayersContracts, SoftLegitRenameMigratesLegacyDataSafely) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kMainSource);
+    const auto header = testhelpers::ReadTextFile(root / kFeatureDir / "Players.h");
+
+    EXPECT_NE(header.find("bool SoftLegit{}"), std::string::npos);
+    EXPECT_EQ(header.find("bool RetardLegit{}"), std::string::npos);
+    EXPECT_NE(source.find("kLegacySoftLegitKey"), std::string::npos);
+    EXPECT_NE(source.find("playerEntry.erase(kLegacySoftLegitKey)"), std::string::npos);
+    EXPECT_NE(source.find("catch (const nlohmann::json::exception&)"), std::string::npos);
+}

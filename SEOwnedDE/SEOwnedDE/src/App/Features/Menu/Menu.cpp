@@ -1288,7 +1288,11 @@ void CMenu::MainWindow()
 				CheckBox("Wait For Charge", CFG::Aimbot_Hitscan_Wait_For_Charge);
 				CheckBox("Minigun Tapfire", CFG::Aimbot_Hitscan_Minigun_TapFire);
 				CheckBox("Delay Fire", CFG::Aimbot_Hitscan_Delay_Fire);
-				SliderFloat("Delay Fire Time", CFG::Aimbot_Hitscan_Delay_Fire_Time, 0.1f, 2.0f, 0.05f, "%.2f");
+				if (CFG::Aimbot_Hitscan_Delay_Fire)
+				{
+					SliderFloat("Delay Fire Time", CFG::Aimbot_Hitscan_Delay_Fire_Time, 0.1f, 2.0f, 0.05f, "%.2f");
+					SliderFloat("Target Switch Delay", CFG::Aimbot_Hitscan_Delay_Fire_Switch_Time, 0.0f, 1.0f, 0.05f, "%.2f");
+				}
 
 				SelectSingle("Aim Type", CFG::Aimbot_Hitscan_Aim_Type, {
 					{ "Normal", 0 },
@@ -1371,6 +1375,12 @@ void CMenu::MainWindow()
 				CheckBox("Hitchance", CFG::Aimbot_Projectile_Hitchance_Enabled);
 				if (CFG::Aimbot_Projectile_Hitchance_Enabled)
 					SliderFloat("Minimum Chance", CFG::Aimbot_Projectile_Hitchance_Minimum, 0.0f, 100.0f, 5.0f, "%.0f%%");
+				CheckBox("Delay Fire", CFG::Aimbot_Projectile_Delay_Fire);
+				if (CFG::Aimbot_Projectile_Delay_Fire)
+				{
+					SliderFloat("Delay Fire Time", CFG::Aimbot_Projectile_Delay_Fire_Time, 0.1f, 2.0f, 0.05f, "%.2f");
+					SliderFloat("Target Switch Delay", CFG::Aimbot_Projectile_Delay_Fire_Switch_Time, 0.0f, 1.0f, 0.05f, "%.2f");
+				}
 			}
 			GroupBoxEnd();
 		}
@@ -2214,7 +2224,7 @@ void CMenu::MainWindow()
 				ColorPicker("Target", CFG::Color_Target);
 				ColorPicker("Invulnerable", CFG::Color_Invulnerable);
 				ColorPicker("Cheater", CFG::Color_Cheater);
-				ColorPicker("Retard Legit", CFG::Color_RetardLegit);
+				ColorPicker("Soft Legit", CFG::Color_SoftLegit);
 				ColorPicker("Invisible", CFG::Color_Invisible);
 				ColorPicker("Over Heal", CFG::Color_OverHeal);
 				ColorPicker("Uber", CFG::Color_Uber);
@@ -2570,9 +2580,9 @@ void CMenu::MainWindow()
 					playerListButton(Utils::ConvertUtf8ToWide(player_info.name).c_str(), 150, CFG::Color_Cheater, false);
 				}
 
-				else if (custom_info.RetardLegit)
+				else if (custom_info.SoftLegit)
 				{
-					playerListButton(Utils::ConvertUtf8ToWide(player_info.name).c_str(), 150, CFG::Color_RetardLegit, false);
+					playerListButton(Utils::ConvertUtf8ToWide(player_info.name).c_str(), 150, CFG::Color_SoftLegit, false);
 				}
 
 				else
@@ -2599,9 +2609,9 @@ void CMenu::MainWindow()
 				m_nCursorX += m_nLastButtonW + CFG::Menu_Spacing_X;
 				m_nCursorY = by;
 
-				if (playerListButton(L"retard legit", 60, custom_info.RetardLegit ? CFG::Color_RetardLegit : CFG::Menu_Text_Inactive, true))
+				if (playerListButton(L"soft legit", 60, custom_info.SoftLegit ? CFG::Color_SoftLegit : CFG::Menu_Text_Inactive, true))
 				{
-					F::Players->Mark(n, { false, false, !custom_info.RetardLegit });
+					F::Players->Mark(n, { false, false, !custom_info.SoftLegit });
 				}
 
 				m_nCursorX = bx;

@@ -54,6 +54,14 @@ class CAimbotProjectile
 
 	ProjectileInfo_t m_CurProjInfo = {};
 
+	float m_flDelayFireEndTime = 0.0f;
+
+	// Entindex of the target we last fired at, or -1 when nothing is recorded.
+	// Entindexes are recycled, so 0 and -1 never count as a valid previous target.
+	int m_nLastFiredTargetIndex = -1;
+	// Until this time, acquiring a *different* target than the one above is held off.
+	float m_flTargetSwitchEndTime = 0.0f;
+
 	bool GetProjectileInfo(C_TFWeaponBase* pWeapon);
 	bool SolveProjectile(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vTo, float flSpeed, float flGravityMod,
 		Vec3& vViewAngleOut, float& flTimeOut, ProjectileInfo& launchOut);
@@ -82,6 +90,18 @@ public:
 	void FinalizeChargeCommand(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, bool bConsume = true);
 	bool IsFiring(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
+	void Reset()
+	{
+		ResetChargeHold();
+		m_vecTargets.clear();
+		m_TargetPath.clear();
+		m_TargetStates.clear();
+		m_LastAimPos = 0;
+		m_CurProjInfo = {};
+		m_flDelayFireEndTime = 0.0f;
+		m_nLastFiredTargetIndex = -1;
+		m_flTargetSwitchEndTime = 0.0f;
+	}
 };
 
 MAKE_SINGLETON_SCOPED(CAimbotProjectile, AimbotProjectile, F);

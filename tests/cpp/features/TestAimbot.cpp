@@ -8,7 +8,10 @@ namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/Aimbot.cpp";
 constexpr const char* kProjectileSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotProjectile/AimbotProjectile.cpp";
+constexpr const char* kProjectileHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotProjectile/AimbotProjectile.h";
 constexpr const char* kCreateMoveSource = "SEOwnedDE/SEOwnedDE/src/App/Hooks/ClientModeShared_CreateMove.cpp";
+constexpr const char* kLevelInitSource = "SEOwnedDE/SEOwnedDE/src/App/Hooks/IBaseClientDLL_LevelInitPostEntity.cpp";
+constexpr const char* kLevelShutdownSource = "SEOwnedDE/SEOwnedDE/src/App/Hooks/IBaseClientDLL_LevelShutdown.cpp";
 constexpr const char* kProjectilePredictionHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotProjectile/AimbotProjectilePrediction.h";
 constexpr const char* kCommonHeader = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotCommon/AimbotCommon.h";
 constexpr const char* kHitscanSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp";
@@ -63,7 +66,7 @@ TEST(AimbotContracts, ProjectileTargetBudgetRemainsStrict) {
     ASSERT_TRUE(std::filesystem::exists(projectilePath));
 
     const auto projectileSource = testhelpers::ReadTextFile(projectilePath);
-    EXPECT_NE(projectileSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Projectile_Sort)"), std::string::npos);
+    EXPECT_NE(projectileSource.find("F::AimbotCommon->Sort(m_vecTargets, nSortMode)"), std::string::npos);
     EXPECT_NE(projectileSource.find("Aimbot_Projectile_Max_Processing_Targets"), std::string::npos);
     EXPECT_NE(projectileSource.find("auto targetsScanned{ 0 }"), std::string::npos);
     EXPECT_NE(projectileSource.find("targetsScanned >= maxTargets"), std::string::npos);
@@ -227,5 +230,30 @@ TEST(AimbotContracts, SharedTargetScoringIsCentralizedAcrossModes) {
     EXPECT_NE(commonSource.find("void SortFirst(std::vector<T>& targets"), std::string::npos);
     EXPECT_NE(commonSource.find("std::ranges::partial_sort(targets"), std::string::npos);
     EXPECT_NE(meleeSource.find("F::AimbotCommon->SortFirst(m_vecTargets"), std::string::npos);
-    EXPECT_NE(projectileSource.find("F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Projectile_Sort)"), std::string::npos);
+    EXPECT_NE(projectileSource.find("F::AimbotCommon->Sort(m_vecTargets, nSortMode)"), std::string::npos);
+}
+
+TEST(AimbotContracts, ProjectileDelayStateResetsAcrossLevelTransitions) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto projectileHeader = testhelpers::ReadTextFile(root / kProjectileHeader);
+    const auto levelInit = testhelpers::ReadTextFile(root / kLevelInitSource);
+    const auto levelShutdown = testhelpers::ReadTextFile(root / kLevelShutdownSource);
+
+    EXPECT_NE(projectileHeader.find("m_flDelayFireEndTime = 0.0f"), std::string::npos);
+    EXPECT_NE(projectileHeader.find("m_nLastFiredTargetIndex = -1"), std::string::npos);
+    EXPECT_NE(projectileHeader.find("m_flTargetSwitchEndTime = 0.0f"), std::string::npos);
+    EXPECT_NE(levelInit.find("F::AimbotProjectile->Reset()"), std::string::npos);
+    EXPECT_NE(levelShutdown.find("F::AimbotProjectile->Reset()"), std::string::npos);
+}
+
+TEST(AimbotContracts, HitscanAndProjectileFovConstrainEverySortMode) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto hitscanSource = testhelpers::ReadTextFile(root / kHitscanSource);
+    const auto projectileSource = testhelpers::ReadTextFile(root / kProjectileSource);
+
+    EXPECT_NE(hitscanSource.find("G::flAimbotFOV = CFG::Aimbot_Hitscan_FOV"), std::string::npos);
+    EXPECT_NE(projectileSource.find("G::flAimbotFOV = CFG::Aimbot_Projectile_FOV"), std::string::npos);
+    EXPECT_NE(projectileSource.find("const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo)"), std::string::npos);
+    EXPECT_EQ(projectileSource.find("nSortMode == 0 ? Math::CalcFov"), std::string::npos);
+    EXPECT_NE(projectileSource.find("if (flFOVTo > flFOVLimit)"), std::string::npos);
 }

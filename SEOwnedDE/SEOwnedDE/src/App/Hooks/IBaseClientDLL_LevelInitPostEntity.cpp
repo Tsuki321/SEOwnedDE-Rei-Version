@@ -1,6 +1,7 @@
 #include "../../SDK/SDK.h"
 
 #include "../Features/Aimbot/AimbotHitscan/AimbotHitscan.h"
+#include "../Features/Aimbot/AimbotProjectile/AimbotProjectile.h"
 #include "../Features/Crits/Crits.h"
 #include "../Features/Killstreak/Killstreak.h"
 #include "../Features/NetworkFix/NetworkFix.h"
@@ -15,6 +16,7 @@ MAKE_HOOK(IBaseClientDLL_LevelInitPostEntity, Memory::GetVFunc(I::BaseClientDLL,
 	F::NetworkFix->Reset();
 	H::Entities->UpdateModelIndexes();
 	F::AimbotHitscan->Reset();
+	F::AimbotProjectile->Reset();
 	F::Crits->Reset();
 	F::Killstreak->Reset();
 
@@ -43,9 +45,9 @@ MAKE_HOOK(IBaseClientDLL_LevelInitPostEntity, Memory::GetVFunc(I::BaseClientDLL,
 					I::ClientModeShared->m_pChatElement->ChatPrintf(0, std::format("\x1{} is marked as \x8{}[Cheater]", pi_game.name, CFG::Color_Cheater.toHexStr()).c_str());
 				}
 
-				if (pi.RetardLegit)
+				if (pi.SoftLegit)
 				{
-					I::ClientModeShared->m_pChatElement->ChatPrintf(0, std::format("\x1{} is marked as \x8{}[Retard Legit]", pi_game.name, CFG::Color_RetardLegit.toHexStr()).c_str());
+					I::ClientModeShared->m_pChatElement->ChatPrintf(0, std::format("\x1{} is marked as \x8{}[Soft Legit]", pi_game.name, CFG::Color_SoftLegit.toHexStr()).c_str());
 				}
 			}
 		}

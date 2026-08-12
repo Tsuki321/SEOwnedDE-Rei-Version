@@ -12,6 +12,9 @@
 .github/instructions/
 !.github/workflows/
 CLAUDE.md
+.claude/settings.local.json
+.claude/worktrees/
+Skinchanger-By-Mfed/
 ### C++ ###
 # Prerequisites
 *.d

@@ -343,6 +343,10 @@ namespace G
 	// Set when the command already contains a real manual hitscan shot. This
 	// lets downstream trigger features leave its tick selection untouched.
 	inline bool bManualHitscanFiring = false;
+	// Set when an aimbot deliberately declined to act this command because its
+	// fire delay is still running. Downstream trigger features must not fire on
+	// such a command, otherwise the delay is trivially bypassed.
+	inline bool bAimbotFireDelayed = false;
 	inline int nTicksTargetSame = 0;
 	inline int nTargetIndexEarly = 0;
 	inline int nTicksSinceCanFire = 0;

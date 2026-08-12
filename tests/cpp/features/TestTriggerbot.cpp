@@ -80,6 +80,17 @@ TEST(TriggerbotContracts, AutoShootLeavesManualHitscanTickOwnedByAimbot) {
     EXPECT_LT(manualGuard, tickWrite);
 }
 
+TEST(TriggerbotContracts, AutoShootCannotBypassAimbotFireDelay) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
+    const auto delayGuard = src.find("if (G::bAimbotFireDelayed)");
+    const auto trace = src.find("H::AimUtils->Trace(", delayGuard);
+
+    ASSERT_NE(delayGuard, std::string::npos);
+    ASSERT_NE(trace, std::string::npos);
+    EXPECT_LT(delayGuard, trace);
+}
+
 TEST(TriggerbotContracts, AutoBackstabLiveRangeGateDoesNotSkipLagRecords) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);

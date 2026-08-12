@@ -1,6 +1,7 @@
 #include "../../SDK/SDK.h"
 
 #include "../Features/Aimbot/AimbotHitscan/AimbotHitscan.h"
+#include "../Features/Aimbot/AimbotProjectile/AimbotProjectile.h"
 #include "../Features/Materials/Materials.h"
 #include "../Features/Outlines/Outlines.h"
 #include "../Features/WorldModulation/WorldModulation.h"
@@ -20,6 +21,7 @@ MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), v
 	H::Entities->ClearModelIndexes();
 
 	F::AimbotHitscan->Reset();
+	F::AimbotProjectile->Reset();
 	F::Materials->CleanUp();
 	F::Outlines->CleanUp();
 	F::Paint->CleanUp();

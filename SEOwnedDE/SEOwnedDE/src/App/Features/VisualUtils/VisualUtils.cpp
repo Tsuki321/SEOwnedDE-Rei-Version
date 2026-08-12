@@ -518,9 +518,9 @@ Color_t CVisualUtils::GetEntityColor(C_TFPlayer* pLocal, C_BaseEntity* pEntity)
 				result = CFG::Color_Cheater;
 				bResolved = true;
 			}
-			else if (info.RetardLegit)
+			else if (info.SoftLegit)
 			{
-				result = CFG::Color_RetardLegit;
+				result = CFG::Color_SoftLegit;
 				bResolved = true;
 			}
 		}

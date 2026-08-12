@@ -1067,8 +1067,8 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	const bool bManualFiring = IsFiring(pCmd, pWeapon);
 	G::bManualHitscanFiring = bManualFiring;
 
-	if (CFG::Aimbot_Hitscan_Sort == 0)
-		G::flAimbotFOV = CFG::Aimbot_Hitscan_FOV;
+	// The cone constrains both sort modes, so the indicator applies to both.
+	G::flAimbotFOV = CFG::Aimbot_Hitscan_FOV;
 
 	if (Shifting::bShifting && !Shifting::bShiftingWarp)
 	{

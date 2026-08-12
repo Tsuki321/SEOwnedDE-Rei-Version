@@ -6,7 +6,7 @@ struct PlayerPriority
 {
 	bool Ignored{};
 	bool Cheater{};
-	bool RetardLegit{};
+	bool SoftLegit{};
 };
 
 class CPlayers

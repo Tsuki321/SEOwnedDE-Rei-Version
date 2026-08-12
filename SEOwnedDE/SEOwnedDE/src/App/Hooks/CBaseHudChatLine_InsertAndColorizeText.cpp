@@ -41,9 +41,9 @@ MAKE_HOOK(CBaseHudChatLine_InsertAndColorizeText, Signatures::CBaseHudChatLine_I
 					prefix = std::format(L"\x8{}[Cheater] \x3", CFG::Color_Cheater.toHexStrW());
 				}
 
-				if (pi.RetardLegit)
+				if (pi.SoftLegit)
 				{
-					prefix = std::format(L"\x8{}[Retard Legit] \x3", CFG::Color_RetardLegit.toHexStrW());
+					prefix = std::format(L"\x8{}[Soft Legit] \x3", CFG::Color_SoftLegit.toHexStrW());
 				}
 			}
 		}

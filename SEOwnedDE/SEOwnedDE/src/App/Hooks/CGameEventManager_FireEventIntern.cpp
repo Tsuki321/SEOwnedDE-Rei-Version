@@ -97,9 +97,9 @@ MAKE_HOOK(CGameEventManager_FireEventIntern, Signatures::CGameEventManager_FireE
 					I::ClientModeShared->m_pChatElement->ChatPrintf(0, std::format("\x1{} is marked as \x8{}[Cheater]", name, CFG::Color_Cheater.toHexStr()).c_str());
 				}
 
-				if (pi.RetardLegit)
+				if (pi.SoftLegit)
 				{
-					I::ClientModeShared->m_pChatElement->ChatPrintf(0, std::format("\x1{} is marked as \x8{}[Retard Legit]", name, CFG::Color_RetardLegit.toHexStr()).c_str());
+					I::ClientModeShared->m_pChatElement->ChatPrintf(0, std::format("\x1{} is marked as \x8{}[Soft Legit]", name, CFG::Color_SoftLegit.toHexStr()).c_str());
 				}
 			}
 		}
