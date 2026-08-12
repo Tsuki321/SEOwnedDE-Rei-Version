@@ -2,6 +2,8 @@
 
 #include "../../CFG.h"
 
+#include <algorithm>
+
 namespace
 {
 	mstudiohitboxset_t* GetHitboxSet(C_BaseAnimating* pAnimating)
@@ -77,7 +79,7 @@ int CAimbotHitscan::GetAimHitbox(C_TFWeaponBase* pWeapon)
 	}
 }
 
-bool CAimbotHitscan::ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target)
+bool CAimbotHitscan::ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit)
 {
 	if (!CFG::Aimbot_Hitscan_Scan_Head)
 		return false;
@@ -113,10 +115,30 @@ bool CAimbotHitscan::ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target)
 	};
 
 	const Vec3 vLocalPos = pLocal->GetShootPos();
+	const bool bStablePointOrder = CFG::Aimbot_Hitscan_Aim_Type == 2;
+
+	// A substituted point must clear the same cone the collection loop enforced,
+	// otherwise we aim somewhere the on-screen FOV circle never covered. Direct
+	// modes prefer the closest point; Smooth keeps the fixed center-out order.
+	bool bFoundPoint = false;
+	Vec3 vBestPoint = {};
+	Vec3 vBestAngle = {};
+	float flBestFOV = 0.0f;
+
 	for (const auto& vPoint : vPoints)
 	{
 		Vec3 vTransformed = {};
 		Math::VectorTransform(vPoint, boneMatrix[pBox->bone], vTransformed);
+
+		const Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vTransformed);
+		const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
+
+		if (flFOVTo > flFOVLimit)
+			continue;
+
+		// Cannot beat the current pick, so skip the trace entirely
+		if (bFoundPoint && flFOVTo >= flBestFOV)
+			continue;
 
 		int nHitHitbox = -1;
 
@@ -126,17 +148,29 @@ bool CAimbotHitscan::ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target)
 		if (nHitHitbox != HITBOX_HEAD)
 			continue;
 
-		target.Position = vTransformed;
-		target.AngleTo = Math::CalcAngle(vLocalPos, vTransformed);
-		target.WasMultiPointed = true;
+		bFoundPoint = true;
+		vBestPoint = vTransformed;
+		vBestAngle = vAngleTo;
+		flBestFOV = flFOVTo;
 
-		return true;
+		// Smooth aim favors the first point in this fixed center-out order.
+		// Re-ranking points against a moving crosshair makes the selected side of
+		// a hitbox alternate from tick to tick, which is visible as aim jitter.
+		if (bStablePointOrder)
+			break;
 	}
 
-	return false;
+	if (!bFoundPoint)
+		return false;
+
+	target.Position = vBestPoint;
+	target.AngleTo = vBestAngle;
+	target.WasMultiPointed = true;
+
+	return true;
 }
 
-bool CAimbotHitscan::ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target)
+bool CAimbotHitscan::ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit)
 {
 	const bool bScanningBody = CFG::Aimbot_Hitscan_Scan_Body;
 	const bool bScanningArms = CFG::Aimbot_Hitscan_Scan_Arms;
@@ -155,6 +189,15 @@ bool CAimbotHitscan::ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target)
 		return false;
 
 	const Vec3 vLocalPos = pLocal->GetShootPos();
+	const bool bStablePointOrder = CFG::Aimbot_Hitscan_Aim_Type == 2;
+
+	// Same cone requirement as ScanHead. Direct modes pick the closest in-cone
+	// hitbox; Smooth retains fixed hitbox order to avoid point hopping.
+	bool bFoundPoint = false;
+	Vec3 vBestPoint = {};
+	Vec3 vBestAngle = {};
+	float flBestFOV = 0.0f;
+
 	for (int n = 1; n < pSet->numhitboxes; n++)
 	{
 		if (n == target.AimedHitbox)
@@ -178,19 +221,38 @@ bool CAimbotHitscan::ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target)
 		Vec3 vHitbox = {};
 		Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, boneMatrix[pBox->bone], vHitbox);
 
+		const Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vHitbox);
+		const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
+
+		if (flFOVTo > flFOVLimit)
+			continue;
+
+		// Cannot beat the current pick, so skip the trace entirely
+		if (bFoundPoint && flFOVTo >= flBestFOV)
+			continue;
+
 		if (!H::AimUtils->TraceEntityBullet(pPlayer, vLocalPos, vHitbox))
 			continue;
 
-		target.Position = vHitbox;
-		target.AngleTo = Math::CalcAngle(vLocalPos, vHitbox);
+		bFoundPoint = true;
+		vBestPoint = vHitbox;
+		vBestAngle = vAngleTo;
+		flBestFOV = flFOVTo;
 
-		return true;
+		if (bStablePointOrder)
+			break;
 	}
 
-	return false;
+	if (!bFoundPoint)
+		return false;
+
+	target.Position = vBestPoint;
+	target.AngleTo = vBestAngle;
+
+	return true;
 }
 
-bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target)
+bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit)
 {
 	if (!CFG::Aimbot_Hitscan_Scan_Buildings)
 		return false;
@@ -200,6 +262,13 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target)
 		return false;
 
 	const Vec3 vLocalPos = pLocal->GetShootPos();
+	const bool bStablePointOrder = CFG::Aimbot_Hitscan_Aim_Type == 2;
+
+	// Substituted points are held to the same cone here as on players
+	bool bFoundPoint = false;
+	Vec3 vBestPoint = {};
+	Vec3 vBestAngle = {};
+	float flBestFOV = 0.0f;
 
 	if (pObject->GetClassId() == ETFClassIds::CObjectSentrygun)
 	{
@@ -217,13 +286,26 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target)
 			Vec3 vHitbox = {};
 			Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, boneMatrix[pBox->bone], vHitbox);
 
+			const Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vHitbox);
+			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
+
+			if (flFOVTo > flFOVLimit)
+				continue;
+
+			// Cannot beat the current pick, so skip the trace entirely
+			if (bFoundPoint && flFOVTo >= flBestFOV)
+				continue;
+
 			if (!H::AimUtils->TraceEntityBullet(pObject, vLocalPos, vHitbox))
 				continue;
 
-			target.Position = vHitbox;
-			target.AngleTo = Math::CalcAngle(vLocalPos, vHitbox);
+			bFoundPoint = true;
+			vBestPoint = vHitbox;
+			vBestAngle = vAngleTo;
+			flBestFOV = flFOVTo;
 
-			return true;
+			if (bStablePointOrder)
+				break;
 		}
 	}
 
@@ -247,17 +329,36 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target)
 			Vec3 vTransformed = {};
 			Math::VectorTransform(vPoint, transform, vTransformed);
 
+			const Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vTransformed);
+			const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
+
+			if (flFOVTo > flFOVLimit)
+				continue;
+
+			// Cannot beat the current pick, so skip the trace entirely
+			if (bFoundPoint && flFOVTo >= flBestFOV)
+				continue;
+
 			if (!H::AimUtils->TraceEntityBullet(pObject, vLocalPos, vTransformed))
 				continue;
 
-			target.Position = vTransformed;
-			target.AngleTo = Math::CalcAngle(vLocalPos, vTransformed);
+			bFoundPoint = true;
+			vBestPoint = vTransformed;
+			vBestAngle = vAngleTo;
+			flBestFOV = flFOVTo;
 
-			return true;
+			if (bStablePointOrder)
+				break;
 		}
 	}
 
-	return false;
+	if (!bFoundPoint)
+		return false;
+
+	target.Position = vBestPoint;
+	target.AngleTo = vBestAngle;
+
+	return true;
 }
 
 bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
@@ -343,6 +444,94 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 	G::nTargetIndexEarly = pBestPlayer->entindex();
 	G::nTargetIndex = pBestPlayer->entindex();
 	return true;
+}
+
+bool CAimbotHitscan::ValidateTarget(C_TFPlayer* pLocal, HitscanTarget_t& target,
+	const Vec3& vLocalPos, const Vec3& vLocalAngles, float flFOVLimit)
+{
+	switch (target.Entity->GetClassId())
+	{
+		case ETFClassIds::CTFPlayer:
+		{
+			if (!target.LagRecord)
+			{
+				int nHitHitbox = -1;
+
+				if (!H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position, &nHitHitbox))
+				{
+					if (target.AimedHitbox == HITBOX_HEAD)
+					{
+						if (!ScanHead(pLocal, target, vLocalAngles, flFOVLimit))
+							return false;
+					}
+
+					else if (target.AimedHitbox == HITBOX_PELVIS)
+					{
+						if (!ScanBody(pLocal, target, vLocalAngles, flFOVLimit))
+							return false;
+					}
+
+					else
+					{
+						return false;
+					}
+				}
+
+				else if (nHitHitbox != target.AimedHitbox && target.AimedHitbox == HITBOX_HEAD)
+				{
+					if (!ScanHead(pLocal, target, vLocalAngles, flFOVLimit))
+						return false;
+				}
+			}
+
+			else
+			{
+				CLagRecordScope scope(target.LagRecord);
+				if (!scope.IsActive())
+					return false;
+
+				int nHitHitbox = -1;
+				const bool bTraceResult = H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position, &nHitHitbox);
+
+				if (!bTraceResult)
+				{
+					if (target.AimedHitbox == HITBOX_HEAD)
+					{
+						if (!ScanHead(pLocal, target, vLocalAngles, flFOVLimit))
+							return false;
+					}
+
+					else if (target.AimedHitbox == HITBOX_PELVIS)
+					{
+						if (!ScanBody(pLocal, target, vLocalAngles, flFOVLimit))
+							return false;
+					}
+
+					else
+					{
+						return false;
+					}
+				}
+			}
+
+			return true;
+		}
+
+		case ETFClassIds::CObjectSentrygun:
+		case ETFClassIds::CObjectDispenser:
+		case ETFClassIds::CObjectTeleporter:
+		{
+			if (H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position))
+				return true;
+
+			return ScanBuilding(pLocal, target, vLocalAngles, flFOVLimit);
+		}
+
+		case ETFClassIds::CTFGrenadePipebombProjectile:
+			return H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position);
+
+		default: return false;
+	}
 }
 
 bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, HitscanTarget_t& outTarget)
@@ -488,105 +677,44 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 	// Sort by target priority
 	F::AimbotCommon->Sort(m_vecTargets, CFG::Aimbot_Hitscan_Sort);
 
-	// Find and return the first valid target
+	if (CFG::Aimbot_Hitscan_Aim_Type == 2)
+	{
+		// Scan priority in allocation-free passes: keep the locked entity first,
+		// and within each group prefer its continuously animated live pose over
+		// discrete historical samples. The original FOV/distance order is retained
+		// inside every pass.
+		const bool bHasSmoothLock = m_nSmoothTargetIndex > 0;
+		auto FindSmoothTarget = [&](bool bLocked, bool bHistorical)
+		{
+			for (auto& target : m_vecTargets)
+			{
+				const bool bIsLocked = bHasSmoothLock && target.Entity
+					&& target.Entity->entindex() == m_nSmoothTargetIndex;
+				if (bIsLocked != bLocked || (target.LagRecord != nullptr) != bHistorical)
+					continue;
+
+				if (!ValidateTarget(pLocal, target, vLocalPos, vLocalAngles, flFOVLimit))
+					continue;
+
+				outTarget = target;
+				return true;
+			}
+
+			return false;
+		};
+
+		if (bHasSmoothLock
+			&& (FindSmoothTarget(true, false) || FindSmoothTarget(true, true)))
+			return true;
+
+		return FindSmoothTarget(false, false) || FindSmoothTarget(false, true);
+	}
+
+	// Other aim modes retain the single sorted pass.
 	for (auto& target : m_vecTargets)
 	{
-		switch (target.Entity->GetClassId())
-		{
-			case ETFClassIds::CTFPlayer:
-			{
-				if (!target.LagRecord)
-				{
-					int nHitHitbox = -1;
-
-					if (!H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position, &nHitHitbox))
-					{
-						if (target.AimedHitbox == HITBOX_HEAD)
-						{
-							if (!ScanHead(pLocal, target))
-								continue;
-						}
-
-						else if (target.AimedHitbox == HITBOX_PELVIS)
-						{
-							if (!ScanBody(pLocal, target))
-								continue;
-						}
-
-						else
-						{
-							continue;
-						}
-					}
-
-					else
-					{
-						if (nHitHitbox != target.AimedHitbox && target.AimedHitbox == HITBOX_HEAD)
-						{
-							if (!ScanHead(pLocal, target))
-								continue;
-						}
-					}
-				}
-
-				else
-				{
-					CLagRecordScope scope(target.LagRecord);
-					if (!scope.IsActive())
-						continue;
-
-					int nHitHitbox = -1;
-					const bool bTraceResult = H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position, &nHitHitbox);
-
-					if (!bTraceResult)
-					{
-						if (target.AimedHitbox == HITBOX_HEAD)
-						{
-							if (!ScanHead(pLocal, target))
-								continue;
-						}
-
-						else if (target.AimedHitbox == HITBOX_PELVIS)
-						{
-							if (!ScanBody(pLocal, target))
-								continue;
-						}
-
-						else
-						{
-							continue;
-						}
-					}
-				}
-
-				break;
-			}
-
-			case ETFClassIds::CObjectSentrygun:
-			case ETFClassIds::CObjectDispenser:
-			case ETFClassIds::CObjectTeleporter:
-			{
-				if (!H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position))
-				{
-					if (!ScanBuilding(pLocal, target))
-						continue;
-				}
-
-				break;
-			}
-
-			case ETFClassIds::CTFGrenadePipebombProjectile:
-			{
-				if (!H::AimUtils->TraceEntityBullet(target.Entity, vLocalPos, target.Position))
-				{
-					continue;
-				}
-
-				break;
-			}
-
-			default: continue;
-		}
+		if (!ValidateTarget(pLocal, target, vLocalPos, vLocalAngles, flFOVLimit))
+			continue;
 
 		outTarget = target;
 		return true;
@@ -649,9 +777,37 @@ void CAimbotHitscan::Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, const Vec3& vAngles
 			Vec3 vDelta = vAngleTo - pCmd->viewangles;
 			Math::ClampAngles(vDelta);
 
-			// Apply smoothing
-			if (vDelta.Length() > 0.0f && CFG::Aimbot_Hitscan_Smoothing > 0.f)
-				pCmd->viewangles += vDelta / CFG::Aimbot_Hitscan_Smoothing;
+			// Ignore sub-pixel corrections so tiny animation and punch changes do
+			// not make the crosshair buzz after it has settled on the target.
+			constexpr float flSmoothDeadzone = 0.01f;
+			const float flDeltaLengthSqr = vDelta.LengthSqr();
+			if (flDeltaLengthSqr <= flSmoothDeadzone * flSmoothDeadzone)
+			{
+				ResetSmoothMotion();
+				break;
+			}
+
+			// Values below one used to overshoot the target every command. Keep the
+			// slider responsive at the low end without allowing that oscillation.
+			const float flSmoothing = std::max(CFG::Aimbot_Hitscan_Smoothing, 1.0f);
+			const Vec3 vDesiredStep = vDelta / flSmoothing;
+
+			// Ease the angular velocity as well as the angle. The old direct
+			// vDelta/smoothing step instantly inherited every hitbox or record jump.
+			constexpr float flSmoothStepResponse = 0.35f;
+			m_vSmoothAimStep += (vDesiredStep - m_vSmoothAimStep) * flSmoothStepResponse;
+
+			// Never retain momentum opposite the new target direction and never
+			// travel farther than the remaining angular error.
+			if (m_vSmoothAimStep.Dot(vDelta) <= 0.0f)
+				m_vSmoothAimStep = vDesiredStep * flSmoothStepResponse;
+
+			const float flStepLengthSqr = m_vSmoothAimStep.LengthSqr();
+			if (flStepLengthSqr > flDeltaLengthSqr)
+				m_vSmoothAimStep *= sqrtf(flDeltaLengthSqr / flStepLengthSqr);
+
+			pCmd->viewangles += m_vSmoothAimStep;
+			Math::ClampAngles(pCmd->viewangles);
 
 			break;
 		}
@@ -887,7 +1043,26 @@ bool CAimbotHitscan::IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon)
 void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
 	if (!CFG::Aimbot_Hitscan_Active)
+	{
+		ResetSmoothState();
 		return;
+	}
+
+	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
+	const bool bSmoothAimActive = aimKeyDown && CFG::Aimbot_Hitscan_Aim_Type == 2;
+	if (bSmoothAimActive)
+	{
+		// A skipped command means this feature stopped running (weapon switch,
+		// recharge, or another CreateMove early-out). Do not carry stale target
+		// lock or angular momentum back into a later hitscan command.
+		if (m_nLastSmoothCommandNumber <= 0
+			|| pCmd->command_number != m_nLastSmoothCommandNumber + 1)
+			ResetSmoothState();
+
+		m_nLastSmoothCommandNumber = pCmd->command_number;
+	}
+	else
+		ResetSmoothState();
 
 	const bool bManualFiring = IsFiring(pCmd, pWeapon);
 	G::bManualHitscanFiring = bManualFiring;
@@ -896,13 +1071,28 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 		G::flAimbotFOV = CFG::Aimbot_Hitscan_FOV;
 
 	if (Shifting::bShifting && !Shifting::bShiftingWarp)
-		return;
+	{
+		if (bSmoothAimActive)
+			ResetSmoothMotion();
 
-	// Delay check - prevents snap aiming
+		return;
+	}
+
+	// Delay check - prevents snap aiming. The delay governs aimbot-initiated fire
+	// only, so flag it for the triggerbot and still resolve the user's own manual
+	// shot - otherwise the window silently strips its historical backtracking.
 	if (CFG::Aimbot_Hitscan_Delay_Fire && I::GlobalVars->curtime < m_flDelayFireEndTime)
-		return;
+	{
+		G::bAimbotFireDelayed = true;
+		if (bSmoothAimActive)
+			ResetSmoothMotion();
 
-	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
+		if (bManualFiring)
+			ResolveManualShot(pCmd, pLocal);
+
+		return;
+	}
+
 	const bool manualFireIntent = pCmd->buttons & IN_ATTACK;
 	const bool rapidFirePretracking = CFG::Exploits_RapidFire_Key && H::Input->IsDown(CFG::Exploits_RapidFire_Key);
 	const bool needsTargetScan = aimKeyDown || manualFireIntent || bManualFiring || rapidFirePretracking;
@@ -912,19 +1102,46 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	HitscanTarget_t target = {};
 	const bool bFoundTarget = GetTarget(pLocal, pWeapon, target) && target.Entity;
 
+	// Target switch settle - crossing the fire delay must not license an instant
+	// snap onto a *different* player, which in Silent mode is a full view jump.
+	// Re-acquiring the same target is unaffected.
+	if (bFoundTarget && CFG::Aimbot_Hitscan_Delay_Fire && CFG::Aimbot_Hitscan_Delay_Fire_Switch_Time > 0.0f
+		&& m_nLastFiredTargetIndex > 0 && target.Entity->entindex() != m_nLastFiredTargetIndex
+		&& I::GlobalVars->curtime < m_flTargetSwitchEndTime)
+	{
+		G::bAimbotFireDelayed = true;
+		if (bSmoothAimActive)
+			ResetSmoothMotion();
+
+		if (bManualFiring)
+			ResolveManualShot(pCmd, pLocal);
+
+		return;
+	}
+
 	if (bFoundTarget)
 	{
-		G::nTargetIndexEarly = target.Entity->entindex();
+		const int nTargetIndex = target.Entity->entindex();
+		if (bSmoothAimActive && nTargetIndex != m_nSmoothTargetIndex)
+		{
+			m_nSmoothTargetIndex = nTargetIndex;
+			ResetSmoothMotion();
+		}
+
+		G::nTargetIndexEarly = nTargetIndex;
 
 		if (aimKeyDown || bManualFiring)
 		{
-			G::nTargetIndex = target.Entity->entindex();
+			G::nTargetIndex = nTargetIndex;
 
 			// Auto Scope
 			if (CFG::Aimbot_Hitscan_Auto_Scope
 				&& !pLocal->IsZoomed() && pLocal->m_iClass() == TF_CLASS_SNIPER && pWeapon->GetSlot() == WEAPON_SLOT_PRIMARY && G::bCanPrimaryAttack)
 			{
 				pCmd->buttons |= IN_ATTACK2;
+				if (bSmoothAimActive)
+					ResetSmoothMotion();
+
 				return;
 			}
 
@@ -953,7 +1170,14 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 			// Reset delay timer after firing
 			if (CFG::Aimbot_Hitscan_Delay_Fire && bIsFiring)
+			{
 				m_flDelayFireEndTime = I::GlobalVars->curtime + CFG::Aimbot_Hitscan_Delay_Fire_Time;
+
+				// Record who we shot so a later switch to a different player has
+				// to settle past the fire delay before it can be acquired
+				m_nLastFiredTargetIndex = target.Entity->entindex();
+				m_flTargetSwitchEndTime = m_flDelayFireEndTime + CFG::Aimbot_Hitscan_Delay_Fire_Switch_Time;
+			}
 
 			// Are we ready to aim?
 			if (ShouldAim(pCmd, pLocal, pWeapon) || bIsFiring)
@@ -968,11 +1192,20 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
 				}
 			}
+			else if (bSmoothAimActive)
+			{
+				ResetSmoothMotion();
+			}
 		}
 	}
 	else if (bManualFiring)
 	{
+		if (bSmoothAimActive)
+			ResetSmoothMotion();
+
 		// No aimbot target found, resolve manual shot with historical backtracking
 		ResolveManualShot(pCmd, pLocal);
 	}
+	else if (bSmoothAimActive)
+		ResetSmoothMotion();
 }

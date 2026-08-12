@@ -15,21 +15,48 @@ class CAimbotHitscan
 	std::vector<HitscanTarget_t> m_vecTargets = {};
 	float m_flDelayFireEndTime = 0.0f;
 
+	// Smooth aim keeps the same entity while it remains valid and filters the
+	// requested angular step so record/animation updates cannot jerk the view.
+	int m_nSmoothTargetIndex = -1;
+	Vec3 m_vSmoothAimStep = {};
+	// Detect commands skipped while another weapon or CreateMove path was active.
+	int m_nLastSmoothCommandNumber = -1;
+
+	// Entindex of the player we last fired at, or -1 when nothing is recorded.
+	// Entindexes are recycled, so 0 and -1 never count as a valid previous target.
+	int m_nLastFiredTargetIndex = -1;
+	// Until this time, acquiring a *different* target than the one above is held off.
+	float m_flTargetSwitchEndTime = 0.0f;
+
 	int GetAimHitbox(C_TFWeaponBase* pWeapon);
-	bool ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target);
-	bool ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target);
-	bool ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target);
+	bool ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit);
+	bool ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit);
+	bool ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit);
+	bool ValidateTarget(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalPos, const Vec3& vLocalAngles, float flFOVLimit);
 	bool ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal);
 	bool GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, HitscanTarget_t& outTarget);
 	bool ShouldAim(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, const Vec3& vAngles);
 	bool ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const HitscanTarget_t& target);
 	void HandleFire(CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
+	void ResetSmoothMotion() { m_vSmoothAimStep = {}; }
+	void ResetSmoothState()
+	{
+		m_nSmoothTargetIndex = -1;
+		ResetSmoothMotion();
+		m_nLastSmoothCommandNumber = -1;
+	}
 
 public:
 	bool IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
 	void Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
-	void Reset() { m_flDelayFireEndTime = 0.0f; }
+	void Reset()
+	{
+		m_flDelayFireEndTime = 0.0f;
+		m_nLastFiredTargetIndex = -1;
+		m_flTargetSwitchEndTime = 0.0f;
+		ResetSmoothState();
+	}
 };
 
 MAKE_SINGLETON_SCOPED(CAimbotHitscan, AimbotHitscan, F);
