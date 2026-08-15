@@ -191,9 +191,11 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 				if (vel.IsZero() || flDistanceSqr > 150.0f * 150.0f)
 					continue;
 
-				const auto arrow{ pEntity->As<C_TFProjectile_Arrow>() };
-				if (!arrow->m_bCritical() && percentHealth >= HEALTH_LIMIT)
-					continue;
+			const auto arrow{ pEntity->As<C_TFProjectile_Arrow>() };
+			if (!arrow)
+				continue;
+			if (!arrow->m_bCritical() && percentHealth >= HEALTH_LIMIT)
+				continue;
 
 				projectileDanger = MEDIGUN_BULLET_RESIST;
 				break;
@@ -206,9 +208,11 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 				if (flDistanceSqr > 250.0f * 250.0f)
 					continue;
 
-				const auto rocket{ pEntity->As<C_TFProjectile_Rocket>() };
-				if (!rocket->m_bCritical() && percentHealth >= 1.0f)
-					continue;
+			const auto rocket{ pEntity->As<C_TFProjectile_Rocket>() };
+			if (!rocket)
+				continue;
+			if (!rocket->m_bCritical() && percentHealth >= 1.0f)
+				continue;
 
 				projectileDanger = MEDIGUN_BLAST_RESIST;
 				break;
@@ -219,9 +223,11 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 				if (flDistanceSqr > 250.0f * 250.0f)
 					continue;
 
-				const auto bomb{ pEntity->As<C_TFGrenadePipebombProjectile>() };
-				if (bomb->m_iType() == TF_GL_MODE_REMOTE_DETONATE_PRACTICE)
-					continue;
+			const auto bomb{ pEntity->As<C_TFGrenadePipebombProjectile>() };
+			if (!bomb)
+				continue;
+			if (bomb->m_iType() == TF_GL_MODE_REMOTE_DETONATE_PRACTICE)
+				continue;
 
 				bCountPipebomb = !bomb->m_bCritical() && percentHealth >= 1.0f && flDistanceSqr >= 100.0f * 100.0f;
 				projectileDanger = MEDIGUN_BLAST_RESIST;
@@ -233,9 +239,11 @@ bool IsPlayerInDanger(C_TFPlayer* player, medigun_resist_types_t& dangerType)
 				if (flDistanceSqr > 150.0f * 150.0f)
 					continue;
 
-				const auto flare{ pEntity->As<C_TFProjectile_Flare>() };
-				if (!flare->m_bCritical() && !player->InCond(TF_COND_BURNING) && !player->InCond(TF_COND_BURNING_PYRO))
-					continue;
+			const auto flare{ pEntity->As<C_TFProjectile_Flare>() };
+			if (!flare)
+				continue;
+			if (!flare->m_bCritical() && !player->InCond(TF_COND_BURNING) && !player->InCond(TF_COND_BURNING_PYRO))
+				continue;
 
 				projectileDanger = MEDIGUN_FIRE_RESIST;
 				break;
@@ -434,11 +442,11 @@ void CAutoVaccinator::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd*
 		if (!healTarget)
 			return;
 
-		medigun_resist_types_t dangerType{ MEDIGUN_NUM_RESISTS };
+		medigun_resist_types_t dangerTypeHeal{ MEDIGUN_NUM_RESISTS };
 
-		if (IsPlayerInDanger(healTarget, dangerType) && !PlayerHasResUber(dangerType, healTarget))
+		if (IsPlayerInDanger(healTarget, dangerTypeHeal) && !PlayerHasResUber(dangerTypeHeal, healTarget))
 		{
-			m_GoalResType = dangerType;
+			m_GoalResType = dangerTypeHeal;
 
 			if (medigun->m_flChargeLevel() >= 0.25f)
 			{
@@ -452,20 +460,17 @@ void CAutoVaccinator::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd*
 		}
 		else
 		{
-			if (IsPlayerInDanger(pLocal, dangerType) && !PlayerHasResUber(dangerType, pLocal))
+			medigun_resist_types_t dangerTypeLocal{ MEDIGUN_NUM_RESISTS };
+
+			if (IsPlayerInDanger(pLocal, dangerTypeLocal) && !PlayerHasResUber(dangerTypeLocal, pLocal))
 			{
-				m_GoalResType = dangerType;
+				m_GoalResType = dangerTypeLocal;
 
 				if (medigun->m_flChargeLevel() >= 0.25f)
 				{
 					m_ShouldPop = true;
 				}
 			}
-		}
-
-		if (dangerType != MEDIGUN_NUM_RESISTS)
-		{
-			m_GoalResType = dangerType;
 		}
 	}
 }
@@ -504,7 +509,7 @@ void CAutoVaccinator::ProcessPlayerHurt(IGameEvent* event)
 	if (!weaponID)
 		return;
 
-	if (victim != pLocal && victim != medigun->m_hHealingTarget())
+	if (victim != pLocal && victim != medigun->m_hHealingTarget().Get())
 		return;
 
 	const auto victimEnt{ victim->As<C_TFPlayer>() };
@@ -540,7 +545,8 @@ void CAutoVaccinator::ProcessPlayerHurt(IGameEvent* event)
 	}
 
 	const auto healTarget{ medigun->m_hHealingTarget().Get() };
-	if (victim == healTarget && CFG::AutoVaccinator_Pop == 1 && !healTarget->As<C_TFPlayer>()->IsPlayerOnSteamFriendsList())
+	const auto healTargetPlayer{ healTarget ? healTarget->As<C_TFPlayer>() : nullptr };
+	if (victim == healTarget && CFG::AutoVaccinator_Pop == 1 && healTargetPlayer && !healTargetPlayer->IsPlayerOnSteamFriendsList())
 	{
 		m_ShouldPop = false;
 	}

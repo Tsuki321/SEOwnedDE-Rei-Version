@@ -99,7 +99,7 @@ bool FindTargetProjectile(C_TFPlayer* local, TargetProjectile& outTarget)
 			continue;
 		}
 
-		if (pProjectile->GetClassId() == ETFClassIds::CTFProjectile_Arrow && fabsf(vel.Length()) <= 10.0f)
+		if (pProjectile->GetClassId() == ETFClassIds::CTFProjectile_Arrow && vel.LengthSqr() <= 100.0f)
 		{
 			continue;
 		}

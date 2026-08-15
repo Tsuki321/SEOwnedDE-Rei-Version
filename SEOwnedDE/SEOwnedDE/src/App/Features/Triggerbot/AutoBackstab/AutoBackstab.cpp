@@ -155,6 +155,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			canKnife = CanKnifeOneShot(pPlayer, pLocal->IsCritBoosted(), pLocal->IsMiniCritBoosted());
 		}
 
+		bool bInFOV = true;
 		if (CFG::Triggerbot_AutoBackstab_FOV > 0.0f)
 		{
 			const Vec3 vAngToTarget = Math::CalcAngle(vShootPos, vTargetCenter);
@@ -162,11 +163,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 			if (flFOVTo > CFG::Triggerbot_AutoBackstab_FOV)
 			{
-				continue;
+				bInFOV = false;
 			}
 		}
 
-		if (bLiveTargetInRange && (canKnife || IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, vTargetCenter, pPlayer->GetEyeAngles())))
+		if (bInFOV && bLiveTargetInRange && (canKnife || IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, vTargetCenter, pPlayer->GetEyeAngles())))
 		{
 			Vec3 forward{};
 			Math::AngleVectors(vLocalAngles, &forward);
@@ -214,7 +215,7 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			if (vShootPos.DistToSqr(record->Center) > kMaxBackstabCandidateRangeSqr)
 				continue;
 
-			if (canKnife || IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, record->Center, record->EyeAngles))
+			if (IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, record->Center, record->EyeAngles))
 			{
 				{
 					CLagRecordScope scope(record);

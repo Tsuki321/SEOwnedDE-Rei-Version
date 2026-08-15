@@ -5,7 +5,7 @@
 class CAutoVaccinator
 {
 	int m_SimResType = MEDIGUN_NUM_RESISTS;
-	int m_GoalResType = MEDIGUN_BULLET_RESIST;
+	int m_GoalResType = MEDIGUN_NUM_RESISTS;
 	bool m_IsChangingRes = false;
 	bool m_ShouldPop = false;
 

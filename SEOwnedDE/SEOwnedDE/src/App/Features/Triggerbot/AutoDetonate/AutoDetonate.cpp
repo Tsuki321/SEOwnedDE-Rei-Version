@@ -7,6 +7,9 @@ void CAutoDetonate::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 	if (!CFG::Triggerbot_AutoDetonate_Active)
 		return;
 
+	if (!pLocal)
+		return;
+
 	if (pLocal->m_iClass() != TF_CLASS_DEMOMAN)
 		return;
 
@@ -66,8 +69,9 @@ void CAutoDetonate::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 					{
 						if (pSticky->m_bDefensiveBomb())
 						{
+							const Vec3 vOriginalAngles = pCmd->viewangles;
 							const Vec3 vAngle = Math::CalcAngle(vShootPos, vStickyCenter);
-							H::AimUtils->FixMovement(pCmd, vAngle);
+							H::AimUtils->FixMovement(pCmd, vOriginalAngles);
 							pCmd->viewangles = vAngle;
 							G::bSilentAngles = true;
 						}
@@ -95,8 +99,9 @@ void CAutoDetonate::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 					{
 						if (pSticky->m_bDefensiveBomb())
 						{
+							const Vec3 vOriginalAngles = pCmd->viewangles;
 							const Vec3 vAngle = Math::CalcAngle(vShootPos, vStickyCenter);
-							H::AimUtils->FixMovement(pCmd, vAngle);
+							H::AimUtils->FixMovement(pCmd, vOriginalAngles);
 							pCmd->viewangles = vAngle;
 							G::bSilentAngles = true;
 						}

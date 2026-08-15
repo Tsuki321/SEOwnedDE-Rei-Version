@@ -243,6 +243,7 @@ std::uintptr_t Memory::FindSignature(const char *szModule, const char *szPattern
 #endif
 
 		/// Byte sequence wasn't found
+		module->m_mapSignatures.emplace(szPattern, 0);
 		return {};
 	}
 

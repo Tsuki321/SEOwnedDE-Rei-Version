@@ -122,7 +122,7 @@ void CAimbot::Run(CUserCmd* pCmd)
 			I::UniformRandomStream->RandomFloat();
 		}
 
-		switch (pWeapon->GetWeaponID())
+		switch (pWeaponAfter->GetWeaponID())
 		{
 			case TF_WEAPON_GRENADELAUNCHER:
 			case TF_WEAPON_PIPEBOMBLAUNCHER:
@@ -144,7 +144,7 @@ void CAimbot::Run(CUserCmd* pCmd)
 			case TF_WEAPON_COMPOUND_BOW:
 			{
 				Vec3 vSpread = {}, vSrc = {};
-				pWeapon->GetProjectileFireSetup(pLocal, { 0.0f, 0.0f, 0.0f }, &vSrc, &vSpread, false, 2000.0f);
+				pWeaponAfter->GetProjectileFireSetup(pLocalAfter, { 0.0f, 0.0f, 0.0f }, &vSrc, &vSpread, false, 2000.0f);
 				pCmd->viewangles -= (vSpread - I::EngineClient->GetViewAngles());
 				Math::ClampAngles(pCmd->viewangles);
 				G::bPSilentAngles = true;
@@ -153,10 +153,10 @@ void CAimbot::Run(CUserCmd* pCmd)
 
 			default:
 			{
-				if (pWeapon->m_iItemDefinitionIndex() == Soldier_m_TheBeggarsBazooka)
+				if (pWeaponAfter->m_iItemDefinitionIndex() == Soldier_m_TheBeggarsBazooka)
 				{
 					Vec3 vSpread = {};
-					pWeapon->GetSpreadAngles(vSpread);
+					pWeaponAfter->GetSpreadAngles(vSpread);
 					pCmd->viewangles -= (vSpread - I::EngineClient->GetViewAngles());
 					Math::ClampAngles(pCmd->viewangles);
 					G::bPSilentAngles = true;

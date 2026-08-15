@@ -8,6 +8,8 @@ class CEnginePrediction
 	float m_fOldCurrentTime = 0.0f;
 	float m_fOldFrameTime = 0.0f;
 	int m_nOldTickCount = 0;
+	int m_nTick = 0;
+	CUserCmd* m_pLastCmd = nullptr;
 
 	int GetTickbase(CUserCmd* pCmd, C_TFPlayer* pLocal);
 

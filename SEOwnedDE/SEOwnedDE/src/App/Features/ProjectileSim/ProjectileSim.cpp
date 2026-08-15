@@ -215,6 +215,9 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 		if (!I::Physics || !I::PhysicsCollision)
 			return false;
 
+		if (m_pObj || m_pEnv)
+			CleanUp();
+
 		if (!m_pEnv)
 		{
 			m_pEnv = I::Physics->CreateEnvironment();

@@ -4,20 +4,17 @@
 
 int CEnginePrediction::GetTickbase(CUserCmd* pCmd, C_TFPlayer* pLocal)
 {
-	static int nTick = 0;
-	static CUserCmd* pLastCmd = nullptr;
-
 	if (pCmd)
 	{
-		if (!pLastCmd || pLastCmd->hasbeenpredicted)
-			nTick = pLocal->m_nTickBase();
+		if (!m_pLastCmd || m_pLastCmd->hasbeenpredicted)
+			m_nTick = pLocal->m_nTickBase();
 
-		else nTick++;
+		else m_nTick++;
 
-		pLastCmd = pCmd;
+		m_pLastCmd = pCmd;
 	}
 
-	return nTick;
+	return m_nTick;
 }
 
 void CEnginePrediction::Start(CUserCmd* pCmd)
