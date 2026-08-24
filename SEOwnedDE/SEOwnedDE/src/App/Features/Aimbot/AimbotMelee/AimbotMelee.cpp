@@ -23,6 +23,16 @@ bool CAimbotMelee::CanSee(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeTarg
 
 		CLagRecordScope scope(target.LagRecord);
 
+		// A record that failed to install leaves the live pose in place, so the
+		// traces below would be validating the present while Run() goes on to
+		// stamp this record's historical tick - a swing that visibly connects on
+		// screen and misses on the server. Treat it as not visible instead.
+		if (target.LagRecord && !scope.IsActive())
+		{
+			target.MeleeTraceHit = false;
+			return false;
+		}
+
 		const bool bCanSee = H::AimUtils->TraceEntityMelee(target.Entity, vLocalPos, vToSee);
 
 		if (CFG::Aimbot_Melee_Aim_Type == 2 || CFG::Aimbot_Melee_Aim_Type == 3)
@@ -357,7 +367,27 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 
 				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
-					pCmd->tick_count = TIME_TO_TICKS(target.SimulationTime + SDKUtils::GetLerp());
+					// Same rule as hitscan: a record's tick only describes the
+					// shot if the command is actually pointing at that record.
+					// Aim() snaps for Plain/Silent, eases for Smooth, and does
+					// not run at all with the aim key up (Aimbot_Key is unbound
+					// by default, though Aimbot_Melee_Always_Active can stand in
+					// for it), so verify the resulting angles instead of assuming.
+					// A live-pose candidate has no record to rewind to - its
+					// SimulationTime describes the interpolated present - so
+					// leaving tick_count alone keeps the server's own latency
+					// correction, which is what that swing was aimed with.
+					Vec3 vAimError = target.AngleTo - pLocal->m_vecPunchAngle() - pCmd->viewangles;
+					Math::ClampAngles(vAimError);
+
+					constexpr float flAimedEpsilon = 0.01f;
+					const bool bAimbotDirectedSwing = vAimError.LengthSqr() <= flAimedEpsilon * flAimedEpsilon;
+
+					if (bAimbotDirectedSwing && target.LagRecord)
+					{
+						pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
+						G::bCommandTickResolved = true;
+					}
 				}
 			}
 

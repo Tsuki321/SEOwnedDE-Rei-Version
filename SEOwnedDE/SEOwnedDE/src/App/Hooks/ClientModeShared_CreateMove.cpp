@@ -21,6 +21,7 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 	G::bFiring = false;
 	G::bManualHitscanFiring = false;
 	G::bAimbotFireDelayed = false;
+	G::bCommandTickResolved = false;
 
 	if (!pCmd || !pCmd->command_number)
 	{

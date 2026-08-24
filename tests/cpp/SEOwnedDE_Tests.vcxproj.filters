@@ -90,6 +90,9 @@
     <ClCompile Include="features\TestLagRecords.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="features\TestLagRecordsBacktrackWindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="features\TestMaterials.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

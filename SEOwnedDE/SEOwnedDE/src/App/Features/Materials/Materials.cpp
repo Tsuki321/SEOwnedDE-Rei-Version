@@ -356,6 +356,13 @@ void CMaterials::RunLagRecords(IMatRenderContext* pRenderContext)
 				I::RenderView->SetBlend(flBlend);
 
 				CLagRecordScope scope(pRecord);
+
+				// A record whose bones failed to install leaves the live pose in
+				// place, so DrawModel would paint a ghost of the present sitting
+				// inside the real player instead of the historical pose. Skip it.
+				if (!scope.IsActive())
+					continue;
+
 				m_bRendering = true;
 				const float flOldInvisibility = pPlayer->m_flInvisibility();
 				pPlayer->m_flInvisibility() = 0.0f;
@@ -368,14 +375,40 @@ void CMaterials::RunLagRecords(IMatRenderContext* pRenderContext)
 		}
 		else
 		{
-			const auto pRecord = F::LagRecords->GetRecord(pPlayer, nRecords - 1);
+			// Draw the record a shot would actually pick: the newest usable one.
+			// This used to draw GetRecord(pPlayer, nRecords - 1) - the OLDEST
+			// record in the ring - at full opacity, so the single solid ghost the
+			// user lines their crosshair up on was the one candidate no shot path
+			// ever selects. Every consumer (hitscan, melee, backstab, the manual
+			// resolver) walks records newest-first and takes the first usable hit,
+			// so the indicator has to agree with that or it is a decoy: the user
+			// aims at a pose ~300 ms old while the shot resolves against one much
+			// nearer the present.
+			const LagRecord_t* pRecord = nullptr;
 
-			if (!CLagRecords::IsRecordUsable(pRecord, cachedState) || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
+			for (int n = 0; n < nRecords; n++)
+			{
+				const auto pCandidate = F::LagRecords->GetRecord(pPlayer, n);
+
+				if (CLagRecords::IsRecordUsable(pCandidate, cachedState))
+				{
+					pRecord = pCandidate;
+					break;
+				}
+			}
+
+			if (!pRecord || !F::VisualUtils->IsOnScreenNoEntity(pLocal, pRecord->AbsOrigin))
 				continue;
 
 			I::RenderView->SetBlend(1.0f);
 
 			CLagRecordScope scope(pRecord);
+
+			// See the style-0 branch: without the pose installed this would draw
+			// an opaque copy of the present and pass it off as the backtrack.
+			if (!scope.IsActive())
+				continue;
+
 			m_bRendering = true;
 			const float flOldInvisibility = pPlayer->m_flInvisibility();
 			pPlayer->m_flInvisibility() = 0.0f;

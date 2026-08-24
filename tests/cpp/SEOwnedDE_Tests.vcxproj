@@ -329,6 +329,7 @@
     <ClCompile Include="features\TestESP.cpp" />
     <ClCompile Include="features\TestKillstreak.cpp" />
     <ClCompile Include="features\TestLagRecords.cpp" />
+    <ClCompile Include="features\TestLagRecordsBacktrackWindow.cpp" />
     <ClCompile Include="features\TestMaterials.cpp" />
     <ClCompile Include="features\TestMenu.cpp" />
     <ClCompile Include="features\TestMisc.cpp" />

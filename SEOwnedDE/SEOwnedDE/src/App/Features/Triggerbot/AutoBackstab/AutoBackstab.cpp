@@ -101,6 +101,16 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		return;
 	}
 
+	// The melee aimbot runs before the triggerbot and may already have resolved
+	// this command against a specific pose. Stamping our own pick over it - which
+	// this function used to do unconditionally, for both the live and the
+	// historical branch - retargets the already-resolved swing to a different
+	// player or a different point in time, so neither lands.
+	if (G::bCommandTickResolved)
+	{
+		return;
+	}
+
 	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
 	// Hoist invariant reads. pLocal->GetShootPos() was being called 3x per
@@ -178,7 +188,16 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			{
 				pCmd->buttons |= IN_ATTACK;
 
-				pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
+				// Deliberately leave tick_count alone. This branch traced the
+				// live pose, i.e. the *interpolated* present (~curtime - lerp),
+				// while m_flSimulationTime is the newest server update the
+				// player has. Stamping m_flSimulationTime + lerp asked the
+				// server to rewind to a pose ahead of the one we swung at - and
+				// to a pose that was never recorded in the first place. The
+				// incoming tick already carries the server's own latency
+				// correction, which is what this swing was aimed with. Claim
+				// ownership so no later feature rewinds it.
+				G::bCommandTickResolved = true;
 
 				return;
 			}
@@ -220,6 +239,14 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 				{
 					CLagRecordScope scope(record);
 
+					// A record that failed to install leaves the live pose in
+					// place, so the trace below would be validating the present
+					// while the stamp further down commits this record's
+					// historical tick - a stab that connects on screen and
+					// misses on the server. Skip the record instead.
+					if (!scope.IsActive())
+						continue;
+
 					Vec3 forward{};
 					Math::AngleVectors(vLocalAngles, &forward);
 
@@ -231,7 +258,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 				pCmd->buttons |= IN_ATTACK;
 
-				pCmd->tick_count = TIME_TO_TICKS(record->SimulationTime + SDKUtils::GetLerp());
+				// Same pose/tick pairing every other consumer uses: records store
+				// the pose time, GetCommandTick re-adds the lerp the server
+				// subtracts. Claim the tick so nothing downstream retargets it.
+				pCmd->tick_count = CLagRecords::GetCommandTick(record->SimulationTime);
+				G::bCommandTickResolved = true;
 
 				return;
 			}

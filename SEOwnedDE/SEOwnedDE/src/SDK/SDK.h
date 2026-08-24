@@ -182,32 +182,46 @@ namespace SDKUtils
 		if (!pBox)
 			return {};
 
+		// pBox->bone comes from the model file; callers pass fixed-size matrix
+		// blocks (MAX_BONE_COUNT / MAXSTUDIOBONES entries), so a model whose
+		// hitbox references a bone past the end would read past the buffer.
+		if (pBox->bone < 0 || pBox->bone >= MAXSTUDIOBONES)
+			return {};
+
 		Vec3 vOut = {};
 		Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, pMatrix[pBox->bone], vOut);
 		return vOut;
 	}
 
-	static void GetHitboxInfoFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, const matrix3x4_t *pMatrix, Vec3 *pCenter, Vec3 *pMins, Vec3 *pMaxs)
+	// pMatrixOut receives the bone matrix the hitbox is attached to - the same
+	// orientation GetHitboxInfo hands back for the live pose. Ray/OBB tests need
+	// it: the box extents are bone-local, so testing them against any other
+	// matrix (e.g. BoneData[0], the root) measures a differently-oriented volume
+	// than the one the trace hit.
+	static bool GetHitboxInfoFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, const matrix3x4_t *pMatrix, Vec3 *pCenter, Vec3 *pMins, Vec3 *pMaxs, matrix3x4_t *pMatrixOut = nullptr)
 	{
 		auto pModel = pAnimating->GetModel();
 
 		if (!pModel)
-			return;
+			return false;
 
 		auto pHDR = I::ModelInfoClient->GetStudiomodel(pModel);
 
 		if (!pHDR)
-			return;
+			return false;
 
 		auto pSet = pHDR->pHitboxSet(pAnimating->m_nHitboxSet());
 
 		if (!pSet)
-			return;
+			return false;
 
 		auto pBox = pSet->pHitbox(nHitbox);
 
 		if (!pBox)
-			return;
+			return false;
+
+		if (pBox->bone < 0 || pBox->bone >= MAXSTUDIOBONES)
+			return false;
 
 		if (pMins)
 			*pMins = pBox->bbmin;
@@ -217,6 +231,11 @@ namespace SDKUtils
 
 		if (pCenter)
 			Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, pMatrix[pBox->bone], *pCenter);
+
+		if (pMatrixOut)
+			*pMatrixOut = pMatrix[pBox->bone];
+
+		return true;
 	}
 
 	inline float GetLatency()
@@ -347,6 +366,12 @@ namespace G
 	// fire delay is still running. Downstream trigger features must not fire on
 	// such a command, otherwise the delay is trivially bypassed.
 	inline bool bAimbotFireDelayed = false;
+	// Set the moment any feature commits this command's tick_count to a specific
+	// pose (historical record or a deliberate "leave it alone"). Six features can
+	// write tick_count in one CreateMove; whoever resolved the shot that is
+	// actually being fired owns the tick, and later writers must not silently
+	// retarget it to a different player or a different point in time.
+	inline bool bCommandTickResolved = false;
 	inline int nTicksTargetSame = 0;
 	inline int nTargetIndexEarly = 0;
 	inline int nTicksSinceCanFire = 0;

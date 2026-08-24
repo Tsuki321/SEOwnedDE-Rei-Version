@@ -5,13 +5,14 @@
 #include <array>
 #include <cstdint>
 
-// MAX_LAG_RECORDS: 24 ticks ~= 360 ms at 66 tick (240 ms at 100 tick). Sits
-// comfortably inside the default sv_maxunlag (1.0 s) window, so essentially the
-// whole ring stays valid for realistic pings (30-100 ms) - past the Materials
-// ghost-render cap and the 5-record cap used by MovementSimulation + Aimbot
-// hitscan/melee, while giving up only the deep reach that sv_maxunlag would
-// truncate anyway. Per-player static storage is ~144 KB per slot (~4.6 MB
-// across MAX_PLAYERS=33), dominated by the inline BoneData block.
+// MAX_LAG_RECORDS: 24 ticks ~= 360 ms at 66 tick (240 ms at 100 tick). This is
+// deliberately deeper than the usable backtrack window (LAG_MAX_BACKTRACK_TIME
+// below) so that a frame which captures several ticks at once, or a target
+// whose records land unevenly, still has candidates left inside the window
+// after the age gate trims the tail. Do NOT read the ring depth as the reach of
+// a shot - IsRecordUsable is what bounds that. Per-player static storage is
+// ~144 KB per slot (~4.6 MB across MAX_PLAYERS=33), dominated by the inline
+// BoneData block.
 inline constexpr int MAX_BONE_COUNT = 128;
 inline constexpr int MAX_LAG_RECORDS = 24;
 // MAX_MATRIX_HELPER_DEPTH: measured max nesting is 1 across all consumers
@@ -19,6 +20,24 @@ inline constexpr int MAX_LAG_RECORDS = 24;
 // the measured depth as a safety margin; cuts the matrix helper's static
 // footprint from ~50 KB to ~12.5 KB.
 inline constexpr int MAX_MATRIX_HELPER_DEPTH = 2;
+
+// Maximum age (seconds) of a record a shot may be rewound to.
+//
+// This is a server constraint, not a preference. CLagCompensationManager::
+// StartLagCompensation computes its own target time from the player's measured
+// latency + lerp and compares it against the time implied by cmd->tick_count;
+// when the two deviate by more than 0.2 s it DISCARDS the client's tick and
+// lag-compensates to its own estimate instead. A shot stamped with a deeper
+// record therefore does not land on that record - it lands wherever the server
+// decided the target was, i.e. roughly the present, which reads in-game as
+// "the backtrack does nothing".
+//
+// sv_maxunlag (1.0 s) is a separate, much looser ceiling on how far the server
+// will ever rewind. Validating against it alone - which is all UpdateRecords
+// used to do - can never reject anything a 24-slot ring can hold, so every
+// record was offered to the aimbot regardless of whether the server would
+// honour it.
+inline constexpr float LAG_MAX_BACKTRACK_TIME = 0.2f;
 
 inline constexpr float LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR = 64.0f * 64.0f;
 // Base radius (units) below which a per-record displacement is never treated as
@@ -69,6 +88,10 @@ struct LagRecordCachedState_t
 	Vec3 EyeAngles = {};
 	int Flags = 0;
 	float FeetYaw = 0.0f;
+	// The player's live m_flSimulationTime, i.e. the reference point a record's
+	// age is measured against by IsRecordUsable. Seeded to -1 so an unpopulated
+	// snapshot cannot make a record look arbitrarily old and reject it.
+	float SimulationTime = -1.0f;
 };
 
 class CLagRecords
@@ -132,11 +155,24 @@ public:
 
 	// Combined per-record usability gate shared by every backtrack consumer
 	// (AimbotHitscan, AimbotMelee, AutoBackstab, Materials): a record is usable
-	// when it is non-null, is not a post-teleport discontinuity, and its pose
-	// actually differs from the player's live cached state (so we never
-	// backtrack onto the interpolated present). Centralized so the call sites
-	// cannot drift apart as the filter evolves.
+	// when it is non-null, is not a post-teleport discontinuity, is still inside
+	// the window the server will honour (LAG_MAX_BACKTRACK_TIME, measured
+	// against cached.SimulationTime), and its pose actually differs from the
+	// player's live cached state (so we never backtrack onto the interpolated
+	// present). Centralized so the call sites cannot drift apart as the filter
+	// evolves - in particular, anything that renders a record as a "you can hit
+	// this" indicator must agree with what a shot would accept.
 	static bool IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
+
+	// Age of a record relative to the live snapshot it is compared against, in
+	// seconds. Negative or unmeasurable ages collapse to 0 so a missing snapshot
+	// never reads as "ancient".
+	static float GetRecordAge(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
+
+	// True when a record is inside the window the server will honour. Exposed
+	// separately from IsRecordUsable for consumers that need the age verdict
+	// without the pose-difference test.
+	static bool IsWithinBacktrackWindow(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
 
 	// Returns the per-frame snapshot of the player's live state, populated
 	// by UpdateRecords and reused by all consumers. Use this instead of

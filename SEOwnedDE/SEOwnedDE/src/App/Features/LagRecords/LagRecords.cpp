@@ -67,7 +67,14 @@ bool CLagRecords::ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency)
 {
-	if (flCmprSimTime > flCurSimTime)
+	// Match the capture-side tolerance in AddRenderRecord, which admits a pose
+	// time up to 1 ms past m_flSimulationTime. Without the same slack here the
+	// newest record can be stored and then immediately judged invalid, and
+	// because the tail truncation below is keyed on the FIRST invalid record,
+	// a reject at logical index 0 discards the entire ring. The ring then
+	// regrows one record per frame, so a target repeatedly lands on a single
+	// shallow record - or none at all - for tens of frames at a time.
+	if (flCmprSimTime > flCurSimTime + 0.001f)
 		return false;
 
 	const float flDelta = flCurSimTime - flCmprSimTime;
@@ -308,6 +315,7 @@ void CLagRecords::UpdateRecords()
 			state.AbsOrigin = pPlayer->GetAbsOrigin();
 			state.EyeAngles = pPlayer->GetEyeAngles();
 			state.Flags = pPlayer->m_fFlags();
+			state.SimulationTime = pPlayer->m_flSimulationTime();
 
 			if (const auto pAnimState = pPlayer->GetAnimState())
 				state.FeetYaw = pAnimState->m_flCurrentFeetYaw;
@@ -391,6 +399,7 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 	state.AbsOrigin = pPlayer->GetAbsOrigin();
 	state.EyeAngles = pPlayer->GetEyeAngles();
 	state.Flags = pPlayer->m_fFlags();
+	state.SimulationTime = pPlayer->m_flSimulationTime();
 
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		state.FeetYaw = pAnimState->m_flCurrentFeetYaw;
@@ -432,12 +441,34 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 	return fabsf(flRollDelta) > 0.5f;
 }
 
+float CLagRecords::GetRecordAge(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
+{
+	if (!pRecord || cached.SimulationTime < 0.0f || pRecord->SimulationTime < 0.0f)
+		return 0.0f;
+
+	return std::max(cached.SimulationTime - pRecord->SimulationTime, 0.0f);
+}
+
+bool CLagRecords::IsWithinBacktrackWindow(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
+{
+	return GetRecordAge(pRecord, cached) < LAG_MAX_BACKTRACK_TIME;
+}
+
 bool CLagRecords::IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
 {
 	// Order the cheapest rejects first: the null and teleport checks are single
 	// loads/branches, so they short-circuit before the multi-field pose compare.
 	if (!pRecord || !pRecord->Player || pRecord->bTeleported
 		|| pRecord->ModelIndex != pRecord->Player->m_nModelIndex())
+		return false;
+
+	// Depth gate. A record the server will refuse to rewind to is worse than no
+	// record: the shot is stamped with a tick that gets thrown away, and lag
+	// compensation falls back to the server's own estimate - so the bullet lands
+	// near the target's present position while the user aimed at a pose ~300 ms
+	// old. Rejecting here keeps every consumer (and the ghost renderer) on the
+	// same definition of "reachable" as the shot itself.
+	if (!IsWithinBacktrackWindow(pRecord, cached))
 		return false;
 
 	return DiffersFromCurrentCached(pRecord, cached);

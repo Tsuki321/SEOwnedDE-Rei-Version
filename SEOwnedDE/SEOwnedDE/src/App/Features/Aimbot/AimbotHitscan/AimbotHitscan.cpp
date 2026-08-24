@@ -441,6 +441,7 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 		return false;
 
 	pCmd->tick_count = CLagRecords::GetCommandTick(pBestRecord->SimulationTime);
+	G::bCommandTickResolved = true;
 	G::nTargetIndexEarly = pBestPlayer->entindex();
 	G::nTargetIndex = pBestPlayer->entindex();
 	return true;
@@ -981,14 +982,26 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 					if (nHitHitbox != HITBOX_HEAD)
 						return false;
 
-					Vec3 vMins = {}, vMaxs = {}, vCenter = {};
-					SDKUtils::GetHitboxInfoFromMatrix(pPlayer, nHitHitbox, target.LagRecord->BoneData.data(), &vCenter, &vMins, &vMaxs);
+					// Mirror the live branch: multi-point targets already resolved
+					// a specific surface point, so re-testing them against the
+					// shrunk box rejects shots that are legitimately on target.
+					if (!target.WasMultiPointed)
+					{
+						Vec3 vMins = {}, vMaxs = {}, vCenter = {};
+						matrix3x4_t matrix = {};
 
-					vMins *= 0.5f;
-					vMaxs *= 0.5f;
+						// The head hitbox's own bone matrix, not BoneData[0]. The
+						// root matrix was orienting a head-sized box by the pelvis,
+						// so the test passed or failed on an unrelated rotation.
+						if (!SDKUtils::GetHitboxInfoFromMatrix(pPlayer, nHitHitbox, target.LagRecord->BoneData.data(), &vCenter, &vMins, &vMaxs, &matrix))
+							return false;
 
-					if (!Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, *target.LagRecord->BoneData.data()))
-						return false;
+						vMins *= 0.5f;
+						vMaxs *= 0.5f;
+
+						if (!Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, matrix))
+							return false;
+					}
 				}
 			}
 		}
@@ -1189,7 +1202,47 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
-					pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
+					// A record's tick is only correct for a shot that is actually
+					// pointing at that record. Verify rather than assume: Aim()
+					// above snaps exactly onto target.AngleTo for Plain/Silent,
+					// only walks toward it for Smooth/Aim Assist, and does not run
+					// at all when the aim key is up - and Aimbot_Key is unbound by
+					// default, so the common case is a hand-aimed shot that the
+					// aimbot merely happened to scan a target for.
+					//
+					// Stamping unconditionally is what made manual shots miss: the
+					// tick came from whichever candidate won the FOV sort inside
+					// Aimbot_Hitscan_FOV (45 deg by default), rewinding every
+					// player to a pose the crosshair was never on - sometimes a
+					// pose belonging to someone the user was not even shooting at.
+					Vec3 vAimError = target.AngleTo - pLocal->m_vecPunchAngle() - pCmd->viewangles;
+					Math::ClampAngles(vAimError);
+
+					constexpr float flAimedEpsilon = 0.01f;
+					const bool bAimbotDirectedShot = vAimError.LengthSqr() <= flAimedEpsilon * flAimedEpsilon;
+
+					if (bAimbotDirectedShot)
+					{
+						// Only rewind when the winning candidate actually is a
+						// historical pose. A live-pose candidate carries
+						// m_flSimulationTime while its position is the
+						// interpolated present, so stamping it fabricates a
+						// historical tick for a pose that was never recorded;
+						// leaving tick_count alone lets the server apply its own
+						// latency correction, which is what that shot was aimed
+						// with.
+						if (target.LagRecord)
+						{
+							pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
+							G::bCommandTickResolved = true;
+						}
+					}
+					else if (bManualFiring)
+					{
+						// The user aimed this shot, so resolve it against the ray
+						// they actually fired down instead of the aimbot's pick.
+						ResolveManualShot(pCmd, pLocal);
+					}
 				}
 			}
 			else if (bSmoothAimActive)
