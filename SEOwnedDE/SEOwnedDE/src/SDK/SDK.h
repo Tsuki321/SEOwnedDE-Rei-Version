@@ -232,8 +232,19 @@ namespace SDKUtils
 		if (pCenter)
 			Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, pMatrix[pBox->bone], *pCenter);
 
+		// matrix3x4_t is a raw float[3][4], so it cannot be assigned as a whole -
+		// copy the rows. The compiler folds this into the same move a memcpy
+		// would emit, without SDK.h taking a dependency on <cstring>.
 		if (pMatrixOut)
-			*pMatrixOut = pMatrix[pBox->bone];
+		{
+			const matrix3x4_t& boneMatrix = pMatrix[pBox->bone];
+
+			for (int nRow = 0; nRow < 3; ++nRow)
+			{
+				for (int nCol = 0; nCol < 4; ++nCol)
+					(*pMatrixOut)[nRow][nCol] = boneMatrix[nRow][nCol];
+			}
+		}
 
 		return true;
 	}
