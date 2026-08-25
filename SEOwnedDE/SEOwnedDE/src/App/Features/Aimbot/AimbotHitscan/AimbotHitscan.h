@@ -33,7 +33,6 @@ class CAimbotHitscan
 	bool ScanBody(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit);
 	bool ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalAngles, float flFOVLimit);
 	bool ValidateTarget(C_TFPlayer* pLocal, HitscanTarget_t& target, const Vec3& vLocalPos, const Vec3& vLocalAngles, float flFOVLimit);
-	bool ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal);
 	bool GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, HitscanTarget_t& outTarget);
 	bool ShouldAim(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, const Vec3& vAngles);
@@ -49,6 +48,16 @@ class CAimbotHitscan
 
 public:
 	bool IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
+
+	// Stamp a hand-aimed shot's tick_count from the historical pose the crosshair
+	// ray actually intersects. Public because CAimbot::Run drives it from OUTSIDE
+	// RunMain: every early return in RunMain and in Run below used to swallow it,
+	// which is why manual backtracking only worked in some game states. Sets
+	// G::bCommandTickResolved on success. Returns false and leaves the command
+	// untouched when no usable record lies on the ray, which is the correct
+	// fallback - the server then applies its own latency correction.
+	bool ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal);
+
 	void Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void Reset()
 	{

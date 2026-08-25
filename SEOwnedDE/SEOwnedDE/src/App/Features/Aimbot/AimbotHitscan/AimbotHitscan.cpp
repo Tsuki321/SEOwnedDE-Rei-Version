@@ -363,7 +363,8 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target, c
 
 bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 {
-	if (!pCmd || !pLocal || !CFG::Aimbot_Target_Players || !CFG::Aimbot_Hitscan_Target_LagRecords)
+	if (!pCmd || !pLocal || !CFG::Aimbot_Hitscan_Manual_Backtrack
+		|| !CFG::Aimbot_Target_Players || !CFG::Aimbot_Hitscan_Target_LagRecords)
 		return false;
 
 	const Vec3 vTraceStart = pLocal->GetShootPos();
@@ -1092,16 +1093,13 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	}
 
 	// Delay check - prevents snap aiming. The delay governs aimbot-initiated fire
-	// only, so flag it for the triggerbot and still resolve the user's own manual
-	// shot - otherwise the window silently strips its historical backtracking.
+	// only; the user's own manual shot is resolved by CAimbot::Run after this
+	// feature returns, so the window no longer strips its historical backtracking.
 	if (CFG::Aimbot_Hitscan_Delay_Fire && I::GlobalVars->curtime < m_flDelayFireEndTime)
 	{
 		G::bAimbotFireDelayed = true;
 		if (bSmoothAimActive)
 			ResetSmoothMotion();
-
-		if (bManualFiring)
-			ResolveManualShot(pCmd, pLocal);
 
 		return;
 	}
@@ -1125,9 +1123,6 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 		G::bAimbotFireDelayed = true;
 		if (bSmoothAimActive)
 			ResetSmoothMotion();
-
-		if (bManualFiring)
-			ResolveManualShot(pCmd, pLocal);
 
 		return;
 	}
@@ -1215,6 +1210,10 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					// Aimbot_Hitscan_FOV (45 deg by default), rewinding every
 					// player to a pose the crosshair was never on - sometimes a
 					// pose belonging to someone the user was not even shooting at.
+					//
+					// A shot this branch declines to claim is left to
+					// CAimbot::Run, which resolves it against the ray the user
+					// actually fired down once this feature has returned.
 					Vec3 vAimError = target.AngleTo - pLocal->m_vecPunchAngle() - pCmd->viewangles;
 					Math::ClampAngles(vAimError);
 
@@ -1234,14 +1233,15 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 						if (target.LagRecord)
 						{
 							pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
-							G::bCommandTickResolved = true;
 						}
-					}
-					else if (bManualFiring)
-					{
-						// The user aimed this shot, so resolve it against the ray
-						// they actually fired down instead of the aimbot's pick.
-						ResolveManualShot(pCmd, pLocal);
+
+						// Claim the command either way. The live-pose case is a
+						// deliberate decision to keep the incoming tick, and it is
+						// every bit as much a decision as writing one - without the
+						// flag, AutoBackstab and the manual resolver both read
+						// "nobody owns this" and retarget a shot the aimbot had
+						// already aimed at the present.
+						G::bCommandTickResolved = true;
 					}
 				}
 			}
@@ -1251,14 +1251,10 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 			}
 		}
 	}
-	else if (bManualFiring)
-	{
-		if (bSmoothAimActive)
-			ResetSmoothMotion();
-
-		// No aimbot target found, resolve manual shot with historical backtracking
-		ResolveManualShot(pCmd, pLocal);
-	}
 	else if (bSmoothAimActive)
+	{
+		// No aimbot target found. The user's own shot, if any, is resolved by
+		// CAimbot::Run once this feature returns.
 		ResetSmoothMotion();
+	}
 }

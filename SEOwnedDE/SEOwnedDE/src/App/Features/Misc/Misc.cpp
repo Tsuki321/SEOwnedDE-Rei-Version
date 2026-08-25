@@ -533,6 +533,11 @@ void CMisc::AutoMedigun(CUserCmd* cmd)
 			if (CFG::Misc_Accuracy_Improvements)
 			{
 				cmd->tick_count = TIME_TO_TICKS(pl->m_flSimulationTime() + SDKUtils::GetLerp());
+				// Claim the command so the shared ownership rule holds for every
+				// tick writer without exception. Safe against the aimbot and
+				// triggerbot paths, which all require a HITSCAN or MELEE weapon and
+				// so cannot be live while a medigun is equipped.
+				G::bCommandTickResolved = true;
 			}
 
 			break;

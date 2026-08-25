@@ -383,9 +383,19 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 					constexpr float flAimedEpsilon = 0.01f;
 					const bool bAimbotDirectedSwing = vAimError.LengthSqr() <= flAimedEpsilon * flAimedEpsilon;
 
-					if (bAimbotDirectedSwing && target.LagRecord)
+					if (bAimbotDirectedSwing)
 					{
-						pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
+						if (target.LagRecord)
+						{
+							pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
+						}
+
+						// Claim the command even when the winner was a live pose.
+						// Keeping the incoming tick is a decision, not an absence of
+						// one: without the flag, AutoBackstab reads "nobody owns
+						// this" and rewinds a swing the melee aimbot had already
+						// aimed at the present, so the stab connects on screen and
+						// misses on the server.
 						G::bCommandTickResolved = true;
 					}
 				}

@@ -85,9 +85,21 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 							continue;
 
 						const auto pPlayer = pEntity->As<C_TFPlayer>();
-						// Once the interpolation target passes the latest network sample,
-						// the visible pose is extrapolated and cannot be backtrack-labeled.
-						if (flPoseTime > pPlayer->m_flSimulationTime() + 0.001f)
+						// The interpolation target can sit past the latest network
+						// sample, at which point the visible pose is extrapolated.
+						// Tolerate a bounded amount of that rather than dropping the
+						// frame: with a tight interp (cl_interp 0 + cl_interp_ratio 1
+						// puts lerp at roughly one snapshot interval) the target is
+						// beyond the sample on a large share of frames, and jitter on
+						// an unstable connection pushes it further - so a hard reject
+						// here starved the ring and left manual shots with nothing to
+						// backtrack to at all, intermittently and in step with ping.
+						// One tick of extrapolation still falls inside a tick the
+						// server holds history for. Note the pose time recorded stays
+						// curtime-based either way; clamping it onto
+						// m_flSimulationTime would put a server-clock value in a field
+						// every age and tick calculation reads as client-clock.
+						if (flPoseTime > pPlayer->m_flSimulationTime() + CLagRecords::GetMaxExtrapolationTime())
 							continue;
 
 						if (CLagRecords::ShouldCaptureRecord(pLocal, pPlayer))

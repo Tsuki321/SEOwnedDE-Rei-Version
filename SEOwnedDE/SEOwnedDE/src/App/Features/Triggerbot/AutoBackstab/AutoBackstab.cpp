@@ -218,7 +218,6 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
 		const float flMaxBacktrackAge = CFG::Triggerbot_AutoBackstab_Max_Backtrack_Time / 1000.0f;
-		const float flCurSimTime = pPlayer->m_flSimulationTime();
 
 		for (int n = 0; n < numRecords; n++)
 		{
@@ -228,7 +227,12 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 				continue;
 
 			// Records are stored newest-first; once one is too old, all remaining are older.
-			if (flCurSimTime - record->SimulationTime > flMaxBacktrackAge)
+			// Uses the shared age helper rather than subtracting the record's pose
+			// time from the target's m_flSimulationTime: those are two different
+			// clocks (client render time vs a server-authored stamp that only steps
+			// on snapshot arrival), so that difference was not an elapsed time and
+			// this gate drifted with ping instead of holding at the configured ms.
+			if (CLagRecords::GetRecordAge(record, cachedState) > flMaxBacktrackAge)
 				break;
 
 			if (vShootPos.DistToSqr(record->Center) > kMaxBackstabCandidateRangeSqr)

@@ -95,6 +95,13 @@ bool CRapidFire::ShouldExitCreateMove(CUserCmd* pCmd)
 	if (Shifting::bShifting && !Shifting::bShiftingWarp)
 	{
 		m_ShiftCmd.command_number = pCmd->command_number;
+		// Refresh the tick alongside the command number. m_ShiftCmd is a snapshot
+		// taken when the shift burst began, so replaying it verbatim re-sent that
+		// frame's tick_count on every command of the burst - including a backtrack
+		// tick resolved against a pose many ticks stale by then. ShouldExitCreateMove
+		// is called before any feature runs and returns true, so CreateMove exits
+		// before anything could re-resolve it; the refresh has to happen here.
+		m_ShiftCmd.tick_count = pCmd->tick_count;
 
 		if (!m_bSetCommand)
 		{

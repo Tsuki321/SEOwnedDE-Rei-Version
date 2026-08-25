@@ -57,6 +57,11 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 	if (G::bManualHitscanFiring)
 		return;
 
+	// Somebody upstream already decided this command's tick. Same rule
+	// AutoBackstab follows: never retarget a shot another feature has resolved.
+	if (G::bCommandTickResolved)
+		return;
+
 	// An aimbot declined to act on this command because its fire delay is still
 	// running. Shooting here anyway would silently defeat that delay, which is
 	// worse than having no delay at all - the user believes the gate is active.
@@ -138,8 +143,16 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 
 	G::bFiring = true;
 
-	if (CFG::Misc_Accuracy_Improvements)
-	{
-		pCmd->tick_count = TIME_TO_TICKS(pPlayer->m_flSimulationTime() + SDKUtils::GetLerp());
-	}
+	// The trace above ran against the LIVE interpolated pose, so the incoming tick
+	// is already the right one for this shot: the server rewinds by its own
+	// latency + lerp estimate and lands on what the client rendered.
+	//
+	// This used to write TIME_TO_TICKS(m_flSimulationTime() + GetLerp()), which
+	// fabricates a historical tick for a pose that was never recorded - it aims the
+	// server at the target's last networked simulation time while the trace that
+	// justified the shot used the interpolated present, and the two differ by
+	// (lerp - (curtime - m_flSimulationTime)), a ping-dependent term. That is the
+	// same defect already removed from hitscan, melee and backstab; this call site
+	// was missed. Claim the command so nothing downstream retargets it either.
+	G::bCommandTickResolved = true;
 }

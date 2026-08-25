@@ -118,9 +118,14 @@ TEST(AimbotAimAssistContracts, ManualShotSelectsNewestHitAndPreservesTickOnMiss)
     EXPECT_NE(runBody.find("const bool bManualFiring = IsFiring(pCmd, pWeapon)"), std::string::npos);
     EXPECT_NE(runBody.find("G::bManualHitscanFiring = bManualFiring"), std::string::npos);
     EXPECT_NE(runBody.find("const bool bIsFiring = IsFiring(pCmd, pWeapon)"), std::string::npos);
-    // No-target manual path is distinct from the aim-key / auto-fire branch.
-    EXPECT_NE(runBody.find("else if (bManualFiring)"), std::string::npos);
-    EXPECT_GE(testhelpers::CountOccurrences(runBody, "ResolveManualShot(pCmd, pLocal)"), 1u);
+    // Manual resolution is no longer reachable from inside Run. It moved out to
+    // CAimbot::Run, past RunMain, because every early return in this function and
+    // in RunMain above it silently dropped the user's backtrack (Aimbot_Active off,
+    // cursor visible, cloaked, taunting, Auto Scope, the fire-delay windows, a
+    // building winning the FOV sort, the minigun spin-up hack). Run's remaining job
+    // is to publish ownership via bManualHitscanFiring, asserted above, so that
+    // caller knows a hand-aimed shot is live.
+    EXPECT_EQ(runBody.find("ResolveManualShot(pCmd, pLocal);"), std::string::npos);
     // Aim assist only mutates angles when the aim key is held, not on pure manual fire.
     EXPECT_NE(runBody.find("if (aimKeyDown)"), std::string::npos);
     EXPECT_NE(runBody.find("Aim(pCmd, pLocal, target.AngleTo)"), std::string::npos);

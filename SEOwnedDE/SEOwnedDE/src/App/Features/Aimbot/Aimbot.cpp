@@ -72,6 +72,32 @@ void CAimbot::Run(CUserCmd* pCmd)
 
 	RunMain(pCmd);
 
+	// Hand-aimed backtracking, deliberately resolved OUT here rather than inside
+	// CAimbotHitscan::Run.
+	//
+	// ResolveManualShot used to be reachable only from within that Run, which
+	// hangs off RunMain - so every early return above it silently dropped the
+	// user's backtrack: Aimbot_Active off, the cheat menu open (cursor visible),
+	// end of match, Shifting::bRecharging, taunting, phased, any cloak or a primed
+	// dead ringer, a Rocket/Sticky Jumper equipped, Shifting::bShifting, the Auto
+	// Scope branch, the fire-delay windows, a building or a stuck sticky winning
+	// the FOV sort ahead of the player actually being shot at, and the minigun
+	// spin-up hack that clears G::bCanPrimaryAttack. Nothing has returned yet at
+	// this point, so the click gets its correct tick in all of those states.
+	//
+	// G::bManualHitscanFiring was latched BEFORE RunMain, and that is what makes
+	// the minigun case work: the spin-up hack clears G::bCanPrimaryAttack during
+	// RunMain, so re-deriving "am I firing" here would read false.
+	//
+	// The ownership flag stops this from second-guessing a decision the aimbot
+	// already made - including its deliberate choice to leave tick_count alone for
+	// a shot that was aimed at a live pose.
+	if (G::bManualHitscanFiring && !G::bCommandTickResolved)
+	{
+		if (const auto pLocalManual = H::Entities->GetLocal(); pLocalManual && !pLocalManual->deadflag())
+			F::AimbotHitscan->ResolveManualShot(pCmd, pLocalManual);
+	}
+
 	//same-ish code below to see if we are firing manually
 
 	// Re-fetch entities after RunMain in case they were invalidated

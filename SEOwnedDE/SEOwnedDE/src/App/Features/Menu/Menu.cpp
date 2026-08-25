@@ -1280,6 +1280,7 @@ void CMenu::MainWindow()
 			{
 				CheckBox("Active", CFG::Aimbot_Hitscan_Active);
 				CheckBox("Target Lag Records", CFG::Aimbot_Hitscan_Target_LagRecords);
+				CheckBox("Manual Backtrack", CFG::Aimbot_Hitscan_Manual_Backtrack);
 				CheckBox("Target Stickies", CFG::Aimbot_Hitscan_Target_Stickies);
 
 				CheckBox("Smooth Auto Shoot", CFG::Aimbot_Hitscan_Advanced_Smooth_AutoShoot);

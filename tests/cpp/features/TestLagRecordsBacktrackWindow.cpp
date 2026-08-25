@@ -29,18 +29,27 @@ void MakeRecord(LagRecord_t& record, float flPoseTime)
 	record.bTeleported = false;
 }
 
-LagRecordCachedState_t MakeCached(float flLiveSimTime)
+// A snapshot whose pose matches the record above, so the only thing under test is
+// the age comparison. flPoseReference is a CLIENT-clock pose time (curtime - lerp),
+// the same basis LagRecord_t::SimulationTime is captured on - that identity is the
+// contract these tests exist to pin. MaxBacktrackTime defaults to the window
+// UpdateRecords would hand out on a stable connection.
+LagRecordCachedState_t MakeCached(float flPoseReference,
+	float flMaxBacktrackTime = LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN)
 {
 	LagRecordCachedState_t cached{};
 	cached.AbsOrigin = Vec3(0.0f, 0.0f, 0.0f);
 	cached.EyeAngles = Vec3(0.0f, 0.0f, 0.0f);
 	cached.Flags = 0;
 	cached.FeetYaw = 0.0f;
-	cached.SimulationTime = flLiveSimTime;
+	cached.PoseReferenceTime = flPoseReference;
+	cached.MaxBacktrackTime = flMaxBacktrackTime;
 	return cached;
 }
 
 constexpr const char* kHitscanSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp";
+constexpr const char* kAimbotSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/Aimbot.cpp";
+constexpr const char* kAutoShootSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoShoot/AutoShoot.cpp";
 constexpr const char* kMeleeSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotMelee/AimbotMelee.cpp";
 constexpr const char* kBackstabSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoBackstab/AutoBackstab.cpp";
 constexpr const char* kMaterialsSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Materials/Materials.cpp";
@@ -54,8 +63,9 @@ TEST(LagRecordsBacktrackWindow, RecordAgeIsZeroWithoutAReferencePoint) {
     // No record at all.
     EXPECT_FLOAT_EQ(CLagRecords::GetRecordAge(nullptr, MakeCached(10.0f)), 0.0f);
 
-    // Unpopulated snapshot: seeded to -1, and must not read as "ancient" or every
-    // record of a player whose snapshot has not been built yet would be rejected.
+    // Unpopulated snapshot: PoseReferenceTime is seeded to -1. The age reads 0
+    // rather than "ancient"; rejection of such a snapshot is MaxBacktrackTime's
+    // job (see UnpopulatedSnapshotRejectsEveryRecord), not this function's.
     EXPECT_FLOAT_EQ(CLagRecords::GetRecordAge(&record, MakeCached(-1.0f)), 0.0f);
 
     // Unpopulated record.
@@ -63,10 +73,15 @@ TEST(LagRecordsBacktrackWindow, RecordAgeIsZeroWithoutAReferencePoint) {
     EXPECT_FLOAT_EQ(CLagRecords::GetRecordAge(&unset, MakeCached(10.0f)), 0.0f);
 }
 
-TEST(LagRecordsBacktrackWindow, RecordAgeMeasuresAgainstLiveSimulationTime) {
+TEST(LagRecordsBacktrackWindow, RecordAgeMeasuresElapsedClientTime) {
     LagRecord_t record{};
     MakeRecord(record, 9.85f);
 
+    // Both terms are client-clock pose times, so the difference is the elapsed
+    // client time since capture - which is exactly the rewind the shot requests
+    // and exactly what the server's deviation tolerance bounds. This used to
+    // subtract a client render time from the target's server-authored
+    // m_flSimulationTime, which is not an elapsed time in any clock.
     EXPECT_NEAR(CLagRecords::GetRecordAge(&record, MakeCached(10.0f)), 0.15f, 1e-5f);
 }
 
@@ -86,8 +101,46 @@ TEST(LagRecordsBacktrackWindow, AcceptsRecordsTheServerWillHonour) {
     MakeRecord(record, 10.0f - 0.15f);
     EXPECT_TRUE(CLagRecords::IsWithinBacktrackWindow(&record, MakeCached(10.0f)));
 
-    MakeRecord(record, 10.0f - 0.19f);
+    MakeRecord(record, 10.0f - 0.17f);
     EXPECT_TRUE(CLagRecords::IsWithinBacktrackWindow(&record, MakeCached(10.0f)));
+}
+
+TEST(LagRecordsBacktrackWindow, HoldsBackMarginFromTheServerCutoff) {
+    LagRecord_t record{};
+
+    // Between the usable window and the server's hard cutoff. Formerly accepted,
+    // because the gate compared against the raw 0.2 s constant. The server tests
+    // ITS OWN latency estimate against the correction our tick implies, and the two
+    // never agree exactly, so a record sitting a hair inside 0.2 s is a coin flip -
+    // honoured on some shots, silently discarded on others. Rejecting it is the
+    // point: an un-stamped shot still gets the server's own correction and lands
+    // where the client rendered, whereas a discarded stamp lands nowhere useful.
+    MakeRecord(record, 10.0f - 0.19f);
+    EXPECT_LT(CLagRecords::GetRecordAge(&record, MakeCached(10.0f)), LAG_MAX_BACKTRACK_TIME);
+    EXPECT_FALSE(CLagRecords::IsWithinBacktrackWindow(&record, MakeCached(10.0f)));
+}
+
+TEST(LagRecordsBacktrackWindow, WindowComesFromTheSnapshotNotTheConstant) {
+    LagRecord_t record{};
+    MakeRecord(record, 10.0f - 0.12f);
+
+    // UpdateRecords narrows the window as measured latency jitter grows, so the
+    // per-record verdict has to follow the snapshot rather than a fixed constant.
+    EXPECT_TRUE(CLagRecords::IsWithinBacktrackWindow(&record, MakeCached(10.0f, 0.175f)));
+    EXPECT_FALSE(CLagRecords::IsWithinBacktrackWindow(&record, MakeCached(10.0f, 0.10f)));
+}
+
+TEST(LagRecordsBacktrackWindow, UnpopulatedSnapshotRejectsEveryRecord) {
+    LagRecord_t record{};
+    MakeRecord(record, 9.99f);
+
+    // A default-constructed snapshot leaves MaxBacktrackTime at 0, so nothing is
+    // reachable through it. Fail-closed on purpose: a zeroed snapshot used to make
+    // GetRecordAge return 0 for every record, which read as "all fresh" and offered
+    // the entire ring - including records hundreds of ms deep - to a shot.
+    const LagRecordCachedState_t empty{};
+    EXPECT_FLOAT_EQ(empty.MaxBacktrackTime, 0.0f);
+    EXPECT_FALSE(CLagRecords::IsWithinBacktrackWindow(&record, empty));
 }
 
 TEST(LagRecordsBacktrackWindow, RejectsRecordsPastTheServerTolerance) {
@@ -115,6 +168,37 @@ TEST(LagRecordsBacktrackWindow, RingIsDeeperThanTheWindowSoTheGateHasWorkToDo) {
     // 24 slots is ~364 ms at 66 tick against a 200 ms window.
     EXPECT_GT(static_cast<float>(MAX_LAG_RECORDS) / 66.0f, LAG_MAX_BACKTRACK_TIME);
     EXPECT_FLOAT_EQ(LAG_MAX_BACKTRACK_TIME, 0.2f);
+}
+
+TEST(LagRecordsBacktrackWindow, MarginConstantsLeaveAUsableWindow) {
+    // The margin has to buy real headroom without eating the whole window, and the
+    // floor has to sit below the nominal window or a stable connection would be
+    // clamped up to it. Amalgam ships a 185 ms default against the same 200 ms
+    // server rule, so this is the same order of headroom, not a guess.
+    EXPECT_GT(LAG_BACKTRACK_SAFETY_MARGIN, 0.0f);
+    EXPECT_LT(LAG_BACKTRACK_SAFETY_MARGIN, LAG_MAX_BACKTRACK_TIME * 0.5f);
+    EXPECT_GT(LAG_BACKTRACK_JITTER_SCALE, 1.0f);
+    EXPECT_LT(LAG_MIN_BACKTRACK_TIME, LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN);
+    EXPECT_GT(LAG_MIN_BACKTRACK_TIME, 0.0f);
+}
+
+TEST(LagRecordsTickOwnership, AutoShootDoesNotFabricateATickForTheLivePose) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
+
+    // AutoShoot traces the live interpolated pose and consults no records at all,
+    // so the incoming tick is already correct for its shot. It used to stamp a
+    // fabricated historical tick from the target's simulation time - a pose that
+    // was never recorded, and the same defect already removed from hitscan, melee
+    // and backstab. This call site was missed.
+    //
+    // Matched on the assignment rather than the macro name so the comment that
+    // documents the removal cannot satisfy the assertion.
+    EXPECT_EQ(src.find("pCmd->tick_count ="), std::string::npos);
+    EXPECT_EQ(src.find("tick_count +="), std::string::npos);
+
+    // And it must respect an upstream owner, the way AutoBackstab already does.
+    EXPECT_NE(src.find("if (G::bCommandTickResolved)"), std::string::npos);
 }
 
 TEST(LagRecordsBacktrackWindow, UsabilityRejectsMissingRecordAndMissingOwner) {
@@ -196,12 +280,13 @@ TEST(LagRecordsPoseDifference, HandlesYawWrapWithoutFalsePositives) {
 
 TEST(LagRecordsCachedState, GuardsOutOfRangeEntityIndices) {
     // A recycled or hostile entindex must yield an empty snapshot rather than an
-    // out-of-bounds read. Empty means SimulationTime == -1, which GetRecordAge
-    // then treats as "no reference point" instead of "infinitely old".
-    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(0).SimulationTime, -1.0f);
-    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(-1).SimulationTime, -1.0f);
-    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(MAX_PLAYERS).SimulationTime, -1.0f);
-    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(MAX_PLAYERS + 1024).SimulationTime, -1.0f);
+    // out-of-bounds read. Empty means PoseReferenceTime == -1 and
+    // MaxBacktrackTime == 0, so no record resolves through it.
+    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(0).PoseReferenceTime, -1.0f);
+    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(-1).PoseReferenceTime, -1.0f);
+    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(MAX_PLAYERS).PoseReferenceTime, -1.0f);
+    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(MAX_PLAYERS + 1024).PoseReferenceTime, -1.0f);
+    EXPECT_FLOAT_EQ(F::LagRecords->GetCachedState(0).MaxBacktrackTime, 0.0f);
 }
 
 // The rest of this file asserts on source text. These paths all need a live
@@ -219,12 +304,38 @@ TEST(LagRecordsTickOwnership, HitscanOnlyRewindsShotsTheAimbotActuallyAimed) {
     EXPECT_NE(src.find("bAimbotDirectedShot"), std::string::npos);
     EXPECT_NE(src.find("vAimError"), std::string::npos);
 
-    // A live-pose winner has no record to rewind to.
+    // A live-pose winner has no record to rewind to, but still claims the command:
+    // keeping the incoming tick is a decision, and leaving the flag clear let the
+    // triggerbot and the manual resolver retarget an already-aimed shot.
     EXPECT_NE(src.find("if (target.LagRecord)"), std::string::npos);
-
-    // A hand-aimed shot is resolved against the ray the user actually fired.
-    EXPECT_GE(testhelpers::CountOccurrences(src, "ResolveManualShot(pCmd, pLocal)"), 2u);
     EXPECT_NE(src.find("G::bCommandTickResolved = true;"), std::string::npos);
+
+    // The manual resolver must NOT be called from inside this feature any more.
+    // Every early return in Run and in CAimbot::RunMain above it used to swallow
+    // the user's backtrack - Aimbot_Active off, cursor visible, cloaked, taunting,
+    // Auto Scope, a building winning the FOV sort, the minigun spin-up hack. It is
+    // driven once from CAimbot::Run instead, where nothing has returned yet.
+    EXPECT_EQ(src.find("ResolveManualShot(pCmd, pLocal);"), std::string::npos);
+}
+
+TEST(LagRecordsTickOwnership, ManualResolverIsDrivenOutsideTheAimbotGate) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAimbotSource);
+
+    // Driven from CAimbot::Run, after RunMain returns, so no early return inside
+    // RunMain can drop it.
+    EXPECT_NE(src.find("F::AimbotHitscan->ResolveManualShot(pCmd, pLocalManual)"), std::string::npos);
+
+    // Gated on the flag latched BEFORE RunMain. Re-deriving "am I firing" here
+    // would read false on a spinning minigun, because the spin-up hack clears
+    // G::bCanPrimaryAttack during RunMain.
+    EXPECT_NE(src.find("G::bManualHitscanFiring && !G::bCommandTickResolved"), std::string::npos);
+
+    const auto runMainPos = src.find("RunMain(pCmd);");
+    const auto resolvePos = src.find("F::AimbotHitscan->ResolveManualShot");
+    ASSERT_NE(runMainPos, std::string::npos);
+    ASSERT_NE(resolvePos, std::string::npos);
+    EXPECT_LT(runMainPos, resolvePos);
 }
 
 TEST(LagRecordsTickOwnership, MeleeVerifiesAimAndInstalledPose) {
@@ -232,7 +343,7 @@ TEST(LagRecordsTickOwnership, MeleeVerifiesAimAndInstalledPose) {
     const auto src = testhelpers::ReadTextFile(root / kMeleeSource);
 
     EXPECT_NE(src.find("bAimbotDirectedSwing"), std::string::npos);
-    EXPECT_NE(src.find("bAimbotDirectedSwing && target.LagRecord"), std::string::npos);
+    EXPECT_NE(src.find("if (bAimbotDirectedSwing)"), std::string::npos);
     EXPECT_NE(src.find("CLagRecords::GetCommandTick(target.SimulationTime)"), std::string::npos);
 
     // A scope that failed to install leaves the live pose in place, so the trace

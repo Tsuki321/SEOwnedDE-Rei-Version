@@ -30,6 +30,15 @@ bool CLagRecords::AreConsumersActive()
 		&& CFG::Aimbot_Target_Players
 		&& CFG::Aimbot_Hitscan_Active
 		&& CFG::Aimbot_Hitscan_Target_LagRecords;
+	// Hand-aimed backtracking, deliberately NOT gated on Aimbot_Active. The
+	// resolver used to be reachable only from CAimbotHitscan::Run, which hangs off
+	// CAimbot::RunMain and returns early on !Aimbot_Active - so a user who plays
+	// manual and turns the aimbot off lost backtracking entirely, and records were
+	// never even captured to backtrack to. This is the one consumer that has to
+	// survive the aimbot being off.
+	const bool bManualBacktrack = CFG::Aimbot_Hitscan_Manual_Backtrack
+		&& CFG::Aimbot_Target_Players
+		&& CFG::Aimbot_Hitscan_Target_LagRecords;
 	const bool bMelee = CFG::Aimbot_Active
 		&& CFG::Aimbot_Target_Players
 		&& CFG::Aimbot_Melee_Active
@@ -47,7 +56,7 @@ bool CLagRecords::AreConsumersActive()
 		&& CFG::Materials_Players_Active
 		&& !CFG::Materials_Players_Ignore_LagRecords;
 
-	return bHitscan || bMelee || bProjectilePrediction || bBackstab || bHistoricalModels;
+	return bHitscan || bManualBacktrack || bMelee || bProjectilePrediction || bBackstab || bHistoricalModels;
 }
 
 bool CLagRecords::ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
@@ -67,14 +76,19 @@ bool CLagRecords::ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency)
 {
-	// Match the capture-side tolerance in AddRenderRecord, which admits a pose
-	// time up to 1 ms past m_flSimulationTime. Without the same slack here the
-	// newest record can be stored and then immediately judged invalid, and
-	// because the tail truncation below is keyed on the FIRST invalid record,
-	// a reject at logical index 0 discards the entire ring. The ring then
-	// regrows one record per frame, so a target repeatedly lands on a single
-	// shallow record - or none at all - for tens of frames at a time.
-	if (flCmprSimTime > flCurSimTime + 0.001f)
+	// Match the capture-side tolerance in AddRenderRecord exactly, which admits a
+	// pose time up to GetMaxExtrapolationTime() past m_flSimulationTime. Without
+	// the same slack here the newest record can be stored and then immediately
+	// judged invalid, and because the tail truncation below is keyed on the FIRST
+	// invalid record, a reject at logical index 0 discards the entire ring. The
+	// ring then regrows one record per frame, so a target repeatedly lands on a
+	// single shallow record - or none at all - for tens of frames at a time.
+	//
+	// The two tolerances MUST stay derived from one helper. They were 1 ms apiece
+	// while capture rejected anything past the newest sample; the moment capture
+	// began admitting extrapolated poses, a hardcoded 1 ms here would have wiped
+	// the ring on exactly the frames capture was widened to rescue.
+	if (flCmprSimTime > flCurSimTime + GetMaxExtrapolationTime())
 		return false;
 
 	const float flDelta = flCurSimTime - flCmprSimTime;
@@ -114,7 +128,7 @@ void CLagRecords::AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime)
 	// ring. SimulationTime, origin and identity are all readable without bones,
 	// so the only work an early-out wastes is a handful of netvar reads (the
 	// original ran SetupBones first, then discarded its result here).
-	if (flPoseTime > pPlayer->m_flSimulationTime() + 0.001f)
+	if (flPoseTime > pPlayer->m_flSimulationTime() + GetMaxExtrapolationTime())
 		return;
 
 	const float flSimTime = flPoseTime;
@@ -271,6 +285,7 @@ void CLagRecords::UpdateRecords()
 
 		m_CachedStates = {};
 		m_flSmoothedLatency = -1.0f;
+		m_flLatencyJitter = -1.0f;
 
 		return;
 	}
@@ -280,8 +295,66 @@ void CLagRecords::UpdateRecords()
 		m_RecordCounts.fill(0u);
 		m_CachedStates = {};
 		m_flSmoothedLatency = -1.0f;
+		m_flLatencyJitter = -1.0f;
 		return;
 	}
+
+	// Compute the lag-compensation window once per frame: the net channel
+	// snapshot and the sv_maxunlag convar cannot change during this pass.
+	float flMaxWindow = 1.0f;
+	static ConVar* sv_maxunlag = I::CVar->FindVar("sv_maxunlag");
+	if (sv_maxunlag)
+	{
+		const float flUnlag = sv_maxunlag->GetFloat();
+		if (flUnlag > 0.0f)
+			flMaxWindow = flUnlag;
+	}
+	// Exponentially smooth the outgoing latency so an unstable connection that
+	// alternates high/low ping does not thrash the window and repeatedly discard
+	// deep records on the low-ping frames (tail pruning below is one-way). Lerp
+	// is convar-derived and already stable, so only the network term is smoothed.
+	const float flRawLatency = GetOutgoingLatency();
+	if (m_flSmoothedLatency < 0.0f)
+		m_flSmoothedLatency = flRawLatency;
+	else
+		m_flSmoothedLatency += (flRawLatency - m_flSmoothedLatency) * LAG_LATENCY_EMA_ALPHA;
+
+	const float flLatency = m_flSmoothedLatency + SDKUtils::GetLerp();
+
+	// Track how far the raw sample swings away from that average. This is the
+	// input to the safety margin below: the server tests our tick_count against
+	// ITS OWN estimate of our latency, and on a swinging connection that estimate
+	// is stale by roughly the size of the swing - in an unpredictable direction -
+	// so the deviation it computes for a record differs from ours by about that
+	// much, and a record sitting near the cutoff flips between honoured and
+	// discarded with nothing else changed.
+	const float flRawJitter = fabsf(flRawLatency - m_flSmoothedLatency);
+	if (m_flLatencyJitter < 0.0f)
+		m_flLatencyJitter = flRawJitter;
+	else
+		m_flLatencyJitter += (flRawJitter - m_flLatencyJitter) * LAG_LATENCY_EMA_ALPHA;
+
+	// The reachable window, held back from the server's hard cutoff by a fixed
+	// margin plus a jitter allowance, and floored so a bad connection shortens
+	// backtrack depth instead of switching it off. Computed once here so every
+	// consumer and the ghost renderer share one verdict for this frame.
+	float flBacktrackWindow = LAG_MAX_BACKTRACK_TIME
+		- LAG_BACKTRACK_SAFETY_MARGIN
+		- (m_flLatencyJitter * LAG_BACKTRACK_JITTER_SCALE);
+
+	if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)
+		flBacktrackWindow = LAG_MIN_BACKTRACK_TIME;
+
+	// Reference point every record's age is measured against this frame. Same
+	// clock and same expression as the capture site in
+	// IBaseClientDLL_FrameStageNotify, which is the whole point: subtracting two
+	// samples of it in GetRecordAge yields elapsed client time. Reading the
+	// target's m_flSimulationTime here instead - a server-authored stamp that only
+	// steps when a snapshot for that player lands - produced a difference that was
+	// not an elapsed time at all.
+	const float flPoseReference = I::GlobalVars
+		? I::GlobalVars->curtime - SDKUtils::GetLerp()
+		: -1.0f;
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
 	{
@@ -315,34 +388,13 @@ void CLagRecords::UpdateRecords()
 			state.AbsOrigin = pPlayer->GetAbsOrigin();
 			state.EyeAngles = pPlayer->GetEyeAngles();
 			state.Flags = pPlayer->m_fFlags();
-			state.SimulationTime = pPlayer->m_flSimulationTime();
+			state.PoseReferenceTime = flPoseReference;
+			state.MaxBacktrackTime = flBacktrackWindow;
 
 			if (const auto pAnimState = pPlayer->GetAnimState())
 				state.FeetYaw = pAnimState->m_flCurrentFeetYaw;
 		}
 	}
-
-	// Compute the lag-compensation window once per frame: the net channel
-	// snapshot and the sv_maxunlag convar cannot change during this pass.
-	float flMaxWindow = 1.0f;
-	static ConVar* sv_maxunlag = I::CVar->FindVar("sv_maxunlag");
-	if (sv_maxunlag)
-	{
-		const float flUnlag = sv_maxunlag->GetFloat();
-		if (flUnlag > 0.0f)
-			flMaxWindow = flUnlag;
-	}
-	// Exponentially smooth the outgoing latency so an unstable connection that
-	// alternates high/low ping does not thrash the window and repeatedly discard
-	// deep records on the low-ping frames (tail pruning below is one-way). Lerp
-	// is convar-derived and already stable, so only the network term is smoothed.
-	const float flRawLatency = GetOutgoingLatency();
-	if (m_flSmoothedLatency < 0.0f)
-		m_flSmoothedLatency = flRawLatency;
-	else
-		m_flSmoothedLatency += (flRawLatency - m_flSmoothedLatency) * LAG_LATENCY_EMA_ALPHA;
-
-	const float flLatency = m_flSmoothedLatency + SDKUtils::GetLerp();
 
 	for (int i = 0; i < MAX_PLAYERS; ++i)
 	{
@@ -399,7 +451,16 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 	state.AbsOrigin = pPlayer->GetAbsOrigin();
 	state.EyeAngles = pPlayer->GetEyeAngles();
 	state.Flags = pPlayer->m_fFlags();
-	state.SimulationTime = pPlayer->m_flSimulationTime();
+	// Client-clock pose reference, same expression as the capture site; see
+	// LagRecordCachedState_t::PoseReferenceTime.
+	state.PoseReferenceTime = I::GlobalVars
+		? I::GlobalVars->curtime - SDKUtils::GetLerp()
+		: -1.0f;
+	// A caller building its own snapshot has no access to the smoothed jitter
+	// estimate, so it gets the fixed margin only. That is conservative by
+	// construction: never deeper than the per-frame window UpdateRecords hands to
+	// consumers, so an ad-hoc snapshot cannot reach further than a shared one.
+	state.MaxBacktrackTime = LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN;
 
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		state.FeetYaw = pAnimState->m_flCurrentFeetYaw;
@@ -443,15 +504,21 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 
 float CLagRecords::GetRecordAge(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
 {
-	if (!pRecord || cached.SimulationTime < 0.0f || pRecord->SimulationTime < 0.0f)
+	if (!pRecord || cached.PoseReferenceTime < 0.0f || pRecord->SimulationTime < 0.0f)
 		return 0.0f;
 
-	return std::max(cached.SimulationTime - pRecord->SimulationTime, 0.0f);
+	return std::max(cached.PoseReferenceTime - pRecord->SimulationTime, 0.0f);
 }
 
 bool CLagRecords::IsWithinBacktrackWindow(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
 {
-	return GetRecordAge(pRecord, cached) < LAG_MAX_BACKTRACK_TIME;
+	// Per-frame window rather than the raw constant: UpdateRecords holds margin
+	// back from the server's cutoff, scaled by how much the connection is
+	// currently jittering. An unpopulated snapshot leaves MaxBacktrackTime at 0
+	// and so rejects everything, which is the safe direction - an un-stamped shot
+	// still gets the server's own latency correction and lands where the client
+	// rendered, whereas a stamp the server throws away lands nowhere useful.
+	return GetRecordAge(pRecord, cached) < cached.MaxBacktrackTime;
 }
 
 bool CLagRecords::IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
@@ -465,9 +532,9 @@ bool CLagRecords::IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCach
 	// Depth gate. A record the server will refuse to rewind to is worse than no
 	// record: the shot is stamped with a tick that gets thrown away, and lag
 	// compensation falls back to the server's own estimate - so the bullet lands
-	// near the target's present position while the user aimed at a pose ~300 ms
-	// old. Rejecting here keeps every consumer (and the ghost renderer) on the
-	// same definition of "reachable" as the shot itself.
+	// near the target's present position while the user aimed at an older pose.
+	// Rejecting here keeps every consumer (and the ghost renderer) on the same
+	// definition of "reachable" as the shot itself.
 	if (!IsWithinBacktrackWindow(pRecord, cached))
 		return false;
 

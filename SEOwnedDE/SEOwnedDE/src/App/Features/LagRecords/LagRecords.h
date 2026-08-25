@@ -39,6 +39,35 @@ inline constexpr int MAX_MATRIX_HELPER_DEPTH = 2;
 // honour it.
 inline constexpr float LAG_MAX_BACKTRACK_TIME = 0.2f;
 
+// Headroom withheld from that cutoff. LAG_MAX_BACKTRACK_TIME is a cliff, not a
+// target: the server tests ITS OWN latency measurement against the correction
+// our tick implies, and the two never agree exactly. A record sitting at 0.199 s
+// is therefore a coin flip - honoured when the estimates happen to line up,
+// silently discarded when they do not, which reads in-game as backtrack that
+// works "sometimes". Spend a little depth to make the records we do offer land.
+inline constexpr float LAG_BACKTRACK_SAFETY_MARGIN = 0.025f;
+
+// Extra headroom per unit of measured latency jitter. On a connection whose ping
+// alternates high/low, the server's estimate of our latency lags the truth by
+// roughly the size of the swing, so the deviation it computes is off by that
+// much in an unpredictable direction. Scale > 1 because the error can land on
+// either side of the estimate.
+inline constexpr float LAG_BACKTRACK_JITTER_SCALE = 2.0f;
+
+// Floor on the usable window. Without it a badly jittering connection would
+// shrink the window to nothing and disable backtrack entirely, when a shallow
+// rewind is still both useful and safely inside the server's tolerance.
+inline constexpr float LAG_MIN_BACKTRACK_TIME = 0.05f;
+
+// How far past the newest network sample a render pose may sit and still be
+// recorded, in ticks. With a tight interp (cl_interp 0 + cl_interp_ratio 1) the
+// interpolation target sits a hair beyond the latest sample on a large fraction
+// of frames, and jitter pushes it further; dropping those frames starved the
+// ring, which is the difference between "backtrack is shallow" and "there are no
+// records to backtrack to at all". One tick of extrapolation is still within a
+// tick the server has history for. Beyond that the pose is invented, not late.
+inline constexpr float LAG_MAX_EXTRAPOLATION_TICKS = 1.0f;
+
 inline constexpr float LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR = 64.0f * 64.0f;
 // Base radius (units) below which a per-record displacement is never treated as
 // a teleport - equals sqrt(LAG_COMPENSATION_TELEPORTED_DISTANCE_SQR). Above it,
@@ -88,10 +117,29 @@ struct LagRecordCachedState_t
 	Vec3 EyeAngles = {};
 	int Flags = 0;
 	float FeetYaw = 0.0f;
-	// The player's live m_flSimulationTime, i.e. the reference point a record's
-	// age is measured against by IsRecordUsable. Seeded to -1 so an unpopulated
-	// snapshot cannot make a record look arbitrarily old and reject it.
-	float SimulationTime = -1.0f;
+	// Reference point a record's age is measured against: the CURRENT frame's
+	// pose time, curtime - GetLerp() - the same clock and the same expression
+	// LagRecord_t::SimulationTime is captured on. Subtracting two samples of it
+	// yields elapsed client time, which is exactly the rewind a shot asks the
+	// server for and therefore exactly what the server's tolerance bounds.
+	//
+	// This used to hold the target's m_flSimulationTime: a server-authored stamp
+	// that only advances when a snapshot for that player arrives. Its difference
+	// against a client render time is not an elapsed time at all - it was off by
+	// (lerp - (curtime - m_flSimulationTime)), a term that moves with ping, with
+	// interp settings, and with Misc_Ping_Reducer (which reads packets early and
+	// rolls curtime back, shrinking it further). At stock cl_interp 0.1 that
+	// quietly cut the reachable window roughly in half, and it jittered frame to
+	// frame on an unstable connection - so a shot landed on the backtracked pose
+	// sometimes and not others with nothing else changed.
+	//
+	// Seeded to -1 to mark "no snapshot has been built for this player yet".
+	float PoseReferenceTime = -1.0f;
+	// Per-frame ceiling on the age of a usable record, computed once in
+	// UpdateRecords so every consumer and the ghost renderer share one verdict.
+	// Defaults to 0 so an unpopulated snapshot rejects every record rather than
+	// accepting all of them.
+	float MaxBacktrackTime = 0.0f;
 };
 
 class CLagRecords
@@ -117,6 +165,14 @@ class CLagRecords
 	// prior life or server cannot leak into a fresh one.
 	float m_flSmoothedLatency = -1.0f;
 
+	// Exponentially-smoothed magnitude of the frame-to-frame latency swing, i.e.
+	// how unstable the connection currently is. Feeds the safety margin held back
+	// from the server's tolerance in UpdateRecords: the server's own latency
+	// estimate lags a swinging ping, so the deviation it computes for our tick is
+	// wrong by roughly the size of the swing. Seeded to -1 like the average above
+	// and cleared on the same full-ring resets.
+	float m_flLatencyJitter = -1.0f;
+
 	// Per-player snapshot of the live (current-frame) state used by
 	// DiffersFromCurrentCached. Built once per frame inside UpdateRecords so
 	// that all consumers (AimbotHitscan, AimbotMelee, AutoBackstab, Materials)
@@ -133,9 +189,33 @@ public:
 
 	// Convert the pose time stored with a historical record into the command
 	// tick the server uses for lag compensation.
+	//
+	// The lerp term looks like it cancels the one subtracted at capture, and
+	// algebraically it does: this reduces to TIME_TO_TICKS(curtime at capture).
+	// That is correct and not a no-op. The server derives its rewind target as
+	// targettick = cmd->tick_count - lerpTicks, so handing it the client tick of
+	// the capture frame makes it rewind to (capture curtime - lerp) - exactly the
+	// render pose whose bones this record holds. Vanilla achieves the same thing
+	// for the CURRENT frame by sending gpGlobals->tickcount; the rewind we gain
+	// over vanilla is the client time elapsed since the record was captured, which
+	// is also precisely what GetRecordAge measures and what the server bounds.
 	static int GetCommandTick(float flPoseTime)
 	{
 		return TIME_TO_TICKS(flPoseTime + SDKUtils::GetLerp());
+	}
+
+	// Seconds of extrapolation past a player's newest network sample that a render
+	// pose may carry and still be worth recording. Derived from the tick interval
+	// so it tracks 100-tick servers rather than assuming 66.
+	static float GetMaxExtrapolationTime()
+	{
+		// 1 ms floor keeps the original tolerance if interval_per_tick is not
+		// readable yet, so the gate never degenerates to "reject everything".
+		if (!I::GlobalVars)
+			return 0.001f;
+
+		const float flAllowed = I::GlobalVars->interval_per_tick * LAG_MAX_EXTRAPOLATION_TICKS;
+		return flAllowed > 0.001f ? flAllowed : 0.001f;
 	}
 
 	// True when any feature that reads lag records is configured on. Used by
@@ -156,17 +236,26 @@ public:
 	// Combined per-record usability gate shared by every backtrack consumer
 	// (AimbotHitscan, AimbotMelee, AutoBackstab, Materials): a record is usable
 	// when it is non-null, is not a post-teleport discontinuity, is still inside
-	// the window the server will honour (LAG_MAX_BACKTRACK_TIME, measured
-	// against cached.SimulationTime), and its pose actually differs from the
+	// the window the server will honour (cached.MaxBacktrackTime, measured
+	// against cached.PoseReferenceTime), and its pose actually differs from the
 	// player's live cached state (so we never backtrack onto the interpolated
 	// present). Centralized so the call sites cannot drift apart as the filter
 	// evolves - in particular, anything that renders a record as a "you can hit
 	// this" indicator must agree with what a shot would accept.
 	static bool IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
 
-	// Age of a record relative to the live snapshot it is compared against, in
-	// seconds. Negative or unmeasurable ages collapse to 0 so a missing snapshot
-	// never reads as "ancient".
+	// How far back a shot stamped with this record would ask the server to rewind,
+	// in seconds. Both terms are client-clock pose times (see
+	// LagRecordCachedState_t::PoseReferenceTime), so the difference is elapsed
+	// client time - and that is exactly the quantity the server bounds: writing
+	// tick_count for a record makes the deviation it computes deviate from its own
+	// latency estimate by the time elapsed since that record was captured.
+	//
+	// Deliberately pure arithmetic over two floats, with no I::GlobalVars or
+	// convar reads, so it stays executable headless in the unit tests.
+	//
+	// Negative or unmeasurable ages collapse to 0; a missing snapshot is rejected
+	// by MaxBacktrackTime defaulting to 0 rather than by inflating the age here.
 	static float GetRecordAge(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
 
 	// True when a record is inside the window the server will honour. Exposed

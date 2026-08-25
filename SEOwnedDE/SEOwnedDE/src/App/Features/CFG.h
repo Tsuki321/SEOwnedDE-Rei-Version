@@ -18,6 +18,11 @@ namespace CFG
 
 	CFGVAR(Aimbot_Hitscan_Active, true);
 	CFGVAR(Aimbot_Hitscan_Target_LagRecords, true);
+	// Backtrack hand-aimed shots. Independent of Aimbot_Active on purpose: the
+	// resolver used to be reachable only from inside the hitscan aimbot's Run,
+	// so turning the aimbot off silently disabled backtracking for manual play
+	// and stopped records being captured at all.
+	CFGVAR(Aimbot_Hitscan_Manual_Backtrack, true);
 	CFGVAR(Aimbot_Hitscan_Target_Stickies, true);
 	CFGVAR(Aimbot_Hitscan_Aim_Type, 1); //0 Normal 1 Silent 2 Smooth 3 Aim Assist
 	CFGVAR(Aimbot_Hitscan_AimAssist_Strength, 15.0f);
