@@ -71,6 +71,9 @@ namespace CFG
 	CFGVAR(Aimbot_Melee_Active, true);
 	CFGVAR(Aimbot_Melee_Always_Active, false);
 	CFGVAR(Aimbot_Melee_Target_LagRecords, true);
+	// Backtrack hand-aimed melee swings independently of the melee aimbot gate.
+	// This mirrors Aimbot_Hitscan_Manual_Backtrack for users who aim manually.
+	CFGVAR(Aimbot_Melee_Manual_Backtrack, true);
 	CFGVAR(Aimbot_Melee_Aim_Type, 1); //0 Normal 1 Silent 2 Smooth
 	CFGVAR(Aimbot_Melee_Sort, 1); //0 FOV 1 Distance
 	CFGVAR(Aimbot_Melee_FOV, 45.0f);
@@ -100,7 +103,6 @@ namespace CFG
 	CFGVAR(Triggerbot_AutoBackstab_Active, true);
 	CFGVAR(Triggerbot_AutoBackstab_Knife_If_Lethal, true);
 	CFGVAR(Triggerbot_AutoBackstab_Use_LagRecords, true);
-	CFGVAR(Triggerbot_AutoBackstab_Max_Backtrack_Time, 90.0f); // ms - max lag record age for autobackstab
 	CFGVAR(Triggerbot_AutoBackstab_FOV, 90.0f);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Friends, true);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Invisible, false);

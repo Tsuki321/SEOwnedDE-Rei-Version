@@ -40,6 +40,13 @@ MAKE_HOOK(CBaseEntity_BaseInterpolatePart1, Signatures::CBaseEntity_BaseInterpol
 		if (pEntity == pLocal)
 			return Shifting::bRecharging;
 
+		// Keep non-local players at their newest network pose for targeting and
+		// lag-record capture. FrameStageNotify applies a render-only origin/bone
+		// offset after capture, so this restores the accuracy split without
+		// manually advancing or otherwise owning their animation state.
+		if (pEntity->GetClassId() == ETFClassIds::CTFPlayer)
+			return pEntity != pLocal;
+
 		if (pEntity->GetClassId() == ETFClassIds::CBaseDoor)
 			return true;
 

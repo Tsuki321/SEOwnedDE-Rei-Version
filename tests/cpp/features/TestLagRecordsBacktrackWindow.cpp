@@ -30,10 +30,8 @@ void MakeRecord(LagRecord_t& record, float flPoseTime)
 }
 
 // A snapshot whose pose matches the record above, so the only thing under test is
-// the age comparison. flPoseReference is a CLIENT-clock pose time (curtime - lerp),
-// the same basis LagRecord_t::SimulationTime is captured on - that identity is the
-// contract these tests exist to pin. MaxBacktrackTime defaults to the window
-// UpdateRecords would hand out on a stable connection.
+// the age comparison. flPoseReference and LagRecord_t::SimulationTime are on the
+// same selected pose clock; that identity is the contract these tests pin.
 LagRecordCachedState_t MakeCached(float flPoseReference,
 	float flMaxBacktrackTime = LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN)
 {
@@ -49,12 +47,30 @@ LagRecordCachedState_t MakeCached(float flPoseReference,
 
 constexpr const char* kHitscanSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotHitscan/AimbotHitscan.cpp";
 constexpr const char* kAimbotSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/Aimbot.cpp";
+constexpr const char* kCreateMoveSource = "SEOwnedDE/SEOwnedDE/src/App/Hooks/ClientModeShared_CreateMove.cpp";
+constexpr const char* kCfgSource = "SEOwnedDE/SEOwnedDE/src/App/Features/CFG.h";
+constexpr const char* kMenuSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Menu/Menu.cpp";
+constexpr const char* kLagRecordsSource = "SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/LagRecords.cpp";
 constexpr const char* kAutoShootSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoShoot/AutoShoot.cpp";
 constexpr const char* kMeleeSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Aimbot/AimbotMelee/AimbotMelee.cpp";
 constexpr const char* kBackstabSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Triggerbot/AutoBackstab/AutoBackstab.cpp";
 constexpr const char* kMaterialsSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Materials/Materials.cpp";
 
 }  // namespace
+
+TEST(LagRecordsBacktrackWindow, TailPruneUsesTheModeMatchedPoseReference) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kLagRecordsSource);
+
+    EXPECT_NE(src.find("const float flPoseReferenceTime = m_CachedStates[i].PoseReferenceTime"),
+              std::string::npos);
+    EXPECT_NE(src.find("IsSimulationTimeValid(flPoseReferenceTime, records[phys].SimulationTime"),
+              std::string::npos);
+    EXPECT_EQ(src.find("const float flCurSimTime = pFirstPlayer->m_flSimulationTime()"),
+              std::string::npos);
+    EXPECT_NE(src.find("state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements"),
+              std::string::npos);
+}
 
 TEST(LagRecordsBacktrackWindow, RecordAgeIsZeroWithoutAReferencePoint) {
     LagRecord_t record{};
@@ -73,15 +89,12 @@ TEST(LagRecordsBacktrackWindow, RecordAgeIsZeroWithoutAReferencePoint) {
     EXPECT_FLOAT_EQ(CLagRecords::GetRecordAge(&unset, MakeCached(10.0f)), 0.0f);
 }
 
-TEST(LagRecordsBacktrackWindow, RecordAgeMeasuresElapsedClientTime) {
+TEST(LagRecordsBacktrackWindow, RecordAgeMeasuresElapsedPoseTime) {
     LagRecord_t record{};
     MakeRecord(record, 9.85f);
 
-    // Both terms are client-clock pose times, so the difference is the elapsed
-    // client time since capture - which is exactly the rewind the shot requests
-    // and exactly what the server's deviation tolerance bounds. This used to
-    // subtract a client render time from the target's server-authored
-    // m_flSimulationTime, which is not an elapsed time in any clock.
+    // Both terms use the same pose clock, so the difference is elapsed pose time.
+    // The regression was subtracting values from different clocks.
     EXPECT_NEAR(CLagRecords::GetRecordAge(&record, MakeCached(10.0f)), 0.15f, 1e-5f);
 }
 
@@ -349,6 +362,88 @@ TEST(LagRecordsTickOwnership, MeleeVerifiesAimAndInstalledPose) {
     // A scope that failed to install leaves the live pose in place, so the trace
     // would validate the present while the stamp commits a historical tick.
     EXPECT_NE(src.find("target.LagRecord && !scope.IsActive()"), std::string::npos);
+}
+
+TEST(LagRecordsTickOwnership, ManualMeleeUsesFinalCommandHullAndExactRecord) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kMeleeSource);
+    const auto functionStart = src.find("bool CAimbotMelee::ResolveManualSwing");
+    const auto functionEnd = src.find("void CAimbotMelee::Run", functionStart);
+
+    ASSERT_NE(functionStart, std::string::npos);
+    ASSERT_NE(functionEnd, std::string::npos);
+
+    const auto functionBody = src.substr(functionStart, functionEnd - functionStart);
+    EXPECT_NE(functionBody.find("pCmd->viewangles + pLocal->m_vecPunchAngle()"), std::string::npos);
+    EXPECT_NE(functionBody.find("pWeapon->GetSwingRange()"), std::string::npos);
+    EXPECT_NE(functionBody.find("CLagRecords::IsRecordUsable"), std::string::npos);
+    EXPECT_NE(functionBody.find("CLagRecordScope scope(pRecord)"), std::string::npos);
+    EXPECT_NE(functionBody.find("scope.IsActive()"), std::string::npos);
+    EXPECT_NE(functionBody.find("H::AimUtils->TraceEntityMelee"), std::string::npos);
+    EXPECT_NE(functionBody.find("H::AimUtils->IsBehindAndFacingTarget"), std::string::npos);
+    EXPECT_NE(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
+    EXPECT_NE(functionBody.find("CFG::Aimbot_Melee_Manual_Backtrack"), std::string::npos);
+    EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 1u);
+
+    const auto runBody = src.substr(functionEnd);
+    EXPECT_NE(runBody.find("bIsFiring && !G::bManualMeleeFiring"), std::string::npos);
+}
+
+TEST(LagRecordsTickOwnership, ManualMeleeOwnershipIsLatchedBeforeAimbotMutation) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto aimbot = testhelpers::ReadTextFile(root / kAimbotSource);
+    const auto createMove = testhelpers::ReadTextFile(root / kCreateMoveSource);
+    const auto melee = testhelpers::ReadTextFile(root / kMeleeSource);
+    const auto runStart = aimbot.find("void CAimbot::Run(CUserCmd* pCmd)");
+    const auto ownershipCapture = aimbot.find("G::bManualMeleeFiring = (pCmd->buttons & IN_ATTACK) && G::bCanPrimaryAttack", runStart);
+    const auto delayedCapture = aimbot.find("CaptureManualSwingCommand(pCmd, pWeapon)", runStart);
+    const auto runMain = aimbot.find("RunMain(pCmd);", runStart);
+    const auto resolver = aimbot.find("F::AimbotMelee->ResolveManualSwing", runMain);
+
+    ASSERT_NE(runStart, std::string::npos);
+    ASSERT_NE(ownershipCapture, std::string::npos);
+    ASSERT_NE(delayedCapture, std::string::npos);
+    ASSERT_NE(runMain, std::string::npos);
+    ASSERT_NE(resolver, std::string::npos);
+    EXPECT_LT(ownershipCapture, runMain);
+    EXPECT_LT(delayedCapture, runMain);
+    EXPECT_LT(runMain, resolver);
+    EXPECT_NE(aimbot.find("G::bManualMeleeFiring && !G::bCommandTickResolved", runMain), std::string::npos);
+    EXPECT_NE(aimbot.find("FinishManualSwingCommand(bManualMeleeResolved)"), std::string::npos);
+    EXPECT_NE(melee.find("const bool bImpactDue"), std::string::npos);
+    EXPECT_NE(melee.find("flSmackTime > 0.0f"), std::string::npos);
+    EXPECT_NE(melee.find("curtime >= flSmackTime"), std::string::npos);
+    EXPECT_NE(aimbot.find("F::AimbotMelee->ResetManualSwingState();"), std::string::npos);
+    const auto captureBody = melee.substr(melee.find("CaptureManualSwingCommand"));
+    const auto delayedComment = captureBody.find("The initiating command starts");
+    ASSERT_NE(delayedComment, std::string::npos);
+    EXPECT_NE(captureBody.find("return false;", delayedComment), std::string::npos);
+    EXPECT_NE(melee.find("m_flManualSwingExpireTime"), std::string::npos);
+    EXPECT_NE(createMove.find("G::bManualMeleeFiring = false;"), std::string::npos);
+}
+
+TEST(LagRecordsTickOwnership, ManualMeleeBacktrackHasIndependentCaptureToggle) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto cfg = testhelpers::ReadTextFile(root / kCfgSource);
+    const auto menu = testhelpers::ReadTextFile(root / kMenuSource);
+    const auto lagRecords = testhelpers::ReadTextFile(root / kLagRecordsSource);
+    const auto melee = testhelpers::ReadTextFile(root / kMeleeSource);
+
+    EXPECT_NE(cfg.find("CFGVAR(Aimbot_Melee_Manual_Backtrack, true)"), std::string::npos);
+    EXPECT_NE(menu.find("CheckBox(\"Manual Backtrack\", CFG::Aimbot_Melee_Manual_Backtrack)"), std::string::npos);
+    EXPECT_NE(lagRecords.find("const bool bManualMeleeBacktrack"), std::string::npos);
+    EXPECT_NE(lagRecords.find("bMelee || bManualMeleeBacktrack"), std::string::npos);
+    EXPECT_NE(melee.find("CFG::Aimbot_Melee_Manual_Backtrack"), std::string::npos);
+}
+
+TEST(LagRecordsBacktrackWindow, PoseModeTransitionClearsMixedClockHistory) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kLagRecordsSource);
+
+    EXPECT_NE(src.find("ResetForPoseModeIfChanged();"), std::string::npos);
+    EXPECT_NE(src.find("m_RecordHeads.fill(0u);"), std::string::npos);
+    EXPECT_NE(src.find("m_bAccuracyPoseMode == bAccuracyPoseMode"), std::string::npos);
+    EXPECT_NE(src.find("m_CachedStates = {};"), std::string::npos);
 }
 
 TEST(LagRecordsTickOwnership, BackstabNeverFabricatesATickForTheLivePose) {

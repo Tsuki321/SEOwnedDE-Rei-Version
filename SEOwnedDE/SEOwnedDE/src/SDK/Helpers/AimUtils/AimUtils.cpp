@@ -1,6 +1,42 @@
 #include "AimUtils.h"
 
 #include "../../SDK.h"
+#include "../../../App/Features/LagRecords/LagRecords.h"
+
+namespace
+{
+	constexpr float TRACE_FRACTION_EPSILON = 0.0001f;
+
+	bool TraceScopedEntity(C_BaseEntity* pEntity, const Ray_t& ray, unsigned int nMask,
+		bool bRejectTargetAllSolid, trace_t* pTargetTraceOut)
+	{
+		trace_t targetTrace = {};
+		I::EngineTrace->ClipRayToEntity(ray, nMask, pEntity, &targetTrace);
+
+		if (targetTrace.m_pEnt != pEntity || (bRejectTargetAllSolid && targetTrace.allsolid))
+			return false;
+
+		// A scoped record moves only this target. Trace it directly so the engine's
+		// live spatial partition cannot discard a ray that crosses its old bounds,
+		// then trace everything else to preserve normal occlusion.
+		trace_t blockerTrace = {};
+		CTraceFilterHitscan blockerFilter = {};
+		blockerFilter.m_pIgnore = pEntity;
+		I::EngineTrace->TraceRay(ray, nMask, &blockerFilter, &blockerTrace);
+
+		if (blockerTrace.allsolid || blockerTrace.startsolid)
+			return false;
+
+		if (blockerTrace.DidHit()
+			&& blockerTrace.fraction + TRACE_FRACTION_EPSILON < targetTrace.fraction)
+			return false;
+
+		if (pTargetTraceOut)
+			*pTargetTraceOut = targetTrace;
+
+		return true;
+	}
+}
 
 void CAimUtils::Trace(const Vec3 &start, const Vec3 &end, unsigned int mask, CTraceFilter *filter, trace_t *trace)
 {
@@ -18,6 +54,21 @@ void CAimUtils::TraceHull(const Vec3 &start, const Vec3 &end, const Vec3 &mins, 
 
 bool CAimUtils::TraceEntityBullet(C_BaseEntity *pEntity, const Vec3 &vFrom, const Vec3 &vTo, int *pHitHitboxOut)
 {
+	if (F::LagRecordMatrixHelper->IsActiveFor(pEntity))
+	{
+		Ray_t ray = {};
+		ray.Init(vFrom, vTo);
+
+		trace_t targetTrace = {};
+		if (!TraceScopedEntity(pEntity, ray, (MASK_SHOT | CONTENTS_GRATE), true, &targetTrace))
+			return false;
+
+		if (pHitHitboxOut)
+			*pHitHitboxOut = targetTrace.hitbox;
+
+		return true;
+	}
+
 	trace_t trace = {};
 	CTraceFilterHitscan filter = {};
 
@@ -92,11 +143,18 @@ bool CAimUtils::TraceFlames(C_BaseEntity *pEntity, const Vec3 &vFrom, const Vec3
 
 bool CAimUtils::TraceEntityMelee(C_BaseEntity *pEntity, const Vec3 &vFrom, const Vec3 &vTo)
 {
-	trace_t Trace = {};
-	CTraceFilterHitscan Filter = {};
-
 	static const Vec3 melee_hull_mins = { -18.0f, -18.0f, -18.0f };
 	static const Vec3 melee_hull_maxs = { 18.0f, 18.0f, 18.0f };
+
+	if (F::LagRecordMatrixHelper->IsActiveFor(pEntity))
+	{
+		Ray_t ray = {};
+		ray.Init(vFrom, vTo, melee_hull_mins, melee_hull_maxs);
+		return TraceScopedEntity(pEntity, ray, MASK_SOLID, false, nullptr);
+	}
+
+	trace_t Trace = {};
+	CTraceFilterHitscan Filter = {};
 
 	TraceHull(vFrom, vTo, melee_hull_mins, melee_hull_maxs, MASK_SOLID, &Filter, &Trace);
 

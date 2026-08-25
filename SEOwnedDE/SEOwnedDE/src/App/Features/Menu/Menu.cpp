@@ -1251,6 +1251,7 @@ void CMenu::MainWindow()
 				CheckBox("Active", CFG::Aimbot_Melee_Active);
 				CheckBox("Always Active", CFG::Aimbot_Melee_Always_Active);
 				CheckBox("Target Lag Records", CFG::Aimbot_Melee_Target_LagRecords);
+				CheckBox("Manual Backtrack", CFG::Aimbot_Melee_Manual_Backtrack);
 
 				CheckBox("Predict Swing", CFG::Aimbot_Melee_Predict_Swing);
 				CheckBox("Walk To Target", CFG::Aimbot_Melee_Walk_To_Target);
@@ -1482,7 +1483,6 @@ void CMenu::MainWindow()
 				CheckBox("Knife If Lethal", CFG::Triggerbot_AutoBackstab_Knife_If_Lethal);
 
 				CheckBox("Use Lag Records", CFG::Triggerbot_AutoBackstab_Use_LagRecords);
-				SliderFloat("Backtrack MS", CFG::Triggerbot_AutoBackstab_Max_Backtrack_Time, 0.0f, 200.0f, 5.0f, "%.0f");
 				SliderFloat("FOV", CFG::Triggerbot_AutoBackstab_FOV, 0.0f, 180.0f, 1.0f, "%.0f");
 
 				multiselect("Ignore", AutoBackstabIgnores,

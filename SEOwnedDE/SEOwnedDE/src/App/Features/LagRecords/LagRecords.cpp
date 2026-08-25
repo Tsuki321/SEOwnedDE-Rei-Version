@@ -34,14 +34,19 @@ bool CLagRecords::AreConsumersActive()
 	// resolver used to be reachable only from CAimbotHitscan::Run, which hangs off
 	// CAimbot::RunMain and returns early on !Aimbot_Active - so a user who plays
 	// manual and turns the aimbot off lost backtracking entirely, and records were
-	// never even captured to backtrack to. This is the one consumer that has to
-	// survive the aimbot being off.
-	const bool bManualBacktrack = CFG::Aimbot_Hitscan_Manual_Backtrack
+	// never even captured to backtrack to. Manual hitscan and melee both have to
+	// survive their aimbot gates being off.
+	const bool bManualHitscanBacktrack = CFG::Aimbot_Hitscan_Manual_Backtrack
 		&& CFG::Aimbot_Target_Players
 		&& CFG::Aimbot_Hitscan_Target_LagRecords;
 	const bool bMelee = CFG::Aimbot_Active
 		&& CFG::Aimbot_Target_Players
 		&& CFG::Aimbot_Melee_Active
+		&& CFG::Aimbot_Melee_Target_LagRecords;
+	// Hand-aimed melee has the same independent capture lifetime as manual
+	// hitscan. Keep records available when the melee aimbot itself is disabled.
+	const bool bManualMeleeBacktrack = CFG::Aimbot_Melee_Manual_Backtrack
+		&& CFG::Aimbot_Target_Players
 		&& CFG::Aimbot_Melee_Target_LagRecords;
 	const bool bProjectilePrediction = CFG::Aimbot_Active
 		&& CFG::Aimbot_Target_Players
@@ -56,7 +61,8 @@ bool CLagRecords::AreConsumersActive()
 		&& CFG::Materials_Players_Active
 		&& !CFG::Materials_Players_Ignore_LagRecords;
 
-	return bHitscan || bManualBacktrack || bMelee || bProjectilePrediction || bBackstab || bHistoricalModels;
+	return bHitscan || bManualHitscanBacktrack || bMelee || bManualMeleeBacktrack
+		|| bProjectilePrediction || bBackstab || bHistoricalModels;
 }
 
 bool CLagRecords::ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
@@ -72,6 +78,30 @@ bool CLagRecords::ShouldCaptureRecord(C_TFPlayer* pLocal, C_TFPlayer* pPlayer)
 
 	return !CFG::Misc_LagRecords_Skip_Offscreen
 		|| F::VisualUtils->IsOnScreenNoEntity(pLocal, pPlayer->GetAbsOrigin());
+}
+
+void CLagRecords::ResetForPoseModeIfChanged()
+{
+	const bool bAccuracyPoseMode = CFG::Misc_Accuracy_Improvements;
+	if (!m_bPoseModeInitialized)
+	{
+		m_bPoseModeInitialized = true;
+		m_bAccuracyPoseMode = bAccuracyPoseMode;
+		return;
+	}
+
+	if (m_bAccuracyPoseMode == bAccuracyPoseMode)
+		return;
+
+	// A record's SimulationTime is either a server simulation stamp or a
+	// rendered client timestamp. Drop the ring at the transition instead of
+	// comparing those unrelated clocks during the next pruning pass.
+	m_RecordHeads.fill(0u);
+	m_RecordCounts.fill(0u);
+	m_CachedStates = {};
+	m_flSmoothedLatency = -1.0f;
+	m_flLatencyJitter = -1.0f;
+	m_bAccuracyPoseMode = bAccuracyPoseMode;
 }
 
 bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency)
@@ -111,6 +141,8 @@ bool CLagRecords::IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime,
 
 void CLagRecords::AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime)
 {
+	ResetForPoseModeIfChanged();
+
 	if (!pPlayer || !I::GlobalVars || !std::isfinite(flPoseTime) || flPoseTime <= 0.0f)
 		return;
 
@@ -184,9 +216,10 @@ void CLagRecords::AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime)
 	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
 	LagRecord_t& newRecord = records[newHead];
 
-	// Capture the already-interpolated, already-animated render pose. Do not
-	// invalidate the cache here: SetupBones can reuse or complete the coherent
-	// vanilla pose, and normal rendering remains free of a second animation pass.
+	// Capture the current engine-owned animation pose. Its origin is the vanilla
+	// rendered position when interpolation is enabled, or the newest network
+	// position when Accuracy Improvements suppresses remote origin interpolation.
+	// Do not invalidate the cache or run a second animation pass in either mode.
 	const bool bHistoricalModels = CFG::Materials_Active
 		&& CFG::Materials_Players_Active
 		&& !CFG::Materials_Players_Ignore_LagRecords;
@@ -276,6 +309,8 @@ bool CLagRecords::HasRecords(C_TFPlayer* pPlayer, int* pTotalRecords)
 
 void CLagRecords::UpdateRecords()
 {
+	ResetForPoseModeIfChanged();
+
 	const auto pLocal = H::Entities->GetLocal();
 
 	if (!pLocal || pLocal->deadflag() || pLocal->InCond(TF_COND_HALLOWEEN_GHOST_MODE) || pLocal->InCond(TF_COND_HALLOWEEN_KART))
@@ -345,13 +380,10 @@ void CLagRecords::UpdateRecords()
 	if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)
 		flBacktrackWindow = LAG_MIN_BACKTRACK_TIME;
 
-	// Reference point every record's age is measured against this frame. Same
-	// clock and same expression as the capture site in
-	// IBaseClientDLL_FrameStageNotify, which is the whole point: subtracting two
-	// samples of it in GetRecordAge yields elapsed client time. Reading the
-	// target's m_flSimulationTime here instead - a server-authored stamp that only
-	// steps when a snapshot for that player lands - produced a difference that was
-	// not an elapsed time at all.
+	// Vanilla render records use this client-clock reference. Accuracy
+	// Improvements selects each player's m_flSimulationTime below because its
+	// records hold the non-interpolated network pose instead. The invariant is
+	// same-clock subtraction, not one globally hard-coded clock.
 	const float flPoseReference = I::GlobalVars
 		? I::GlobalVars->curtime - SDKUtils::GetLerp()
 		: -1.0f;
@@ -388,7 +420,9 @@ void CLagRecords::UpdateRecords()
 			state.AbsOrigin = pPlayer->GetAbsOrigin();
 			state.EyeAngles = pPlayer->GetEyeAngles();
 			state.Flags = pPlayer->m_fFlags();
-			state.PoseReferenceTime = flPoseReference;
+			state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements
+				? pPlayer->m_flSimulationTime()
+				: flPoseReference;
 			state.MaxBacktrackTime = flBacktrackWindow;
 
 			if (const auto pAnimState = pPlayer->GetAnimState())
@@ -422,7 +456,16 @@ void CLagRecords::UpdateRecords()
 			continue;
 		}
 
-		const float flCurSimTime = pFirstPlayer->m_flSimulationTime();
+		// Use the exact clock selected when this player's cached state was built.
+		// Accuracy Improvements records network poses at m_flSimulationTime;
+		// vanilla interpolation records rendered poses at curtime - lerp. Mixing
+		// either ring with the other clock destructively truncates valid history.
+		const float flPoseReferenceTime = m_CachedStates[i].PoseReferenceTime;
+		if (flPoseReferenceTime < 0.0f)
+		{
+			m_RecordCounts[i] = 0u;
+			continue;
+		}
 
 		// Records are stored newest-first; SimulationTime strictly decreases
 		// toward the back, and validity is monotonic w.r.t. age. Walk forward
@@ -431,7 +474,7 @@ void CLagRecords::UpdateRecords()
 		for (size_t n = 0; n < m_RecordCounts[i]; ++n)
 		{
 			const size_t phys = (head + MAX_LAG_RECORDS - n) % MAX_LAG_RECORDS;
-			if (!IsSimulationTimeValid(flCurSimTime, records[phys].SimulationTime, flMaxWindow, flLatency))
+			if (!IsSimulationTimeValid(flPoseReferenceTime, records[phys].SimulationTime, flMaxWindow, flLatency))
 			{
 				firstInvalid = n;
 				break;
@@ -451,11 +494,10 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 	state.AbsOrigin = pPlayer->GetAbsOrigin();
 	state.EyeAngles = pPlayer->GetEyeAngles();
 	state.Flags = pPlayer->m_fFlags();
-	// Client-clock pose reference, same expression as the capture site; see
-	// LagRecordCachedState_t::PoseReferenceTime.
-	state.PoseReferenceTime = I::GlobalVars
-		? I::GlobalVars->curtime - SDKUtils::GetLerp()
-		: -1.0f;
+	// Match the clock chosen at capture; see LagRecordCachedState_t::PoseReferenceTime.
+	state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements
+		? pPlayer->m_flSimulationTime()
+		: (I::GlobalVars ? I::GlobalVars->curtime - SDKUtils::GetLerp() : -1.0f);
 	// A caller building its own snapshot has no access to the smoothed jitter
 	// estimate, so it gets the fixed margin only. That is conservative by
 	// construction: never deeper than the per-frame window UpdateRecords hands to

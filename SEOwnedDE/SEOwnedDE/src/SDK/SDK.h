@@ -373,6 +373,9 @@ namespace G
 	// Set when the command already contains a real manual hitscan shot. This
 	// lets downstream trigger features leave its tick selection untouched.
 	inline bool bManualHitscanFiring = false;
+	// Latched before the melee aimbot can synthesize IN_ATTACK. A hand-aimed
+	// swing owns its final command angles, so AutoBackstab must not retarget it.
+	inline bool bManualMeleeFiring = false;
 	// Set when an aimbot deliberately declined to act this command because its
 	// fire delay is still running. Downstream trigger features must not fire on
 	// such a command, otherwise the delay is trivially bypassed.

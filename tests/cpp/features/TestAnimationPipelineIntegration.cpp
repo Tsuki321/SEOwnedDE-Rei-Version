@@ -48,17 +48,28 @@ TEST(AnimationPipelineIntegration, LiveAnimationRemainsEngineOwned) {
     EXPECT_EQ(prediction.find("pAnimState->Update"), std::string::npos);
 }
 
-TEST(AnimationPipelineIntegration, LiveInterpolationRemainsEngineOwned) {
+TEST(AnimationPipelineIntegration, NonAccuracyInterpolationRemainsEngineOwned) {
     const auto root = testhelpers::FindRepoRoot();
     const auto addVar = testhelpers::ReadTextFile(root / kAddVar);
     const auto interpolate = testhelpers::ReadTextFile(root / kInterpolate);
     const auto reset = testhelpers::ReadTextFile(root / kResetLatched);
 
-    EXPECT_EQ(addVar.find("m_iv_vecVelocity"), std::string::npos);
-    EXPECT_EQ(addVar.find("m_iv_flMaxGroundSpeed"), std::string::npos);
+    EXPECT_NE(addVar.find("CFG::Misc_Accuracy_Improvements"), std::string::npos);
+    EXPECT_NE(addVar.find("CALL_ORIGINAL(ecx, data, watcher, type, bSetup)"), std::string::npos);
     EXPECT_EQ(interpolate.find("cl_extrapolate"), std::string::npos);
     EXPECT_EQ(reset.find("Misc_Pred_Error_Jitter_Fix"), std::string::npos);
     EXPECT_NE(reset.find("CALL_ORIGINAL(ecx);"), std::string::npos);
+}
+
+TEST(AnimationPipelineIntegration, AccuracyModeKeepsRemoteAimWatchersAtNetworkState) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto addVar = testhelpers::ReadTextFile(root / kAddVar);
+
+    EXPECT_NE(addVar.find("m_iv_angEyeAngles"), std::string::npos);
+    EXPECT_NE(addVar.find("m_iv_flPoseParameter"), std::string::npos);
+    EXPECT_NE(addVar.find("m_iv_flCycle"), std::string::npos);
+    EXPECT_NE(addVar.find("m_iv_vecVelocity"), std::string::npos);
+    EXPECT_NE(addVar.find("vel = pPlayer->m_vecVelocity()"), std::string::npos);
 }
 
 TEST(AnimationPipelineIntegration, HistoricalBonesAreIsolatedFromLiveRendering) {

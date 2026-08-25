@@ -91,25 +91,28 @@ TEST(TriggerbotContracts, AutoShootCannotBypassAimbotFireDelay) {
     EXPECT_LT(delayGuard, trace);
 }
 
-TEST(TriggerbotContracts, AutoBackstabLiveRangeGateDoesNotSkipLagRecords) {
+TEST(TriggerbotContracts, AutoBackstabUsesAuthoritativeHullAndRecordWindow) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);
 
-    const auto liveRange = src.find("const bool bLiveTargetInRange");
-    const auto liveCheck = src.find("if (bLiveTargetInRange &&", liveRange);
-    const auto lagRecordBranch = src.find("Triggerbot_AutoBackstab_Use_LagRecords", liveCheck);
-    const auto recordRange = src.find("vShootPos.DistToSqr(record->Center)", lagRecordBranch);
+    EXPECT_EQ(src.find("kMaxBackstabCandidateRange"), std::string::npos);
+    EXPECT_EQ(src.find("Triggerbot_AutoBackstab_Max_Backtrack_Time"), std::string::npos);
+    EXPECT_EQ(src.find("CLagRecords::GetRecordAge"), std::string::npos);
+    EXPECT_NE(src.find("CLagRecords::IsRecordUsable"), std::string::npos);
+    EXPECT_EQ(testhelpers::CountOccurrences(src, "H::AimUtils->TraceEntityMelee"), 2u);
+    EXPECT_EQ(testhelpers::CountOccurrences(src, "H::AimUtils->IsBehindAndFacingTarget"), 2u);
+    EXPECT_EQ(src.find("bool IsBehindAndFacingTarget("), std::string::npos);
+}
 
-    ASSERT_NE(liveRange, std::string::npos);
-    ASSERT_NE(liveCheck, std::string::npos);
-    ASSERT_NE(lagRecordBranch, std::string::npos);
-    ASSERT_NE(recordRange, std::string::npos);
-    EXPECT_LT(liveRange, liveCheck);
-    EXPECT_LT(liveCheck, lagRecordBranch);
-    EXPECT_LT(lagRecordBranch, recordRange);
-    EXPECT_EQ(src.find("if (!bLiveTargetInRange)", liveRange), std::string::npos);
-    EXPECT_EQ(src.find("if (vShootPos.DistToSqr(vTargetCenter) > kMaxBackstabCandidateRangeSqr)"),
-              std::string::npos);
+TEST(TriggerbotContracts, AutoBackstabDoesNotRetargetManualMelee) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);
+
+    const auto manualGuard = src.find("if (G::bManualMeleeFiring)");
+    const auto targetLoop = src.find("GetGroup(EEntGroup::PLAYERS_ENEMIES)");
+    ASSERT_NE(manualGuard, std::string::npos);
+    ASSERT_NE(targetLoop, std::string::npos);
+    EXPECT_LT(manualGuard, targetLoop);
 }
 
 TEST(TriggerbotContracts, ExpensiveQueriesFollowCheapClassification) {
@@ -130,9 +133,12 @@ TEST(TriggerbotContracts, ExpensiveQueriesFollowCheapClassification) {
     EXPECT_LT(distanceCheck, visibilityTrace);
     EXPECT_NE(autoVaccinator.find("|| H::AimUtils->TraceEntityAutoDet", visibilityTrace), std::string::npos);
 
-    const auto rangeGate = autoBackstab.find("kMaxBackstabCandidateRangeSqr");
-    const auto razorbackWalk = autoBackstab.find("HasActiveRazorback(pPlayer)", rangeGate);
-    ASSERT_NE(rangeGate, std::string::npos);
+    const auto targetCenter = autoBackstab.find("const Vec3 vTargetCenter");
+    const auto razorbackWalk = autoBackstab.find("HasActiveRazorback(pPlayer)", targetCenter);
+    const auto meleeTrace = autoBackstab.find("H::AimUtils->TraceEntityMelee", razorbackWalk);
+    ASSERT_NE(targetCenter, std::string::npos);
     ASSERT_NE(razorbackWalk, std::string::npos);
-    EXPECT_LT(rangeGate, razorbackWalk);
+    ASSERT_NE(meleeTrace, std::string::npos);
+    EXPECT_LT(targetCenter, razorbackWalk);
+    EXPECT_LT(razorbackWalk, meleeTrace);
 }

@@ -131,6 +131,41 @@ TEST(AimbotAimAssistContracts, ManualShotSelectsNewestHitAndPreservesTickOnMiss)
     EXPECT_NE(runBody.find("Aim(pCmd, pLocal, target.AngleTo)"), std::string::npos);
 }
 
+TEST(AimbotAimAssistContracts, HistoricalTracesBypassLiveTargetBoundsButPreserveOcclusion) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto source = testhelpers::ReadTextFile(root / kAimUtilsSource);
+    const auto helperStart = source.find("bool TraceScopedEntity");
+    const auto traceStart = source.find("void CAimUtils::Trace(", helperStart);
+
+    ASSERT_NE(helperStart, std::string::npos);
+    ASSERT_NE(traceStart, std::string::npos);
+
+    const auto helperBody = source.substr(helperStart, traceStart - helperStart);
+    EXPECT_NE(helperBody.find("I::EngineTrace->ClipRayToEntity"), std::string::npos);
+    EXPECT_NE(helperBody.find("blockerFilter.m_pIgnore = pEntity"), std::string::npos);
+    EXPECT_NE(helperBody.find("I::EngineTrace->TraceRay"), std::string::npos);
+    EXPECT_NE(helperBody.find("blockerTrace.allsolid || blockerTrace.startsolid"), std::string::npos);
+    EXPECT_NE(helperBody.find("blockerTrace.fraction + TRACE_FRACTION_EPSILON < targetTrace.fraction"), std::string::npos);
+
+    const auto bulletStart = source.find("bool CAimUtils::TraceEntityBullet");
+    const auto bulletEnd = source.find("bool CAimUtils::TraceEntityAutoDet", bulletStart);
+    const auto meleeStart = source.find("bool CAimUtils::TraceEntityMelee");
+    const auto meleeEnd = source.find("bool CAimUtils::TracePositionWorld", meleeStart);
+
+    ASSERT_NE(bulletStart, std::string::npos);
+    ASSERT_NE(bulletEnd, std::string::npos);
+    ASSERT_NE(meleeStart, std::string::npos);
+    ASSERT_NE(meleeEnd, std::string::npos);
+
+    const auto bulletBody = source.substr(bulletStart, bulletEnd - bulletStart);
+    const auto meleeBody = source.substr(meleeStart, meleeEnd - meleeStart);
+    EXPECT_NE(bulletBody.find("F::LagRecordMatrixHelper->IsActiveFor(pEntity)"), std::string::npos);
+    EXPECT_NE(bulletBody.find("TraceScopedEntity"), std::string::npos);
+    EXPECT_NE(meleeBody.find("F::LagRecordMatrixHelper->IsActiveFor(pEntity)"), std::string::npos);
+    EXPECT_NE(meleeBody.find("ray.Init(vFrom, vTo, melee_hull_mins, melee_hull_maxs)"), std::string::npos);
+    EXPECT_NE(meleeBody.find("TraceScopedEntity"), std::string::npos);
+}
+
 TEST(AimbotAimAssistContracts, ManualShotOwnershipIsCapturedBeforeAimbotMutation) {
     const auto root = testhelpers::FindRepoRoot();
     const auto aimbot = testhelpers::ReadTextFile(root / kAimbotSource);

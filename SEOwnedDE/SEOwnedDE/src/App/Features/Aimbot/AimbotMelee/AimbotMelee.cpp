@@ -320,6 +320,152 @@ bool CAimbotMelee::IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon)
 	return fabsf(pWeapon->m_flSmackTime() - I::GlobalVars->curtime) < I::GlobalVars->interval_per_tick * 2.0f;
 }
 
+bool CAimbotMelee::CaptureManualSwingCommand(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon)
+{
+	m_bManualSwingImpactCommand = false;
+
+	if (!pCmd || !pWeapon || !I::GlobalVars || pWeapon->GetWeaponID() == TF_WEAPON_KNIFE)
+		return false;
+
+	const bool bUserStartedSwing = (pCmd->buttons & IN_ATTACK) && G::bCanPrimaryAttack;
+	if (bUserStartedSwing)
+	{
+		m_pManualSwingWeapon = pWeapon;
+		m_flManualSwingExpireTime = I::GlobalVars->curtime + 0.5f;
+		m_bManualSwingPending = true;
+	}
+
+	if (!m_bManualSwingPending)
+		return false;
+
+	if (m_pManualSwingWeapon != pWeapon
+		|| I::GlobalVars->curtime > m_flManualSwingExpireTime)
+	{
+		ResetManualSwingState();
+		return false;
+	}
+
+	const float flSmackTime = pWeapon->m_flSmackTime();
+	const float flImpactTolerance = I::GlobalVars->interval_per_tick * 2.0f;
+	const bool bImpactDue = flSmackTime > 0.0f
+		&& I::GlobalVars->curtime >= flSmackTime
+		&& I::GlobalVars->curtime - flSmackTime <= flImpactTolerance;
+
+	if (!bUserStartedSwing && bImpactDue)
+	{
+		m_bManualSwingImpactCommand = true;
+		return true;
+	}
+
+	// The initiating command starts the weapon's swing but does not carry the
+	// delayed smack yet. Resolve historical contact on the later impact command.
+	return false;
+}
+
+void CAimbotMelee::FinishManualSwingCommand(bool bResolved)
+{
+	if (m_bManualSwingImpactCommand || bResolved)
+		ResetManualSwingState();
+}
+
+void CAimbotMelee::ResetManualSwingState()
+{
+	m_pManualSwingWeapon = nullptr;
+	m_flManualSwingExpireTime = -1.0f;
+	m_bManualSwingPending = false;
+	m_bManualSwingImpactCommand = false;
+}
+
+bool CAimbotMelee::ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
+{
+	if (!pCmd || !pLocal || !pWeapon
+		|| !CFG::Aimbot_Target_Players || !CFG::Aimbot_Melee_Target_LagRecords
+		|| !CFG::Aimbot_Melee_Manual_Backtrack)
+		return false;
+
+	const Vec3 vTraceStart = pLocal->GetShootPos();
+	Vec3 vSwingAngles = pCmd->viewangles + pLocal->m_vecPunchAngle();
+	Math::ClampAngles(vSwingAngles);
+
+	Vec3 vForward = {};
+	Math::AngleVectors(vSwingAngles, &vForward);
+	const Vec3 vTraceEnd = vTraceStart + (vForward * pWeapon->GetSwingRange());
+	const Vec3 vLocalCenter = pLocal->GetCenter();
+	const bool bKnife = pWeapon->GetWeaponID() == TF_WEAPON_KNIFE;
+
+	const LagRecord_t* pBestRecord = nullptr;
+	C_TFPlayer* pBestPlayer = nullptr;
+
+	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+	{
+		if (!pEntity)
+			continue;
+
+		const auto pPlayer = pEntity->As<C_TFPlayer>();
+		if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+			continue;
+
+		if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+			continue;
+
+		if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
+			continue;
+
+		if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+			continue;
+
+		if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
+			continue;
+
+		int nRecords = 0;
+		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+			continue;
+
+		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
+		for (int n = 0; n < nRecords; ++n)
+		{
+			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+			if (!pRecord)
+				continue;
+
+			// Records are newest-first. Once this player's record cannot beat the
+			// newest global hull hit, neither can any of its older records.
+			if (pBestRecord && pRecord->SimulationTime <= pBestRecord->SimulationTime)
+				break;
+
+			if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
+				continue;
+
+			// A knife tick is only valid when this exact historical pose satisfies
+			// the server's backstab-facing geometry. A hull overlap alone can be a
+			// front slash and must not be stamped as a backstab record.
+			if (bKnife && !H::AimUtils->IsBehindAndFacingTarget(
+				vLocalCenter, pRecord->Center, vSwingAngles, pRecord->EyeAngles))
+				continue;
+
+			CLagRecordScope scope(pRecord);
+			if (!scope.IsActive())
+				continue;
+
+			if (!H::AimUtils->TraceEntityMelee(pPlayer, vTraceStart, vTraceEnd))
+				continue;
+
+			pBestRecord = pRecord;
+			pBestPlayer = pPlayer;
+			break;
+		}
+	}
+
+	if (!pBestRecord || !pBestPlayer)
+		return false;
+
+	pCmd->tick_count = CLagRecords::GetCommandTick(pBestRecord->SimulationTime);
+	G::bCommandTickResolved = true;
+	G::nTargetIndexEarly = pBestPlayer->entindex();
+	G::nTargetIndex = pBestPlayer->entindex();
+	return true;
+}
+
 void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
 	if (!CFG::Aimbot_Melee_Active)
@@ -365,7 +511,12 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 					Aim(pCmd, pLocal, pWeapon, target.AngleTo);
 				}
 
-				if (bIsFiring && target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
+				// Hand-aimed swings are resolved after Run() from the finalized command
+				// angle and real melee hull. Letting this center-angle branch claim them
+				// first would bypass the exact contact test and, for knives, the matching
+				// historical backstab-facing validation.
+				if (bIsFiring && !G::bManualMeleeFiring
+					&& target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 				{
 					// Same rule as hitscan: a record's tick only describes the
 					// shot if the command is actually pointing at that record.

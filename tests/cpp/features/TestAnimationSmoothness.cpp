@@ -38,17 +38,20 @@ private:
     std::string m_debugName;
 };
 
-TEST(AnimationSmoothnessTest, VelocityInterpolationPassesThrough) {
+TEST(AnimationSmoothnessTest, VelocityInterpolationPassesThroughWhenAccuracyIsDisabled) {
     g_CalledOriginal = 0;
+    const bool oldAccuracy = CFG::Misc_Accuracy_Improvements;
+    CFG::Misc_Accuracy_Improvements = false;
     char dummyEcx[1024] = {};
     MockInterpolatedVar watcher("C_BaseEntity::m_iv_vecVelocity");
 
     CBaseEntity_AddVar(reinterpret_cast<C_BaseEntity*>(dummyEcx), nullptr, &watcher, 0, false);
 
     EXPECT_EQ(g_CalledOriginal, 1);
+    CFG::Misc_Accuracy_Improvements = oldAccuracy;
 }
 
-TEST(AnimationSmoothnessTest, AnimationInputsPassThrough) {
+TEST(AnimationSmoothnessTest, AccuracyModeSuppressesNetworkAimWatchers) {
     char dummyEcx[1024] = {};
     C_BaseEntity* entity = reinterpret_cast<C_BaseEntity*>(dummyEcx);
     MockInterpolatedVar maxSpeed("CMultiPlayerAnimState::m_iv_flMaxGroundSpeed");
@@ -56,11 +59,40 @@ TEST(AnimationSmoothnessTest, AnimationInputsPassThrough) {
     MockInterpolatedVar cycle("C_BaseAnimating::m_iv_flCycle");
 
     g_CalledOriginal = 0;
+    const bool oldAccuracy = CFG::Misc_Accuracy_Improvements;
+    CFG::Misc_Accuracy_Improvements = true;
     CBaseEntity_AddVar(entity, nullptr, &maxSpeed, 0, false);
     CBaseEntity_AddVar(entity, nullptr, &pose, 0, false);
     CBaseEntity_AddVar(entity, nullptr, &cycle, 0, false);
 
-    EXPECT_EQ(g_CalledOriginal, 3);
+    EXPECT_EQ(g_CalledOriginal, 0);
+    CFG::Misc_Accuracy_Improvements = oldAccuracy;
+}
+
+TEST(AnimationSmoothnessTest, AccuracyModeSuppressesVelocityInterpolation) {
+    g_CalledOriginal = 0;
+    const bool oldAccuracy = CFG::Misc_Accuracy_Improvements;
+    CFG::Misc_Accuracy_Improvements = true;
+    char dummyEcx[1024] = {};
+    MockInterpolatedVar watcher("C_BaseEntity::m_iv_vecVelocity");
+
+    CBaseEntity_AddVar(reinterpret_cast<C_BaseEntity*>(dummyEcx), nullptr, &watcher, 0, false);
+
+    EXPECT_EQ(g_CalledOriginal, 0);
+    CFG::Misc_Accuracy_Improvements = oldAccuracy;
+}
+
+TEST(AnimationSmoothnessTest, UnrelatedInterpolationPassesThrough) {
+    g_CalledOriginal = 0;
+    const bool oldAccuracy = CFG::Misc_Accuracy_Improvements;
+    CFG::Misc_Accuracy_Improvements = true;
+    char dummyEcx[1024] = {};
+    MockInterpolatedVar watcher("C_BaseEntity::m_iv_unrelated_variable_xyz");
+
+    CBaseEntity_AddVar(reinterpret_cast<C_BaseEntity*>(dummyEcx), nullptr, &watcher, 0, false);
+
+    EXPECT_EQ(g_CalledOriginal, 1);
+    CFG::Misc_Accuracy_Improvements = oldAccuracy;
 }
 
 TEST(AnimationSmoothnessTest, NullWatcherPassesThrough) {
@@ -74,10 +106,13 @@ TEST(AnimationSmoothnessTest, NullWatcherPassesThrough) {
 
 TEST(AnimationSmoothnessTest, VelocityEstimationPassesThrough) {
     g_CalledOriginal = 0;
+    const bool oldAccuracy = CFG::Misc_Accuracy_Improvements;
+    CFG::Misc_Accuracy_Improvements = false;
     char dummyEcx[1024] = {};
     Vector velocity = {};
 
     CBaseEntity_EstimateAbsVelocity(reinterpret_cast<C_BaseEntity*>(dummyEcx), velocity);
 
     EXPECT_EQ(g_CalledOriginal, 1);
+    CFG::Misc_Accuracy_Improvements = oldAccuracy;
 }

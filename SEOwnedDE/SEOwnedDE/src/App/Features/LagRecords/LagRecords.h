@@ -92,8 +92,9 @@ struct LagRecord_t
 	int ModelIndex = -1;
 	int BoneCount = 0;
 	std::array<matrix3x4_t, MAX_BONE_COUNT> BoneData{};
-	// Render records store the pose time paired with BoneData. GetCommandTick
-	// preserves that pairing when a consumer writes a user command.
+	// Time paired with BoneData. Vanilla interpolation stores the render pose
+	// time; Accuracy Improvements stores the newest network simulation time.
+	// GetCommandTick preserves either pairing when a consumer writes a command.
 	float SimulationTime = -1.0f;
 	Vec3 AbsOrigin = {};
 	Vec3 AbsAngles = {};
@@ -117,21 +118,14 @@ struct LagRecordCachedState_t
 	Vec3 EyeAngles = {};
 	int Flags = 0;
 	float FeetYaw = 0.0f;
-	// Reference point a record's age is measured against: the CURRENT frame's
-	// pose time, curtime - GetLerp() - the same clock and the same expression
-	// LagRecord_t::SimulationTime is captured on. Subtracting two samples of it
-	// yields elapsed client time, which is exactly the rewind a shot asks the
-	// server for and therefore exactly what the server's tolerance bounds.
+	// Reference point a record's age is measured against. It is always on the
+	// same clock selected at capture: curtime - GetLerp() for a vanilla render
+	// pose, or m_flSimulationTime for Accuracy Improvements' network pose.
 	//
-	// This used to hold the target's m_flSimulationTime: a server-authored stamp
-	// that only advances when a snapshot for that player arrives. Its difference
-	// against a client render time is not an elapsed time at all - it was off by
-	// (lerp - (curtime - m_flSimulationTime)), a term that moves with ping, with
-	// interp settings, and with Misc_Ping_Reducer (which reads packets early and
-	// rolls curtime back, shrinking it further). At stock cl_interp 0.1 that
-	// quietly cut the reachable window roughly in half, and it jittered frame to
-	// frame on an unstable connection - so a shot landed on the backtracked pose
-	// sometimes and not others with nothing else changed.
+	// The old failure was mixing these modes: comparing a vanilla client render
+	// time against the target's server-authored simulation stamp. That difference
+	// is not elapsed time and moves with ping/interp settings. Network-pose mode
+	// may correctly use m_flSimulationTime only because its records do too.
 	//
 	// Seeded to -1 to mark "no snapshot has been built for this player yet".
 	float PoseReferenceTime = -1.0f;
@@ -180,7 +174,15 @@ class CLagRecords
 	// results instead of redundantly re-fetching them per pass.
 	std::array<LagRecordCachedState_t, MAX_PLAYERS> m_CachedStates = {};
 
+	// Records captured with Accuracy Improvements use simulation time; vanilla
+	// records use the rendered client clock. A runtime mode change must not let
+	// those two clocks share one ring, because the age/pruning math would compare
+	// unrelated timestamps.
+	bool m_bPoseModeInitialized = false;
+	bool m_bAccuracyPoseMode = false;
+
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency);
+	void ResetForPoseModeIfChanged();
 
 	static int PlayerToIndex(C_TFPlayer* pPlayer);
 
@@ -245,11 +247,9 @@ public:
 	static bool IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
 
 	// How far back a shot stamped with this record would ask the server to rewind,
-	// in seconds. Both terms are client-clock pose times (see
-	// LagRecordCachedState_t::PoseReferenceTime), so the difference is elapsed
-	// client time - and that is exactly the quantity the server bounds: writing
-	// tick_count for a record makes the deviation it computes deviate from its own
-	// latency estimate by the time elapsed since that record was captured.
+	// in seconds. Both terms use the same per-mode pose clock (see
+	// LagRecordCachedState_t::PoseReferenceTime), so their difference is elapsed
+	// pose time rather than a mixed client/server timestamp.
 	//
 	// Deliberately pure arithmetic over two floats, with no I::GlobalVars or
 	// convar reads, so it stays executable headless in the unit tests.

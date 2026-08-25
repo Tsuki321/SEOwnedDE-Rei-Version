@@ -60,14 +60,44 @@ void CAimbot::Run(CUserCmd* pCmd)
 	const auto pLocal = H::Entities->GetLocal();
 	const auto pWeapon = H::Entities->GetWeapon();
 	F::AimbotProjectile->RunChargeLifecycle(pCmd, pLocal, pWeapon);
+	bool bManualMeleeResolved = false;
 
 	// Capture manual ownership before RunMain can add IN_ATTACK itself. The
 	// triggerbot runs after the aimbot and must not replace this command's
 	// historical tick (or its unchanged fallback tick).
-	if (pLocal && pWeapon && !pLocal->deadflag()
-		&& H::AimUtils->GetWeaponType(pWeapon) == EWeaponType::HITSCAN)
+	if (pLocal && pWeapon && !pLocal->deadflag())
 	{
-		G::bManualHitscanFiring = F::AimbotHitscan->IsFiring(pCmd, pWeapon);
+			switch (H::AimUtils->GetWeaponType(pWeapon))
+		{
+			case EWeaponType::HITSCAN:
+				F::AimbotMelee->ResetManualSwingState();
+				G::bManualHitscanFiring = F::AimbotHitscan->IsFiring(pCmd, pWeapon);
+				break;
+
+			case EWeaponType::MELEE:
+				// Knife swings resolve on their initiating command. Other melee weapons
+				// report the actual smack later, so retain only a user-started swing
+				// through the bounded CAimbotMelee state machine; an aimbot-generated
+				// delayed smack never enters that state.
+				if (pWeapon->GetWeaponID() == TF_WEAPON_KNIFE)
+				{
+					F::AimbotMelee->ResetManualSwingState();
+					G::bManualMeleeFiring = (pCmd->buttons & IN_ATTACK) && G::bCanPrimaryAttack;
+				}
+				else
+				{
+					G::bManualMeleeFiring = F::AimbotMelee->CaptureManualSwingCommand(pCmd, pWeapon);
+				}
+				break;
+
+			default:
+				F::AimbotMelee->ResetManualSwingState();
+				break;
+		}
+	}
+	else
+	{
+		F::AimbotMelee->ResetManualSwingState();
 	}
 
 	RunMain(pCmd);
@@ -97,6 +127,26 @@ void CAimbot::Run(CUserCmd* pCmd)
 		if (const auto pLocalManual = H::Entities->GetLocal(); pLocalManual && !pLocalManual->deadflag())
 			F::AimbotHitscan->ResolveManualShot(pCmd, pLocalManual);
 	}
+
+	// Melee needs the same final-command resolution as hitscan, but validates
+	// the game's real 18-unit swing hull instead of a center-angle epsilon. This
+	// catches hand-aimed edge contacts and stamps the exact record that the final
+	// command intersects. Manual ownership is latched before RunMain, so an
+	// aimbot-generated IN_ATTACK cannot enter this path.
+	if (G::bManualMeleeFiring && !G::bCommandTickResolved)
+	{
+		const auto pLocalManual = H::Entities->GetLocal();
+		const auto pWeaponManual = H::Entities->GetWeapon();
+
+		if (pLocalManual && pWeaponManual && !pLocalManual->deadflag()
+			&& H::AimUtils->GetWeaponType(pWeaponManual) == EWeaponType::MELEE)
+		{
+			bManualMeleeResolved = F::AimbotMelee->ResolveManualSwing(pCmd, pLocalManual, pWeaponManual);
+		}
+	}
+
+	if (pWeapon && H::AimUtils->GetWeaponType(pWeapon) == EWeaponType::MELEE)
+		F::AimbotMelee->FinishManualSwingCommand(bManualMeleeResolved);
 
 	//same-ish code below to see if we are firing manually
 

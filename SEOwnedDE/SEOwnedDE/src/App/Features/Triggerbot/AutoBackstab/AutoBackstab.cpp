@@ -34,27 +34,6 @@ static bool HasActiveRazorback(C_TFPlayer* pPlayer)
 	return false;
 }
 
-bool IsBehindAndFacingTarget(const Vec3& ownerCenter, const Vec3& ownerViewangles, const Vec3& targetCenter, const Vec3& targetEyeAngles)
-{
-	Vec3 toTarget = targetCenter - ownerCenter;
-	toTarget.z = 0.0f;
-	toTarget.NormalizeInPlace();
-
-	Vec3 ownerForward{};
-	Math::AngleVectors(ownerViewangles, &ownerForward, nullptr, nullptr);
-	ownerForward.z = 0.0f;
-	ownerForward.NormalizeInPlace();
-
-	Vec3 targetForward{};
-	Math::AngleVectors(targetEyeAngles, &targetForward, nullptr, nullptr);
-	targetForward.z = 0.0f;
-	targetForward.NormalizeInPlace();
-
-	return toTarget.Dot(targetForward) > (0.0f + 0.03125f)
-		&& toTarget.Dot(ownerForward) > (0.5f + 0.03125f)
-		&& targetForward.Dot(ownerForward) > (-0.3f + 0.03125f);
-}
-
 bool CanKnifeOneShot(C_TFPlayer* target, bool crit, bool miniCrit)
 {
 	if (!target || target->IsInvulnerable())
@@ -111,15 +90,20 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		return;
 	}
 
+	// A manually-fired knife command belongs to the post-aimbot historical
+	// melee resolver. AutoBackstab must not select a different player/pose when
+	// that resolver deliberately leaves the incoming tick untouched.
+	if (G::bManualMeleeFiring)
+	{
+		return;
+	}
+
 	const Vec3 vLocalAngles = I::EngineClient->GetViewAngles();
 
 	// Hoist invariant reads. pLocal->GetShootPos() was being called 3x per
 	// target (FOV check, angle calc, trace) and pLocal->GetCenter() once.
 	const Vec3 vShootPos = pLocal->GetShootPos();
 	const Vec3 vLocalCenter = pLocal->GetCenter();
-	// Knife swing range 48 + melee trace hull 18 + ~24 player half-width ~= 90 units.
-	constexpr float kMaxBackstabCandidateRange = 90.0f;
-	constexpr float kMaxBackstabCandidateRangeSqr = kMaxBackstabCandidateRange * kMaxBackstabCandidateRange;
 	const float flSwingRange = pWeapon->GetSwingRange(); // knife returns 48; matches the game's real melee reach
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
@@ -137,7 +121,6 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		}
 
 		const Vec3 vTargetCenter = pPlayer->GetCenter();
-		const bool bLiveTargetInRange = vShootPos.DistToSqr(vTargetCenter) <= kMaxBackstabCandidateRangeSqr;
 
 		if (CFG::Triggerbot_AutoBackstab_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
 		{
@@ -177,7 +160,8 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			}
 		}
 
-		if (bInFOV && bLiveTargetInRange && (canKnife || IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, vTargetCenter, pPlayer->GetEyeAngles())))
+		if (bInFOV && (canKnife || H::AimUtils->IsBehindAndFacingTarget(
+			vLocalCenter, vTargetCenter, vLocalAngles, pPlayer->GetEyeAngles())))
 		{
 			Vec3 forward{};
 			Math::AngleVectors(vLocalAngles, &forward);
@@ -217,8 +201,6 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-		const float flMaxBacktrackAge = CFG::Triggerbot_AutoBackstab_Max_Backtrack_Time / 1000.0f;
-
 		for (int n = 0; n < numRecords; n++)
 		{
 			const auto record = F::LagRecords->GetRecord(pPlayer, n);
@@ -226,19 +208,15 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			if (!CLagRecords::IsRecordUsable(record, cachedState))
 				continue;
 
-			// Records are stored newest-first; once one is too old, all remaining are older.
-			// Uses the shared age helper rather than subtracting the record's pose
-			// time from the target's m_flSimulationTime: those are two different
-			// clocks (client render time vs a server-authored stamp that only steps
-			// on snapshot arrival), so that difference was not an elapsed time and
-			// this gate drifted with ping instead of holding at the configured ms.
-			if (CLagRecords::GetRecordAge(record, cachedState) > flMaxBacktrackAge)
-				break;
+			if (CFG::Triggerbot_AutoBackstab_FOV > 0.0f)
+			{
+				const Vec3 vAngToRecord = Math::CalcAngle(vShootPos, record->Center);
+				if (Math::CalcFov(vLocalAngles, vAngToRecord) > CFG::Triggerbot_AutoBackstab_FOV)
+					continue;
+			}
 
-			if (vShootPos.DistToSqr(record->Center) > kMaxBackstabCandidateRangeSqr)
-				continue;
-
-			if (IsBehindAndFacingTarget(vLocalCenter, vLocalAngles, record->Center, record->EyeAngles))
+			if (H::AimUtils->IsBehindAndFacingTarget(
+				vLocalCenter, record->Center, vLocalAngles, record->EyeAngles))
 			{
 				{
 					CLagRecordScope scope(record);
