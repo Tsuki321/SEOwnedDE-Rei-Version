@@ -99,7 +99,7 @@ TEST(AimbotAimAssistContracts, ManualShotSelectsNewestHitAndPreservesTickOnMiss)
     ASSERT_NE(functionEnd, std::string::npos);
 
     const auto functionBody = source.substr(functionStart, functionEnd - functionStart);
-    EXPECT_NE(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
+    EXPECT_EQ(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
     EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 1u);
 
     const auto missGuard = functionBody.find("if (!pBestRecord || !pBestPlayer)");

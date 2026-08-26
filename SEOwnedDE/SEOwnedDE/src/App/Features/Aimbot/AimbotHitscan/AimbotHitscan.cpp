@@ -409,11 +409,6 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 			if (!pRecord)
 				continue;
 
-			// Records are newest-first. Once this player's record cannot beat the
-			// best global hit, none of its older records can beat it either.
-			if (pBestRecord && pRecord->SimulationTime <= pBestRecord->SimulationTime)
-				break;
-
 			if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
 				continue;
 

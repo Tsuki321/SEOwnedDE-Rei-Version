@@ -9,7 +9,14 @@ MAKE_HOOK(CBaseEntity_AddVar, Signatures::CBaseEntity_AddVar.Get(), void, __fast
 {
 	if (CFG::Misc_Accuracy_Improvements && watcher)
 	{
-		const auto hash = HASH_RT(watcher->GetDebugName());
+		const auto pDebugName = watcher->GetDebugName();
+		if (!pDebugName)
+		{
+			CALL_ORIGINAL(ecx, data, watcher, type, bSetup);
+			return;
+		}
+
+		const auto hash = HASH_RT(pDebugName);
 
 		static constexpr auto m_iv_vecVelocity = HASH_CT("C_BaseEntity::m_iv_vecVelocity");
 		static constexpr auto m_iv_angEyeAngles = HASH_CT("C_TFPlayer::m_iv_angEyeAngles");
@@ -17,14 +24,19 @@ MAKE_HOOK(CBaseEntity_AddVar, Signatures::CBaseEntity_AddVar.Get(), void, __fast
 		static constexpr auto m_iv_flCycle = HASH_CT("C_BaseAnimating::m_iv_flCycle");
 		static constexpr auto m_iv_flMaxGroundSpeed = HASH_CT("CMultiPlayerAnimState::m_iv_flMaxGroundSpeed");
 
-		if (hash == m_iv_vecVelocity
+		const bool bAccuracyWatcher = hash == m_iv_vecVelocity
+			|| hash == m_iv_angEyeAngles
 			|| hash == m_iv_flPoseParameter
 			|| hash == m_iv_flCycle
-			|| hash == m_iv_flMaxGroundSpeed)
-			return;
-
-		if (ecx != H::Entities->GetLocal() && hash == m_iv_angEyeAngles)
-			return;
+			|| hash == m_iv_flMaxGroundSpeed;
+		if (bAccuracyWatcher)
+		{
+			const auto pLocal = (I::ClientEntityList && I::EngineClient)
+				? H::Entities->GetLocal()
+				: nullptr;
+			if (!pLocal || ecx != pLocal)
+				return;
+		}
 	}
 
 	CALL_ORIGINAL(ecx, data, watcher, type, bSetup);
@@ -36,9 +48,12 @@ MAKE_HOOK(CBaseEntity_EstimateAbsVelocity, Signatures::CBaseEntity_EstimateAbsVe
 	if (CFG::Misc_Accuracy_Improvements && ecx
 		&& ecx->GetClassId() == ETFClassIds::CTFPlayer)
 	{
-		if (const auto pPlayer = ecx->As<C_TFPlayer>())
+		const auto pLocal = (I::ClientEntityList && I::EngineClient)
+			? H::Entities->GetLocal()
+			: nullptr;
+		if ((!pLocal || ecx != pLocal) && ecx->As<C_TFPlayer>())
 		{
-			vel = pPlayer->m_vecVelocity();
+			vel = ecx->As<C_TFPlayer>()->m_vecVelocity();
 			return;
 		}
 	}

@@ -133,20 +133,26 @@ void CAimbot::Run(CUserCmd* pCmd)
 	// catches hand-aimed edge contacts and stamps the exact record that the final
 	// command intersects. Manual ownership is latched before RunMain, so an
 	// aimbot-generated IN_ATTACK cannot enter this path.
-	if (G::bManualMeleeFiring && !G::bCommandTickResolved)
+	const auto pWeaponManual = H::Entities->GetWeapon();
+	const bool bManualMeleeWeapon = pWeaponManual
+		&& H::AimUtils->GetWeaponType(pWeaponManual) == EWeaponType::MELEE;
+	const bool bManualKnifeSwing = bManualMeleeWeapon
+		&& pWeaponManual->GetWeaponID() == TF_WEAPON_KNIFE;
+	const bool bManualMeleeImpact = bManualKnifeSwing || F::AimbotMelee->IsManualSwingImpactCommand();
+	if (G::bManualMeleeFiring && bManualMeleeImpact && !G::bCommandTickResolved)
 	{
 		const auto pLocalManual = H::Entities->GetLocal();
-		const auto pWeaponManual = H::Entities->GetWeapon();
 
-		if (pLocalManual && pWeaponManual && !pLocalManual->deadflag()
-			&& H::AimUtils->GetWeaponType(pWeaponManual) == EWeaponType::MELEE)
+		if (pLocalManual && bManualMeleeWeapon && !pLocalManual->deadflag())
 		{
 			bManualMeleeResolved = F::AimbotMelee->ResolveManualSwing(pCmd, pLocalManual, pWeaponManual);
 		}
 	}
 
-	if (pWeapon && H::AimUtils->GetWeaponType(pWeapon) == EWeaponType::MELEE)
+	if (bManualMeleeWeapon)
 		F::AimbotMelee->FinishManualSwingCommand(bManualMeleeResolved);
+	else
+		F::AimbotMelee->ResetManualSwingState();
 
 	//same-ish code below to see if we are firing manually
 

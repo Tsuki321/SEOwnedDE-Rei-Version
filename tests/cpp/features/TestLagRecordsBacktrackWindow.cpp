@@ -105,6 +105,17 @@ TEST(LagRecordsBacktrackWindow, RecordAgeClampsRecordsNewerThanTheSnapshot) {
     EXPECT_FLOAT_EQ(CLagRecords::GetRecordAge(&record, MakeCached(10.0f)), 0.0f);
 }
 
+TEST(LagRecordsBacktrackWindow, MonotonicCaptureAgeAdvancesWhilePoseClockIsFrozen) {
+    LagRecord_t record{};
+    MakeRecord(record, 10.0f);
+    record.CaptureTime = 25.0f;
+
+    auto cached = MakeCached(10.0f);
+    cached.AgeReferenceTime = 25.15f;
+
+    EXPECT_NEAR(CLagRecords::GetRecordAge(&record, cached), 0.15f, 1e-5f);
+}
+
 TEST(LagRecordsBacktrackWindow, AcceptsRecordsTheServerWillHonour) {
     LagRecord_t record{};
 
@@ -381,7 +392,7 @@ TEST(LagRecordsTickOwnership, ManualMeleeUsesFinalCommandHullAndExactRecord) {
     EXPECT_NE(functionBody.find("scope.IsActive()"), std::string::npos);
     EXPECT_NE(functionBody.find("H::AimUtils->TraceEntityMelee"), std::string::npos);
     EXPECT_NE(functionBody.find("H::AimUtils->IsBehindAndFacingTarget"), std::string::npos);
-    EXPECT_NE(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
+    EXPECT_EQ(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
     EXPECT_NE(functionBody.find("CFG::Aimbot_Melee_Manual_Backtrack"), std::string::npos);
     EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 1u);
 
@@ -408,17 +419,20 @@ TEST(LagRecordsTickOwnership, ManualMeleeOwnershipIsLatchedBeforeAimbotMutation)
     EXPECT_LT(ownershipCapture, runMain);
     EXPECT_LT(delayedCapture, runMain);
     EXPECT_LT(runMain, resolver);
-    EXPECT_NE(aimbot.find("G::bManualMeleeFiring && !G::bCommandTickResolved", runMain), std::string::npos);
+    EXPECT_NE(aimbot.find("G::bManualMeleeFiring && bManualMeleeImpact && !G::bCommandTickResolved", runMain), std::string::npos);
     EXPECT_NE(aimbot.find("FinishManualSwingCommand(bManualMeleeResolved)"), std::string::npos);
     EXPECT_NE(melee.find("const bool bImpactDue"), std::string::npos);
+    EXPECT_NE(melee.find("const bool bHadPendingSwing"), std::string::npos);
     EXPECT_NE(melee.find("flSmackTime > 0.0f"), std::string::npos);
     EXPECT_NE(melee.find("curtime >= flSmackTime"), std::string::npos);
     EXPECT_NE(aimbot.find("F::AimbotMelee->ResetManualSwingState();"), std::string::npos);
     const auto captureBody = melee.substr(melee.find("CaptureManualSwingCommand"));
     const auto delayedComment = captureBody.find("The initiating command starts");
     ASSERT_NE(delayedComment, std::string::npos);
-    EXPECT_NE(captureBody.find("return false;", delayedComment), std::string::npos);
+    EXPECT_NE(captureBody.find("return true;", delayedComment), std::string::npos);
+    EXPECT_NE(aimbot.find("IsManualSwingImpactCommand()"), std::string::npos);
     EXPECT_NE(melee.find("m_flManualSwingExpireTime"), std::string::npos);
+    EXPECT_NE(aimbot.find("G::bManualMeleeFiring && bManualMeleeImpact"), std::string::npos);
     EXPECT_NE(createMove.find("G::bManualMeleeFiring = false;"), std::string::npos);
 }
 

@@ -75,9 +75,11 @@ TEST(TriggerbotContracts, AutoShootLeavesManualHitscanTickOwnedByAimbot) {
 
     ASSERT_NE(manualGuard, std::string::npos);
     ASSERT_NE(trace, std::string::npos);
-    ASSERT_NE(tickWrite, std::string::npos);
     EXPECT_LT(manualGuard, trace);
-    EXPECT_LT(manualGuard, tickWrite);
+    // AutoShoot must leave the incoming tick or the aimbot's historical tick
+    // untouched; it does not fabricate a tick for the live trace.
+    EXPECT_EQ(tickWrite, std::string::npos);
+    EXPECT_NE(src.find("G::bCommandTickResolved = true;", trace), std::string::npos);
 }
 
 TEST(TriggerbotContracts, AutoShootCannotBypassAimbotFireDelay) {

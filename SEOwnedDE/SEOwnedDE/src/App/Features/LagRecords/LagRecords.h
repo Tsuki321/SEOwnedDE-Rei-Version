@@ -96,6 +96,9 @@ struct LagRecord_t
 	// time; Accuracy Improvements stores the newest network simulation time.
 	// GetCommandTick preserves either pairing when a consumer writes a command.
 	float SimulationTime = -1.0f;
+	// Monotonic client clock at capture, used to age records when a remote
+	// player's simulation time stops advancing during packet choke.
+	float CaptureTime = -1.0f;
 	Vec3 AbsOrigin = {};
 	Vec3 AbsAngles = {};
 	Vec3 EyeAngles = {};
@@ -118,9 +121,9 @@ struct LagRecordCachedState_t
 	Vec3 EyeAngles = {};
 	int Flags = 0;
 	float FeetYaw = 0.0f;
-	// Reference point a record's age is measured against. It is always on the
-	// same clock selected at capture: curtime - GetLerp() for a vanilla render
-	// pose, or m_flSimulationTime for Accuracy Improvements' network pose.
+	// Reference point paired with the current pose. It is always on the same
+	// clock selected at capture: curtime - GetLerp() for a vanilla render pose,
+	// or m_flSimulationTime for Accuracy Improvements' network pose.
 	//
 	// The old failure was mixing these modes: comparing a vanilla client render
 	// time against the target's server-authored simulation stamp. That difference
@@ -129,6 +132,9 @@ struct LagRecordCachedState_t
 	//
 	// Seeded to -1 to mark "no snapshot has been built for this player yet".
 	float PoseReferenceTime = -1.0f;
+	// Monotonic client clock for age/pruning. This keeps stale records aging when
+	// a remote simulation timestamp stops during choke or packet loss.
+	float AgeReferenceTime = -1.0f;
 	// Per-frame ceiling on the age of a usable record, computed once in
 	// UpdateRecords so every consumer and the ghost renderer share one verdict.
 	// Defaults to 0 so an unpopulated snapshot rejects every record rather than
@@ -246,10 +252,10 @@ public:
 	// this" indicator must agree with what a shot would accept.
 	static bool IsRecordUsable(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached);
 
-	// How far back a shot stamped with this record would ask the server to rewind,
-	// in seconds. Both terms use the same per-mode pose clock (see
-	// LagRecordCachedState_t::PoseReferenceTime), so their difference is elapsed
-	// pose time rather than a mixed client/server timestamp.
+	// How long this record has existed on the client, in seconds. Newly captured
+	// records carry a monotonic CaptureTime/AgeReferenceTime pair so packet choke
+	// cannot freeze their age. Legacy/default test records fall back to the
+	// mode-matched pose clock pair.
 	//
 	// Deliberately pure arithmetic over two floats, with no I::GlobalVars or
 	// convar reads, so it stays executable headless in the unit tests.

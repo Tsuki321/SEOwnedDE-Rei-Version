@@ -254,6 +254,7 @@ void CLagRecords::AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime)
 	newRecord.Player = pPlayer;
 	newRecord.ModelIndex = nModelIndex;
 	newRecord.SimulationTime = flSimTime;
+	newRecord.CaptureTime = I::GlobalVars->realtime;
 	newRecord.AbsOrigin = vecOrigin;
 	newRecord.AbsAngles = pPlayer->GetAbsAngles();
 	newRecord.EyeAngles = pPlayer->GetEyeAngles();
@@ -423,6 +424,7 @@ void CLagRecords::UpdateRecords()
 			state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements
 				? pPlayer->m_flSimulationTime()
 				: flPoseReference;
+			state.AgeReferenceTime = I::GlobalVars ? I::GlobalVars->realtime : -1.0f;
 			state.MaxBacktrackTime = flBacktrackWindow;
 
 			if (const auto pAnimState = pPlayer->GetAnimState())
@@ -467,14 +469,15 @@ void CLagRecords::UpdateRecords()
 			continue;
 		}
 
-		// Records are stored newest-first; SimulationTime strictly decreases
-		// toward the back, and validity is monotonic w.r.t. age. Walk forward
-		// to the first invalid record, then bulk-truncate the tail.
+		// Records are stored newest-first, and both pose validity and monotonic
+		// capture age get older toward the back. Walk forward to the first invalid
+		// record, then bulk-truncate the tail.
 		size_t firstInvalid = m_RecordCounts[i];
 		for (size_t n = 0; n < m_RecordCounts[i]; ++n)
 		{
 			const size_t phys = (head + MAX_LAG_RECORDS - n) % MAX_LAG_RECORDS;
-			if (!IsSimulationTimeValid(flPoseReferenceTime, records[phys].SimulationTime, flMaxWindow, flLatency))
+			if (!IsSimulationTimeValid(flPoseReferenceTime, records[phys].SimulationTime, flMaxWindow, flLatency)
+				|| !IsWithinBacktrackWindow(&records[phys], m_CachedStates[i]))
 			{
 				firstInvalid = n;
 				break;
@@ -498,6 +501,7 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 	state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements
 		? pPlayer->m_flSimulationTime()
 		: (I::GlobalVars ? I::GlobalVars->curtime - SDKUtils::GetLerp() : -1.0f);
+	state.AgeReferenceTime = I::GlobalVars ? I::GlobalVars->realtime : -1.0f;
 	// A caller building its own snapshot has no access to the smoothed jitter
 	// estimate, so it gets the fixed margin only. That is conservative by
 	// construction: never deeper than the per-frame window UpdateRecords hands to
@@ -546,7 +550,13 @@ bool CLagRecords::DiffersFromCurrentCached(const LagRecord_t* pRecord, const Lag
 
 float CLagRecords::GetRecordAge(const LagRecord_t* pRecord, const LagRecordCachedState_t& cached)
 {
-	if (!pRecord || cached.PoseReferenceTime < 0.0f || pRecord->SimulationTime < 0.0f)
+	if (!pRecord || pRecord->SimulationTime < 0.0f)
+		return 0.0f;
+
+	if (pRecord->CaptureTime >= 0.0f && cached.AgeReferenceTime >= 0.0f)
+		return std::max(cached.AgeReferenceTime - pRecord->CaptureTime, 0.0f);
+
+	if (cached.PoseReferenceTime < 0.0f)
 		return 0.0f;
 
 	return std::max(cached.PoseReferenceTime - pRecord->SimulationTime, 0.0f);

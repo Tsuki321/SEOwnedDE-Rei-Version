@@ -29,8 +29,9 @@ public:
 	// Captures a user-started swing before RunMain can synthesize IN_ATTACK.
 	// Non-knife weapons may report the actual smack on a later command, so the
 	// ownership is carried for one bounded swing window and only released when
-	// IsFiring reports that impact command.
+	// the actual smack-time impact command arrives.
 	bool CaptureManualSwingCommand(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
+	bool IsManualSwingImpactCommand() const { return m_bManualSwingImpactCommand; }
 	void FinishManualSwingCommand(bool bResolved);
 	void ResetManualSwingState();
 	// Resolves a hand-aimed swing against the newest historical pose actually

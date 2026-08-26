@@ -327,8 +327,16 @@ bool CAimbotMelee::CaptureManualSwingCommand(const CUserCmd* pCmd, C_TFWeaponBas
 	if (!pCmd || !pWeapon || !I::GlobalVars || pWeapon->GetWeaponID() == TF_WEAPON_KNIFE)
 		return false;
 
+	if (m_bManualSwingPending
+		&& (m_pManualSwingWeapon != pWeapon
+			|| I::GlobalVars->curtime > m_flManualSwingExpireTime))
+	{
+		ResetManualSwingState();
+	}
+
+	const bool bHadPendingSwing = m_bManualSwingPending;
 	const bool bUserStartedSwing = (pCmd->buttons & IN_ATTACK) && G::bCanPrimaryAttack;
-	if (bUserStartedSwing)
+	if (!m_bManualSwingPending && bUserStartedSwing)
 	{
 		m_pManualSwingWeapon = pWeapon;
 		m_flManualSwingExpireTime = I::GlobalVars->curtime + 0.5f;
@@ -338,28 +346,24 @@ bool CAimbotMelee::CaptureManualSwingCommand(const CUserCmd* pCmd, C_TFWeaponBas
 	if (!m_bManualSwingPending)
 		return false;
 
-	if (m_pManualSwingWeapon != pWeapon
-		|| I::GlobalVars->curtime > m_flManualSwingExpireTime)
-	{
-		ResetManualSwingState();
-		return false;
-	}
-
 	const float flSmackTime = pWeapon->m_flSmackTime();
 	const float flImpactTolerance = I::GlobalVars->interval_per_tick * 2.0f;
 	const bool bImpactDue = flSmackTime > 0.0f
 		&& I::GlobalVars->curtime >= flSmackTime
 		&& I::GlobalVars->curtime - flSmackTime <= flImpactTolerance;
 
-	if (!bUserStartedSwing && bImpactDue)
+	// The swing must have been pending before this command. This keeps a stale
+	// smack timestamp from resolving a newly initiated swing, while still
+	// allowing held attack to resolve the real delayed impact.
+	if (bHadPendingSwing && bImpactDue)
 	{
 		m_bManualSwingImpactCommand = true;
-		return true;
 	}
 
-	// The initiating command starts the weapon's swing but does not carry the
-	// delayed smack yet. Resolve historical contact on the later impact command.
-	return false;
+	// Keep ownership for the whole bounded swing window. The initiating command
+	// starts the weapon's swing but does not carry delayed damage yet; the caller
+	// separately checks m_bManualSwingImpactCommand before resolving history.
+	return true;
 }
 
 void CAimbotMelee::FinishManualSwingCommand(bool bResolved)
@@ -427,11 +431,6 @@ bool CAimbotMelee::ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 			if (!pRecord)
 				continue;
-
-			// Records are newest-first. Once this player's record cannot beat the
-			// newest global hull hit, neither can any of its older records.
-			if (pBestRecord && pRecord->SimulationTime <= pBestRecord->SimulationTime)
-				break;
 
 			if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
 				continue;
