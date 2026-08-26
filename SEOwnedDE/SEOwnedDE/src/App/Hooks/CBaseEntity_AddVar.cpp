@@ -51,9 +51,10 @@ MAKE_HOOK(CBaseEntity_EstimateAbsVelocity, Signatures::CBaseEntity_EstimateAbsVe
 		const auto pLocal = (I::ClientEntityList && I::EngineClient)
 			? H::Entities->GetLocal()
 			: nullptr;
-		if ((!pLocal || ecx != pLocal) && ecx->As<C_TFPlayer>())
+		if (const auto pPlayer = ecx->As<C_TFPlayer>();
+			(!pLocal || ecx != pLocal) && pPlayer)
 		{
-			vel = ecx->As<C_TFPlayer>()->m_vecVelocity();
+			vel = pPlayer->m_vecVelocity();
 			return;
 		}
 	}

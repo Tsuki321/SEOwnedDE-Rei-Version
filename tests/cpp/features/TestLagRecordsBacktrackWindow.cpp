@@ -427,9 +427,9 @@ TEST(LagRecordsTickOwnership, ManualMeleeOwnershipIsLatchedBeforeAimbotMutation)
     EXPECT_NE(melee.find("curtime >= flSmackTime"), std::string::npos);
     EXPECT_NE(aimbot.find("F::AimbotMelee->ResetManualSwingState();"), std::string::npos);
     const auto captureBody = melee.substr(melee.find("CaptureManualSwingCommand"));
-    const auto delayedComment = captureBody.find("The initiating command starts");
-    ASSERT_NE(delayedComment, std::string::npos);
-    EXPECT_NE(captureBody.find("return true;", delayedComment), std::string::npos);
+    const auto captureEnd = captureBody.find("void CAimbotMelee::FinishManualSwingCommand");
+    ASSERT_NE(captureEnd, std::string::npos);
+    EXPECT_NE(captureBody.substr(0, captureEnd).find("return true;"), std::string::npos);
     EXPECT_NE(aimbot.find("IsManualSwingImpactCommand()"), std::string::npos);
     EXPECT_NE(melee.find("m_flManualSwingExpireTime"), std::string::npos);
     EXPECT_NE(aimbot.find("G::bManualMeleeFiring && bManualMeleeImpact"), std::string::npos);
