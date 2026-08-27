@@ -81,36 +81,6 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 			? false : CALL_ORIGINAL(ecx, flInputSampleTime, pCmd);
 	}
 
-	G::bCanPrimaryAttack = false;
-	G::bCanSecondaryAttack = false;
-	G::bCanHeadshot = false;
-
-	if (pLocal && pWeapon)
-	{
-		G::bCanPrimaryAttack = pWeapon->CanPrimaryAttack(pLocal);
-		G::bCanSecondaryAttack = pWeapon->CanSecondaryAttack(pLocal);
-		G::bCanHeadshot = pWeapon->CanHeadShot(pLocal);
-	}
-
-	//nTicksSinceCanFire
-	{
-		static bool bOldCanFire = G::bCanPrimaryAttack;
-
-		if (G::bCanPrimaryAttack != bOldCanFire)
-		{
-			G::nTicksSinceCanFire = 0;
-			bOldCanFire = G::bCanPrimaryAttack;
-		}
-
-		else
-		{
-			if (G::bCanPrimaryAttack)
-				G::nTicksSinceCanFire++;
-
-			else G::nTicksSinceCanFire = 0;
-		}
-	}
-
 	F::Misc->Bunnyhop(pCmd);
 	F::Misc->AutoStrafer(pCmd);
 	F::Misc->FastStop(pCmd);
@@ -122,6 +92,40 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 
 	F::EnginePrediction->Start(pCmd);
 	{
+		// Sample these flags on predicted curtime so AutoBackstab/aimbot can fire
+		// the first predicted-ready tick. CanPrimaryAttack still uses restored
+		// tickbase after Start, so recompute from curtime instead.
+		G::bCanPrimaryAttack = false;
+		G::bCanSecondaryAttack = false;
+		G::bCanHeadshot = false;
+
+		if (pLocal && pWeapon)
+		{
+			const float flCurTime = I::GlobalVars->curtime;
+			G::bCanPrimaryAttack = pWeapon->m_flNextPrimaryAttack() <= flCurTime && pLocal->m_flNextAttack() <= flCurTime;
+			G::bCanSecondaryAttack = pWeapon->m_flNextSecondaryAttack() <= flCurTime && pLocal->m_flNextAttack() <= flCurTime;
+			G::bCanHeadshot = pWeapon->CanHeadShot(pLocal);
+		}
+
+		//nTicksSinceCanFire
+		{
+			static bool bOldCanFire = G::bCanPrimaryAttack;
+
+			if (G::bCanPrimaryAttack != bOldCanFire)
+			{
+				G::nTicksSinceCanFire = 0;
+				bOldCanFire = G::bCanPrimaryAttack;
+			}
+
+			else
+			{
+				if (G::bCanPrimaryAttack)
+					G::nTicksSinceCanFire++;
+
+				else G::nTicksSinceCanFire = 0;
+			}
+		}
+
 		if (CFG::Misc_Choke_On_Bhop && CFG::Misc_Bunnyhop)
 		{
 			if (pLocal)

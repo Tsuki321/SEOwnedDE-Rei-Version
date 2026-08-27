@@ -1481,6 +1481,7 @@ void CMenu::MainWindow()
 			{
 				CheckBox("Active", CFG::Triggerbot_AutoBackstab_Active);
 				CheckBox("Knife If Lethal", CFG::Triggerbot_AutoBackstab_Knife_If_Lethal);
+				CheckBox("Allow Cloaked", CFG::Triggerbot_AutoBackstab_Allow_Cloaked);
 
 				CheckBox("Use Lag Records", CFG::Triggerbot_AutoBackstab_Use_LagRecords);
 				SliderFloat("FOV", CFG::Triggerbot_AutoBackstab_FOV, 0.0f, 180.0f, 1.0f, "%.0f");

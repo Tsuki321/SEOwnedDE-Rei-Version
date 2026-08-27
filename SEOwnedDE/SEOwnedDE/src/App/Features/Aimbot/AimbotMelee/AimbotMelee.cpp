@@ -157,27 +157,28 @@ bool CAimbotMelee::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, MeleeT
 			{
 				int nRecords = 0;
 
-				if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
-					continue;
-
-				const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
-
-				for (int n = 0; n < nRecords; n++)
+				// Empty ring: skip records, still offer the live pose below.
+				if (F::LagRecords->HasRecords(pPlayer, &nRecords))
 				{
-					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+					const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-					if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
-						continue;
+					for (int n = 0; n < nRecords; n++)
+					{
+						const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, HITBOX_BODY, pRecord->BoneData.data());
-					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-					const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
-					const float flDistTo = vLocalPos.DistTo(vPos);
+						if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
+							continue;
 
-					if (nSortMode == 0 && flFOVTo > flFOVLimit)
-						continue;
+						Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, HITBOX_BODY, pRecord->BoneData.data());
+						Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
+						const float flFOVTo = nSortMode == 0 ? Math::CalcFov(vLocalAngles, vAngleTo) : 0.0f;
+						const float flDistTo = vLocalPos.DistTo(vPos);
 
-					m_vecTargets.emplace_back(MeleeTarget_t{ pPlayer, vPos, vAngleTo, flFOVTo, flDistTo, pRecord->SimulationTime, pRecord });
+						if (nSortMode == 0 && flFOVTo > flFOVLimit)
+							continue;
+
+						m_vecTargets.emplace_back(MeleeTarget_t{ pPlayer, vPos, vAngleTo, flFOVTo, flDistTo, pRecord->SimulationTime, pRecord });
+					}
 				}
 			}
 
@@ -382,9 +383,7 @@ void CAimbotMelee::ResetManualSwingState()
 
 bool CAimbotMelee::ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
-	if (!pCmd || !pLocal || !pWeapon
-		|| !CFG::Aimbot_Target_Players || !CFG::Aimbot_Melee_Target_LagRecords
-		|| !CFG::Aimbot_Melee_Manual_Backtrack)
+	if (!pCmd || !pLocal || !pWeapon)
 		return false;
 
 	const Vec3 vTraceStart = pLocal->GetShootPos();
@@ -399,6 +398,82 @@ bool CAimbotMelee::ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 
 	const LagRecord_t* pBestRecord = nullptr;
 	C_TFPlayer* pBestPlayer = nullptr;
+
+	if (CFG::Aimbot_Melee_Manual_Backtrack
+		&& CFG::Aimbot_Target_Players && CFG::Aimbot_Melee_Target_LagRecords)
+	{
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+		{
+			if (!pEntity)
+				continue;
+
+			const auto pPlayer = pEntity->As<C_TFPlayer>();
+			if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+				continue;
+
+			if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
+				continue;
+
+			int nRecords = 0;
+			if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+				continue;
+
+			const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
+			for (int n = 0; n < nRecords; ++n)
+			{
+				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+				if (!pRecord)
+					continue;
+
+				if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
+					continue;
+
+				// A knife tick is only valid when this exact historical pose satisfies
+				// the server's backstab-facing geometry. A hull overlap alone can be a
+				// front slash and must not be stamped as a backstab record.
+				if (bKnife && !H::AimUtils->IsBehindAndFacingTarget(
+					vLocalCenter, pRecord->Center, vSwingAngles, pRecord->EyeAngles))
+					continue;
+
+				CLagRecordScope scope(pRecord);
+				if (!scope.IsActive())
+					continue;
+
+				if (!H::AimUtils->TraceEntityMelee(pPlayer, vTraceStart, vTraceEnd))
+					continue;
+
+				pBestRecord = pRecord;
+				pBestPlayer = pPlayer;
+				break;
+			}
+		}
+	}
+
+	if (pBestRecord && pBestPlayer)
+	{
+		pCmd->tick_count = CLagRecords::GetCommandTick(pBestRecord->SimulationTime);
+		G::bCommandTickResolved = true;
+		G::nTargetIndexEarly = pBestPlayer->entindex();
+		G::nTargetIndex = pBestPlayer->entindex();
+		return true;
+	}
+
+	// No historical pose on the hull. Accuracy Improvements pins live bones
+	// to the newest network pose, so a live hit must be paired with
+	// GetCommandTick(simTime) or the server rewinds to the interpolated
+	// present and the swing misses. Vanilla interpolation already matches
+	// vanilla tick_count, so leave the command untouched in that mode.
+	if (!CFG::Misc_Accuracy_Improvements)
+		return false;
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
@@ -421,48 +496,17 @@ bool CAimbotMelee::ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 		if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
 			continue;
 
-		int nRecords = 0;
-		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+		if (!H::AimUtils->TraceEntityMelee(pPlayer, vTraceStart, vTraceEnd))
 			continue;
 
-		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
-		for (int n = 0; n < nRecords; ++n)
-		{
-			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
-			if (!pRecord)
-				continue;
-
-			if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
-				continue;
-
-			// A knife tick is only valid when this exact historical pose satisfies
-			// the server's backstab-facing geometry. A hull overlap alone can be a
-			// front slash and must not be stamped as a backstab record.
-			if (bKnife && !H::AimUtils->IsBehindAndFacingTarget(
-				vLocalCenter, pRecord->Center, vSwingAngles, pRecord->EyeAngles))
-				continue;
-
-			CLagRecordScope scope(pRecord);
-			if (!scope.IsActive())
-				continue;
-
-			if (!H::AimUtils->TraceEntityMelee(pPlayer, vTraceStart, vTraceEnd))
-				continue;
-
-			pBestRecord = pRecord;
-			pBestPlayer = pPlayer;
-			break;
-		}
+		pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
+		G::bCommandTickResolved = true;
+		G::nTargetIndexEarly = pPlayer->entindex();
+		G::nTargetIndex = pPlayer->entindex();
+		return true;
 	}
 
-	if (!pBestRecord || !pBestPlayer)
-		return false;
-
-	pCmd->tick_count = CLagRecords::GetCommandTick(pBestRecord->SimulationTime);
-	G::bCommandTickResolved = true;
-	G::nTargetIndexEarly = pBestPlayer->entindex();
-	G::nTargetIndex = pBestPlayer->entindex();
-	return true;
+	return false;
 }
 
 void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
@@ -490,8 +534,9 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 		{
 			G::nTargetIndex = target.Entity->entindex();
 
-			// Auto shoot
-			if (aimKeyDown)
+			// Knife autoshoot is owned by AutoBackstab so a front slash cannot
+			// consume the swing / claim the tick.
+			if (aimKeyDown && pWeapon->GetWeaponID() != TF_WEAPON_KNIFE)
 			{
 				if (ShouldFire(target))
 				{
@@ -523,10 +568,6 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 					// not run at all with the aim key up (Aimbot_Key is unbound
 					// by default, though Aimbot_Melee_Always_Active can stand in
 					// for it), so verify the resulting angles instead of assuming.
-					// A live-pose candidate has no record to rewind to - its
-					// SimulationTime describes the interpolated present - so
-					// leaving tick_count alone keeps the server's own latency
-					// correction, which is what that swing was aimed with.
 					Vec3 vAimError = target.AngleTo - pLocal->m_vecPunchAngle() - pCmd->viewangles;
 					Math::ClampAngles(vAimError);
 
@@ -535,17 +576,21 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 
 					if (bAimbotDirectedSwing)
 					{
-						if (target.LagRecord)
-						{
+						// Historical records always stamp GetCommandTick so the
+						// server rewinds to the pose we swung at.
+						//
+						// Live pose depends on Accuracy Improvements:
+						// - On: live bones are the newest network pose;
+						//   GetCommandTick(simTime) pairs the command with it
+						//   (the server subtracts lerp).
+						// - Off: live bones are the interpolated present;
+						//   leaving vanilla tick_count is correct.
+						if (target.LagRecord || CFG::Misc_Accuracy_Improvements)
 							pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
-						}
 
 						// Claim the command even when the winner was a live pose.
-						// Keeping the incoming tick is a decision, not an absence of
-						// one: without the flag, AutoBackstab reads "nobody owns
-						// this" and rewinds a swing the melee aimbot had already
-						// aimed at the present, so the stab connects on screen and
-						// misses on the server.
+						// Without the flag, AutoBackstab reads "nobody owns this"
+						// and rewinds a swing the melee aimbot had already aimed.
 						G::bCommandTickResolved = true;
 					}
 				}

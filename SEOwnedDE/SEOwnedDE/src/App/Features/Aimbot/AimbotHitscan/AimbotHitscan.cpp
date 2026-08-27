@@ -363,8 +363,7 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target, c
 
 bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 {
-	if (!pCmd || !pLocal || !CFG::Aimbot_Hitscan_Manual_Backtrack
-		|| !CFG::Aimbot_Target_Players || !CFG::Aimbot_Hitscan_Target_LagRecords)
+	if (!pCmd || !pLocal)
 		return false;
 
 	const Vec3 vTraceStart = pLocal->GetShootPos();
@@ -376,6 +375,83 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 
 	const LagRecord_t* pBestRecord = nullptr;
 	C_TFPlayer* pBestPlayer = nullptr;
+
+	if (CFG::Aimbot_Hitscan_Manual_Backtrack
+		&& CFG::Aimbot_Target_Players && CFG::Aimbot_Hitscan_Target_LagRecords)
+	{
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+		{
+			if (!pEntity)
+				continue;
+
+			const auto pPlayer = pEntity->As<C_TFPlayer>();
+			if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+				continue;
+
+			if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
+				continue;
+
+			int nRecords = 0;
+			if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+				continue;
+
+			const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
+			for (int n = 0; n < nRecords; ++n)
+			{
+				const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+				if (!pRecord)
+					continue;
+
+				if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
+					continue;
+
+				CLagRecordScope scope(pRecord);
+				if (!scope.IsActive())
+					continue;
+
+				// Get hitbox set after activating historical pose to ensure model index matches
+				const auto pHitboxSet = GetHitboxSet(pPlayer);
+				if (!pHitboxSet)
+					continue;
+
+				if (!HistoricalPoseMayIntersectRay(pHitboxSet, pRecord, vTraceStart, vForward, flTraceLength))
+					continue;
+
+				if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
+					continue;
+
+				pBestRecord = pRecord;
+				pBestPlayer = pPlayer;
+				break;
+			}
+		}
+	}
+
+	if (pBestRecord && pBestPlayer)
+	{
+		pCmd->tick_count = CLagRecords::GetCommandTick(pBestRecord->SimulationTime);
+		G::bCommandTickResolved = true;
+		G::nTargetIndexEarly = pBestPlayer->entindex();
+		G::nTargetIndex = pBestPlayer->entindex();
+		return true;
+	}
+
+	// No historical pose on the ray. Accuracy Improvements pins live bones to
+	// the newest network pose, so a live hit must be paired with
+	// GetCommandTick(simTime) or the server rewinds to the interpolated
+	// present and the shot misses. Vanilla interpolation already matches
+	// vanilla tick_count, so leave the command untouched in that mode.
+	if (!CFG::Misc_Accuracy_Improvements)
+		return false;
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
@@ -398,49 +474,17 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 		if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
 			continue;
 
-		int nRecords = 0;
-		if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
+		if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
 			continue;
 
-		const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
-		for (int n = 0; n < nRecords; ++n)
-		{
-			const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
-			if (!pRecord)
-				continue;
-
-			if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
-				continue;
-
-			CLagRecordScope scope(pRecord);
-			if (!scope.IsActive())
-				continue;
-
-			// Get hitbox set after activating historical pose to ensure model index matches
-			const auto pHitboxSet = GetHitboxSet(pPlayer);
-			if (!pHitboxSet)
-				continue;
-
-			if (!HistoricalPoseMayIntersectRay(pHitboxSet, pRecord, vTraceStart, vForward, flTraceLength))
-				continue;
-
-			if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
-				continue;
-
-			pBestRecord = pRecord;
-			pBestPlayer = pPlayer;
-			break;
-		}
+		pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
+		G::bCommandTickResolved = true;
+		G::nTargetIndexEarly = pPlayer->entindex();
+		G::nTargetIndex = pPlayer->entindex();
+		return true;
 	}
 
-	if (!pBestRecord || !pBestPlayer)
-		return false;
-
-	pCmd->tick_count = CLagRecords::GetCommandTick(pBestRecord->SimulationTime);
-	G::bCommandTickResolved = true;
-	G::nTargetIndexEarly = pBestPlayer->entindex();
-	G::nTargetIndex = pBestPlayer->entindex();
-	return true;
+	return false;
 }
 
 bool CAimbotHitscan::ValidateTarget(C_TFPlayer* pLocal, HitscanTarget_t& target,
@@ -572,29 +616,30 @@ bool CAimbotHitscan::GetTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, Hits
 			{
 				int nRecords = 0;
 
-				if (!F::LagRecords->HasRecords(pPlayer, &nRecords))
-					continue;
-
-				const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
-
-				for (int n = 0; n < nRecords; n++)
+				// Empty ring: skip records, still offer the live pose below.
+				if (F::LagRecords->HasRecords(pPlayer, &nRecords))
 				{
-					const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
+					const auto& cachedState = F::LagRecords->GetCachedState(pPlayer->entindex());
 
-					if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
-						continue;
+					for (int n = 0; n < nRecords; n++)
+					{
+						const auto pRecord = F::LagRecords->GetRecord(pPlayer, n);
 
-					Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, nAimHitbox, pRecord->BoneData.data());
-					Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
-					const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
-					const float flDistTo = vLocalPos.DistTo(vPos);
+						if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
+							continue;
 
-					if (flFOVTo > flFOVLimit)
-						continue;
+						Vec3 vPos = SDKUtils::GetHitboxPosFromMatrix(pPlayer, nAimHitbox, pRecord->BoneData.data());
+						Vec3 vAngleTo = Math::CalcAngle(vLocalPos, vPos);
+						const float flFOVTo = Math::CalcFov(vLocalAngles, vAngleTo);
+						const float flDistTo = vLocalPos.DistTo(vPos);
 
-					m_vecTargets.emplace_back(AimTarget_t {
-						pPlayer, vPos, vAngleTo, flFOVTo, flDistTo
-					}, nAimHitbox, pRecord->SimulationTime, pRecord);
+						if (flFOVTo > flFOVLimit)
+							continue;
+
+						m_vecTargets.emplace_back(AimTarget_t {
+							pPlayer, vPos, vAngleTo, flFOVTo, flDistTo
+						}, nAimHitbox, pRecord->SimulationTime, pRecord);
+					}
 				}
 			}
 
@@ -1217,25 +1262,23 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 					if (bAimbotDirectedShot)
 					{
-						// Only rewind when the winning candidate actually is a
-						// historical pose. A live-pose candidate carries
-						// m_flSimulationTime while its position is the
-						// interpolated present, so stamping it fabricates a
-						// historical tick for a pose that was never recorded;
-						// leaving tick_count alone lets the server apply its own
-						// latency correction, which is what that shot was aimed
-						// with.
-						if (target.LagRecord)
-						{
+						// Historical records always stamp GetCommandTick so the
+						// server rewinds to the pose we aimed at.
+						//
+						// Live pose depends on Accuracy Improvements:
+						// - On: CBaseEntity_BaseInterpolatePart1 pins remote
+						//   players to the newest network pose, so live bones
+						//   ARE that pose. GetCommandTick(simTime) pairs the
+						//   command with it (the server subtracts lerp).
+						// - Off: live bones are the interpolated present;
+						//   leaving vanilla tick_count is correct.
+						if (target.LagRecord || CFG::Misc_Accuracy_Improvements)
 							pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
-						}
 
-						// Claim the command either way. The live-pose case is a
-						// deliberate decision to keep the incoming tick, and it is
-						// every bit as much a decision as writing one - without the
-						// flag, AutoBackstab and the manual resolver both read
-						// "nobody owns this" and retarget a shot the aimbot had
-						// already aimed at the present.
+						// Claim the command either way. Without the flag,
+						// AutoBackstab and the manual resolver both read
+						// "nobody owns this" and retarget a shot the aimbot
+						// had already aimed.
 						G::bCommandTickResolved = true;
 					}
 				}

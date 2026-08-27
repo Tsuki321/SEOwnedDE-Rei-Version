@@ -4,6 +4,14 @@
 
 #include "../../LagRecords/LagRecords.h"
 
+// Jungle Inferno gave the knife a windup when attacking from the lowered pose:
+// only a server-primed stab (m_bReadyToBackstab) lands instantly. The netvar
+// arrives with normal latency, so when detection fires early we hold the swing
+// for a bounded number of ticks instead of committing an un-primed stab that
+// pays the windup. If the flag never arrives in time, commit anyway - a slow
+// stab beats no stab.
+constexpr int BACKSTAB_PRIME_WAIT_TICKS = 5;
+
 static bool HasActiveRazorback(C_TFPlayer* pPlayer)
 {
 	if (!pPlayer)
@@ -75,7 +83,12 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		return;
 	}
 
-	if (!G::bCanPrimaryAttack || pLocal->m_bFeignDeathReady() || pLocal->m_flInvisibility() > 0.0f || pWeapon->GetWeaponID() != TF_WEAPON_KNIFE)
+	if (!G::bCanPrimaryAttack || pLocal->m_bFeignDeathReady() || pWeapon->GetWeaponID() != TF_WEAPON_KNIFE)
+	{
+		return;
+	}
+
+	if (!CFG::Triggerbot_AutoBackstab_Allow_Cloaked && pLocal->m_flInvisibility() > 0.0f)
 	{
 		return;
 	}
@@ -90,9 +103,10 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 		return;
 	}
 
-	// A manually-fired knife command belongs to the post-aimbot historical
-	// melee resolver. AutoBackstab must not select a different player/pose when
-	// that resolver deliberately leaves the incoming tick untouched.
+	// A manually-fired knife command belongs to the post-aimbot melee resolver.
+	// AutoBackstab must not select a different player/pose when that resolver
+	// has already claimed the tick, or when it deliberately left vanilla
+	// tick_count in place for an interpolated live pose.
 	if (G::bManualMeleeFiring)
 	{
 		return;
@@ -105,6 +119,11 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 	const Vec3 vShootPos = pLocal->GetShootPos();
 	const Vec3 vLocalCenter = pLocal->GetCenter();
 	const float flSwingRange = pWeapon->GetSwingRange(); // knife returns 48; matches the game's real melee reach
+
+	// Ready-to-backstab fires immediately along the current view with no aim.
+	const bool bReadyToBackstab = pWeapon->As<C_TFKnife>()->m_bReadyToBackstab();
+
+	bool bBackstabOpportunity = false;
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 	{
@@ -160,8 +179,8 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 			}
 		}
 
-		if (bInFOV && (canKnife || H::AimUtils->IsBehindAndFacingTarget(
-			vLocalCenter, vTargetCenter, vLocalAngles, pPlayer->GetEyeAngles())))
+		if (bReadyToBackstab || (bInFOV && (canKnife || H::AimUtils->IsBehindAndFacingTarget(
+			vLocalCenter, vTargetCenter, vLocalAngles, pPlayer->GetEyeAngles()))))
 		{
 			Vec3 forward{};
 			Math::AngleVectors(vLocalAngles, &forward);
@@ -170,24 +189,39 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 
 			if (H::AimUtils->TraceEntityMelee(pPlayer, vShootPos, to))
 			{
-				pCmd->buttons |= IN_ATTACK;
+				// A lethal slash kills outright and needs no primed pose, and a
+				// primed stab is instant, so both commit immediately. A detected
+				// backstab on a lowered knife waits out BACKSTAB_PRIME_WAIT_TICKS
+				// for the server to raise it first.
+				const bool bCommitSwing = bReadyToBackstab
+					|| (bInFOV && canKnife)
+					|| m_nUnprimedDetectionTicks >= BACKSTAB_PRIME_WAIT_TICKS;
 
-				// Deliberately leave tick_count alone. This branch traced the
-				// live pose, i.e. the *interpolated* present (~curtime - lerp),
-				// while m_flSimulationTime is the newest server update the
-				// player has. Stamping m_flSimulationTime + lerp asked the
-				// server to rewind to a pose ahead of the one we swung at - and
-				// to a pose that was never recorded in the first place. The
-				// incoming tick already carries the server's own latency
-				// correction, which is what this swing was aimed with. Claim
-				// ownership so no later feature rewinds it.
-				G::bCommandTickResolved = true;
+				if (bCommitSwing)
+				{
+					pCmd->buttons |= IN_ATTACK;
 
-				return;
+					// Live pose depends on Accuracy Improvements:
+					// - On: live bones are the newest network pose, so stamp
+					//   GetCommandTick(simTime). The server subtracts lerp and
+					//   lands on that pose.
+					// - Off: live bones are the interpolated present; leaving
+					//   vanilla tick_count is correct.
+					// Claim ownership so no later feature rewinds it.
+					if (CFG::Misc_Accuracy_Improvements)
+						pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
+					G::bCommandTickResolved = true;
+					m_nUnprimedDetectionTicks = 0;
+
+					return;
+				}
+
+				// Detected but un-primed: count the opportunity and keep waiting.
+				bBackstabOpportunity = true;
 			}
 		}
 
-		if (!CFG::Triggerbot_AutoBackstab_Use_LagRecords)
+		if (bReadyToBackstab || !CFG::Triggerbot_AutoBackstab_Use_LagRecords)
 		{
 			continue;
 		}
@@ -238,16 +272,33 @@ void CAutoBackstab::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* p
 						continue;
 				}
 
-				pCmd->buttons |= IN_ATTACK;
+				if (m_nUnprimedDetectionTicks >= BACKSTAB_PRIME_WAIT_TICKS)
+				{
+					pCmd->buttons |= IN_ATTACK;
 
-				// Same pose/tick pairing every other consumer uses: records store
-				// the pose time, GetCommandTick re-adds the lerp the server
-				// subtracts. Claim the tick so nothing downstream retargets it.
-				pCmd->tick_count = CLagRecords::GetCommandTick(record->SimulationTime);
-				G::bCommandTickResolved = true;
+					// Same pose/tick pairing every other consumer uses: records store
+					// the pose time, GetCommandTick re-adds the lerp the server
+					// subtracts. Claim the tick so nothing downstream retargets it.
+					pCmd->tick_count = CLagRecords::GetCommandTick(record->SimulationTime);
+					G::bCommandTickResolved = true;
+					m_nUnprimedDetectionTicks = 0;
 
-				return;
+					return;
+				}
+
+				bBackstabOpportunity = true;
 			}
 		}
 	}
+
+	if (bReadyToBackstab)
+	{
+		pCmd->buttons |= IN_ATTACK;
+		m_nUnprimedDetectionTicks = 0;
+		return;
+	}
+
+	// Advance the prime wait only while a stab is actually waiting; otherwise
+	// restart it so a stale count never short-changes the next detection.
+	m_nUnprimedDetectionTicks = bBackstabOpportunity ? m_nUnprimedDetectionTicks + 1 : 0;
 }

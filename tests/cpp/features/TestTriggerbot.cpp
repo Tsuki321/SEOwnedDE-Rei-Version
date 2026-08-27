@@ -76,9 +76,18 @@ TEST(TriggerbotContracts, AutoShootLeavesManualHitscanTickOwnedByAimbot) {
     ASSERT_NE(manualGuard, std::string::npos);
     ASSERT_NE(trace, std::string::npos);
     EXPECT_LT(manualGuard, trace);
-    // AutoShoot must leave the incoming tick or the aimbot's historical tick
-    // untouched; it does not fabricate a tick for the live trace.
-    EXPECT_EQ(tickWrite, std::string::npos);
+    // AutoShoot may stamp tick_count only after the live trace, only when
+    // Accuracy Improvements pins bones to the newest network pose, and only
+    // through GetCommandTick - never a hand-rolled TIME_TO_TICKS remap.
+    ASSERT_NE(tickWrite, std::string::npos);
+    EXPECT_LT(trace, tickWrite);
+    const auto accuracyGate = src.rfind("CFG::Misc_Accuracy_Improvements", tickWrite);
+    ASSERT_NE(accuracyGate, std::string::npos);
+    EXPECT_LT(trace, accuracyGate);
+    EXPECT_LT(accuracyGate, tickWrite);
+    EXPECT_NE(src.find("CLagRecords::GetCommandTick", tickWrite), std::string::npos);
+    EXPECT_EQ(src.find("TIME_TO_TICKS"), std::string::npos);
+    EXPECT_EQ(src.find("pCmd->tick_count =", tickWrite + 1), std::string::npos);
     EXPECT_NE(src.find("G::bCommandTickResolved = true;", trace), std::string::npos);
 }
 
@@ -115,6 +124,27 @@ TEST(TriggerbotContracts, AutoBackstabDoesNotRetargetManualMelee) {
     ASSERT_NE(manualGuard, std::string::npos);
     ASSERT_NE(targetLoop, std::string::npos);
     EXPECT_LT(manualGuard, targetLoop);
+}
+
+TEST(TriggerbotContracts, AutoBackstabWaitsForPrimedKnifeBeforeCommittingStab) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);
+
+    // Jungle Inferno gave un-primed knife attacks a windup, so a detected
+    // backstab must not commit on the lowered pose: it holds the swing for a
+    // bounded number of commands waiting for the server-primed netvar.
+    EXPECT_NE(src.find("BACKSTAB_PRIME_WAIT_TICKS"), std::string::npos);
+    EXPECT_NE(src.find("m_nUnprimedDetectionTicks >= BACKSTAB_PRIME_WAIT_TICKS"), std::string::npos);
+    EXPECT_NE(src.find("m_bReadyToBackstab()"), std::string::npos);
+
+    // The wait must be bounded, never an open-ended gate: the counter resets
+    // on every commit and only advances while an opportunity is waiting.
+    EXPECT_NE(src.find("m_nUnprimedDetectionTicks = 0;"), std::string::npos);
+    EXPECT_NE(src.find("m_nUnprimedDetectionTicks + 1"), std::string::npos);
+
+    // Lethal slashes and primed stabs commit immediately - no priming wait.
+    EXPECT_NE(src.find("(bInFOV && canKnife)"), std::string::npos);
+    EXPECT_NE(src.find("const bool bCommitSwing = bReadyToBackstab"), std::string::npos);
 }
 
 TEST(TriggerbotContracts, ExpensiveQueriesFollowCheapClassification) {

@@ -89,27 +89,29 @@ TEST(AimbotAimAssistContracts, ManualShotUsesExactHistoricalRayWithoutFovGate) {
     EXPECT_EQ(functionBody.find("Aimbot_Hitscan_FOV"), std::string::npos);
 }
 
-TEST(AimbotAimAssistContracts, ManualShotSelectsNewestHitAndPreservesTickOnMiss) {
+TEST(AimbotAimAssistContracts, ManualShotStampsHistoricalHitThenAccuracyGatedLivePose) {
     const auto root = testhelpers::FindRepoRoot();
     const auto source = testhelpers::ReadTextFile(root / kHitscanSource);
     const auto functionStart = source.find("bool CAimbotHitscan::ResolveManualShot");
-    const auto functionEnd = source.find("bool CAimbotHitscan::GetTarget", functionStart);
+    const auto functionEnd = source.find("bool CAimbotHitscan::ValidateTarget", functionStart);
 
     ASSERT_NE(functionStart, std::string::npos);
     ASSERT_NE(functionEnd, std::string::npos);
 
     const auto functionBody = source.substr(functionStart, functionEnd - functionStart);
     EXPECT_EQ(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
-    EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 1u);
+    EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 2u);
 
-    const auto missGuard = functionBody.find("if (!pBestRecord || !pBestPlayer)");
-    const auto missReturn = functionBody.find("return false;", missGuard);
-    const auto tickWrite = functionBody.find("pCmd->tick_count =");
-    ASSERT_NE(missGuard, std::string::npos);
-    ASSERT_NE(missReturn, std::string::npos);
-    ASSERT_NE(tickWrite, std::string::npos);
-    EXPECT_LT(missGuard, missReturn);
-    EXPECT_LT(missReturn, tickWrite);
+    const auto historicalStamp = functionBody.find("CLagRecords::GetCommandTick(pBestRecord->SimulationTime)");
+    const auto liveStamp = functionBody.find("CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime())");
+    const auto accuracyGate = functionBody.find("CFG::Misc_Accuracy_Improvements");
+    ASSERT_NE(historicalStamp, std::string::npos);
+    ASSERT_NE(liveStamp, std::string::npos);
+    ASSERT_NE(accuracyGate, std::string::npos);
+    EXPECT_LT(historicalStamp, accuracyGate);
+    EXPECT_LT(accuracyGate, liveStamp);
+    EXPECT_NE(functionBody.find("if (pBestRecord && pBestPlayer)"), std::string::npos);
+    EXPECT_EQ(functionBody.find("TIME_TO_TICKS"), std::string::npos);
 
     const auto runStart = source.find("void CAimbotHitscan::Run");
     ASSERT_NE(runStart, std::string::npos);

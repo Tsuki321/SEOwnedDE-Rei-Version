@@ -102,6 +102,7 @@ namespace CFG
 
 	CFGVAR(Triggerbot_AutoBackstab_Active, true);
 	CFGVAR(Triggerbot_AutoBackstab_Knife_If_Lethal, true);
+	CFGVAR(Triggerbot_AutoBackstab_Allow_Cloaked, true);
 	CFGVAR(Triggerbot_AutoBackstab_Use_LagRecords, true);
 	CFGVAR(Triggerbot_AutoBackstab_FOV, 90.0f);
 	CFGVAR(Triggerbot_AutoBackstab_Ignore_Friends, true);

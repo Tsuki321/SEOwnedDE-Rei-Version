@@ -34,8 +34,11 @@ public:
 	bool IsManualSwingImpactCommand() const { return m_bManualSwingImpactCommand; }
 	void FinishManualSwingCommand(bool bResolved);
 	void ResetManualSwingState();
-	// Resolves a hand-aimed swing against the newest historical pose actually
-	// intersected by the finalized command's real melee hull.
+	// Resolves a hand-aimed swing against the pose actually intersected by the
+	// finalized command's real melee hull. Historical records always win when
+	// one lies on the hull. If none do, Accuracy Improvements pins live bones
+	// to the newest network pose, so the live hit is stamped via
+	// GetCommandTick(simTime); otherwise vanilla tick_count is left alone.
 	bool ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 	void Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
 };

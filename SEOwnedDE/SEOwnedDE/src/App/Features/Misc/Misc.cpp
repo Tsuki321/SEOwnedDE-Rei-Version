@@ -1,6 +1,7 @@
 #include "Misc.h"
 
 #include "../CFG.h"
+#include "../LagRecords/LagRecords.h"
 
 void CMisc::Bunnyhop(CUserCmd* pCmd)
 {
@@ -530,15 +531,19 @@ void CMisc::AutoMedigun(CUserCmd* cmd)
 
 			G::bPSilentAngles = true;
 
+			// Live pose depends on Accuracy Improvements:
+			// - On: live bones are the newest network pose, so stamp
+			//   GetCommandTick(simTime). The server subtracts lerp and lands
+			//   on that pose.
+			// - Off: live bones are the interpolated present; leaving vanilla
+			//   tick_count is correct.
+			// Claim either way so the shared ownership rule holds for every
+			// tick writer. Safe against the aimbot and triggerbot paths, which
+			// all require a HITSCAN or MELEE weapon and so cannot be live
+			// while a medigun is equipped.
 			if (CFG::Misc_Accuracy_Improvements)
-			{
-				cmd->tick_count = TIME_TO_TICKS(pl->m_flSimulationTime() + SDKUtils::GetLerp());
-				// Claim the command so the shared ownership rule holds for every
-				// tick writer without exception. Safe against the aimbot and
-				// triggerbot paths, which all require a HITSCAN or MELEE weapon and
-				// so cannot be live while a medigun is equipped.
-				G::bCommandTickResolved = true;
-			}
+				cmd->tick_count = CLagRecords::GetCommandTick(pl->m_flSimulationTime());
+			G::bCommandTickResolved = true;
 
 			break;
 		}

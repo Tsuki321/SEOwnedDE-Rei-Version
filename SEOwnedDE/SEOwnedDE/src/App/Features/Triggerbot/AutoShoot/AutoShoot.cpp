@@ -2,6 +2,8 @@
 
 #include "../../CFG.h"
 
+#include "../../LagRecords/LagRecords.h"
+
 // Returns the hitbox scale factor based on the hitbox group.
 // Head: strict (small scale = only fires when deep inside hitbox)
 // Body/torso: lenient (full or nearly full hitbox)
@@ -53,7 +55,8 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 		return;
 
 	// A manual shot owns its command tick. Hitscan has either resolved it to a
-	// historical pose or intentionally left the incoming tick unchanged.
+	// historical pose, stamped the live network pose when Accuracy Improvements
+	// is on, or intentionally left the incoming tick unchanged.
 	if (G::bManualHitscanFiring)
 		return;
 
@@ -143,16 +146,14 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 
 	G::bFiring = true;
 
-	// The trace above ran against the LIVE interpolated pose, so the incoming tick
-	// is already the right one for this shot: the server rewinds by its own
-	// latency + lerp estimate and lands on what the client rendered.
-	//
-	// This used to write TIME_TO_TICKS(m_flSimulationTime() + GetLerp()), which
-	// fabricates a historical tick for a pose that was never recorded - it aims the
-	// server at the target's last networked simulation time while the trace that
-	// justified the shot used the interpolated present, and the two differ by
-	// (lerp - (curtime - m_flSimulationTime)), a ping-dependent term. That is the
-	// same defect already removed from hitscan, melee and backstab; this call site
-	// was missed. Claim the command so nothing downstream retargets it either.
+	// Live pose depends on Accuracy Improvements:
+	// - On: the trace ran against the newest network pose, so stamp
+	//   GetCommandTick(simTime). The server subtracts lerp and lands on
+	//   that pose.
+	// - Off: the trace ran against the interpolated present; leaving
+	//   vanilla tick_count is correct.
+	// Claim the command so nothing downstream retargets it either.
+	if (CFG::Misc_Accuracy_Improvements)
+		pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
 	G::bCommandTickResolved = true;
 }

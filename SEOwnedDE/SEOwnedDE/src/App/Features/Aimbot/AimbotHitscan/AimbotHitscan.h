@@ -49,13 +49,15 @@ class CAimbotHitscan
 public:
 	bool IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
 
-	// Stamp a hand-aimed shot's tick_count from the historical pose the crosshair
-	// ray actually intersects. Public because CAimbot::Run drives it from OUTSIDE
-	// RunMain: every early return in RunMain and in Run below used to swallow it,
-	// which is why manual backtracking only worked in some game states. Sets
-	// G::bCommandTickResolved on success. Returns false and leaves the command
-	// untouched when no usable record lies on the ray, which is the correct
-	// fallback - the server then applies its own latency correction.
+	// Stamp a hand-aimed shot's tick_count from the pose the crosshair ray
+	// actually intersects. Historical records always win when one lies on the
+	// ray. If none do, Accuracy Improvements pins live bones to the newest
+	// network pose, so the live hit is stamped via GetCommandTick(simTime);
+	// otherwise vanilla tick_count is left alone for the interpolated present.
+	// Public because CAimbot::Run drives it from OUTSIDE RunMain: every early
+	// return in RunMain and in Run below used to swallow it, which is why
+	// manual backtracking only worked in some game states. Sets
+	// G::bCommandTickResolved on success.
 	bool ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal);
 
 	void Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);

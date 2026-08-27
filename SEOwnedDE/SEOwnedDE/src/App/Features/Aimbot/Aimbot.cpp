@@ -64,7 +64,7 @@ void CAimbot::Run(CUserCmd* pCmd)
 
 	// Capture manual ownership before RunMain can add IN_ATTACK itself. The
 	// triggerbot runs after the aimbot and must not replace this command's
-	// historical tick (or its unchanged fallback tick).
+	// historical tick, Accuracy-gated live tick, or unchanged vanilla tick.
 	if (pLocal && pWeapon && !pLocal->deadflag())
 	{
 			switch (H::AimUtils->GetWeaponType(pWeapon))
@@ -120,8 +120,10 @@ void CAimbot::Run(CUserCmd* pCmd)
 	// RunMain, so re-deriving "am I firing" here would read false.
 	//
 	// The ownership flag stops this from second-guessing a decision the aimbot
-	// already made - including its deliberate choice to leave tick_count alone for
-	// a shot that was aimed at a live pose.
+	// already made. ResolveManualShot then tries historical records, and if
+	// none lie on the ray, stamps GetCommandTick for the live network pose
+	// when Accuracy Improvements is on. Vanilla interpolation keeps the
+	// incoming tick.
 	if (G::bManualHitscanFiring && !G::bCommandTickResolved)
 	{
 		if (const auto pLocalManual = H::Entities->GetLocal(); pLocalManual && !pLocalManual->deadflag())
