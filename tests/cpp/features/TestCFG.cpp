@@ -29,3 +29,13 @@ TEST(CFGContracts, HeaderHasWideConfigurationSurface) {
     EXPECT_GE(testhelpers::CountOccurrences(text, "Color_t"), 10u);
     EXPECT_GE(testhelpers::CountOccurrences(text, "#pragma region"), 8u);
 }
+
+TEST(CFGContracts, ProjectileRocketSplashDefaultsToDirectHit) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto text = testhelpers::ReadTextFile(root / kCfgHeader);
+
+    // splash-first aiming accepted impacts far past the direct-hit hull, so the
+    // default must try the direct hit before any splash fallback
+    EXPECT_NE(text.find("CFGVAR(Aimbot_Projectile_Rocket_Splash, 0)"), std::string::npos);
+    EXPECT_EQ(text.find("CFGVAR(Aimbot_Projectile_Rocket_Splash, 2)"), std::string::npos);
+}

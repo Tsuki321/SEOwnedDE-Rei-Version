@@ -24,10 +24,6 @@ TEST(FrameStageAnimDriveContracts, DoesNotManuallyDriveAnimations) {
     EXPECT_EQ(src.find("UpdateClientSideAnimation()"), std::string::npos);
     EXPECT_EQ(src.find("G::bUpdatingAnims"), std::string::npos);
     EXPECT_EQ(src.find("nDifference"), std::string::npos);
-
-	// TICK_INTERVAL may scope render-only origin smoothing, but never a manual
-	// animation advancement loop.
-	EXPECT_NE(src.find("state.InterpolationDuration = TICK_INTERVAL"), std::string::npos);
 }
 
 TEST(FrameStageAnimDriveContracts, CapturesPoseWithModeMatchedClock) {
@@ -43,28 +39,16 @@ TEST(FrameStageAnimDriveContracts, CapturesPoseWithModeMatchedClock) {
     EXPECT_EQ(src.find("CFG::Misc_SetupBones_Optimization"), std::string::npos);
 }
 
-TEST(FrameStageAnimDriveContracts, AccuracyVisualOffsetWrapsGameplayCapture) {
+TEST(FrameStageAnimDriveContracts, AccuracyModeRendersNetworkPoseWithoutSweep) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kHookSource);
 
-    const auto restore = src.find("RestoreAccuracyVisualOffsets();");
-    const auto capture = src.find("F::LagRecords->AddRenderRecord(pPlayer, flPoseTime)");
-    const auto update = src.find("F::LagRecords->UpdateRecords()");
-    const auto apply = src.find("ApplyAccuracyVisualOffsets();");
-
-    ASSERT_NE(restore, std::string::npos);
-    ASSERT_NE(capture, std::string::npos);
-    ASSERT_NE(update, std::string::npos);
-    ASSERT_NE(apply, std::string::npos);
-    EXPECT_LT(restore, capture);
-    EXPECT_LT(capture, update);
-    EXPECT_LT(update, apply);
-
-    EXPECT_NE(src.find("UpdateAccuracyVisualInterpolation();"), std::string::npos);
-    EXPECT_NE(src.find("pBase[n][0][3] += vDelta.x"), std::string::npos);
-    EXPECT_NE(src.find("entry.OriginalBones.data()"), std::string::npos);
-    EXPECT_NE(src.find("memcpy(pBase, entry.OriginalBones.data()"), std::string::npos);
-    EXPECT_NE(src.find("pPlayer->InvalidateBoneCache()"), std::string::npos);
+    EXPECT_EQ(src.find("RestoreAccuracyVisualOffsets"), std::string::npos);
+    EXPECT_EQ(src.find("ApplyAccuracyVisualOffsets"), std::string::npos);
+    EXPECT_EQ(src.find("UpdateAccuracyVisualInterpolation"), std::string::npos);
+    EXPECT_EQ(src.find("SetAbsOrigin"), std::string::npos);
+    EXPECT_EQ(src.find("InvalidateBoneCache"), std::string::npos);
+    EXPECT_EQ(src.find("TICK_INTERVAL"), std::string::npos);
 }
 
 TEST(FrameStageAnimDriveContracts, CapturePolicyPrecedesBoneCapture) {

@@ -2293,14 +2293,13 @@ void CMenu::MainWindow()
 		
 		GroupBoxStart("Game", 160);
 		{
-			//at this point this does so much and lots of stuff relies on it, better make it impossible to turn off
-			/*if (CheckBox("Accuracy Improvements", CFG::Misc_Accuracy_Improvements))
+			if (CheckBox("Accuracy Improvements", CFG::Misc_Accuracy_Improvements))
 			{
 				if (I::EngineClient->IsConnected())
 				{
 					I::EngineClient->ClientCmd_Unrestricted("retry");
 				}
-			}*/
+			}
 
 			CheckBox("Network Fix", CFG::Misc_Ping_Reducer);
 			CheckBox("Prediction Error Jitter Fix", CFG::Misc_Pred_Error_Jitter_Fix);

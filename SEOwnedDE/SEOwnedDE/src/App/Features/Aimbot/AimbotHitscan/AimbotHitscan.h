@@ -50,10 +50,13 @@ public:
 	bool IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
 
 	// Stamp a hand-aimed shot's tick_count from the pose the crosshair ray
-	// actually intersects. Historical records always win when one lies on the
-	// ray. If none do, Accuracy Improvements pins live bones to the newest
-	// network pose, so the live hit is stamped via GetCommandTick(simTime);
-	// otherwise vanilla tick_count is left alone for the interpolated present.
+	// actually intersects. The live pose wins when it lies on the ray - the
+	// crosshair is on it, so rewinding past it to a stale (or foreign) record
+	// would move the real target off the shot server-side. Only when no live
+	// hitbox is hit does a historical record claim the command. A live hit is
+	// stamped via GetCommandTick(simTime) when Accuracy Improvements pins live
+	// bones to the newest network pose; otherwise vanilla tick_count is left
+	// alone for the interpolated present.
 	// Public because CAimbot::Run drives it from OUTSIDE RunMain: every early
 	// return in RunMain and in Run below used to swallow it, which is why
 	// manual backtracking only worked in some game states. Sets

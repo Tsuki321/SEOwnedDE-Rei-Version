@@ -154,6 +154,32 @@ TEST(LagRecordsBacktrackWindow, WindowComesFromTheSnapshotNotTheConstant) {
     EXPECT_FALSE(CLagRecords::IsWithinBacktrackWindow(&record, MakeCached(10.0f, 0.10f)));
 }
 
+TEST(LagRecordsBacktrackWindow, WindowSubtractsLatencyAfterTheFloor) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kLagRecordsSource);
+
+    // Latency is spent from the server's rewind budget before record age even
+    // counts, so UpdateRecords subtracts the smoothed one-way latency from the
+    // offered window AFTER the LAG_MIN_BACKTRACK_TIME floor: clamping a
+    // latency-starved window back up to the floor would force-offer records
+    // the server discards, which is worse than offering none.
+    const auto floor = src.find("if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)");
+    const auto latencyTerm = src.find("flBacktrackWindow -= std::max(m_flSmoothedLatency, 0.0f)");
+    ASSERT_NE(floor, std::string::npos);
+    ASSERT_NE(latencyTerm, std::string::npos);
+    EXPECT_LT(floor, latencyTerm);
+
+    // An exhausted budget collapses the window to zero, and a MaxBacktrackTime
+    // of zero already rejects every record (see
+    // UnpopulatedSnapshotRejectsEveryRecord): the live pose is the only shot
+    // the server can honour at that latency.
+    EXPECT_NE(src.find("if (flBacktrackWindow < 0.0f)"), std::string::npos);
+
+    // The ad-hoc snapshot path cannot see the smoothed estimate, but it must
+    // not hand out a latency-blind window either.
+    EXPECT_NE(src.find("std::max(GetOutgoingLatency(), 0.0f)"), std::string::npos);
+}
+
 TEST(LagRecordsBacktrackWindow, UnpopulatedSnapshotRejectsEveryRecord) {
     LagRecord_t record{};
     MakeRecord(record, 9.99f);

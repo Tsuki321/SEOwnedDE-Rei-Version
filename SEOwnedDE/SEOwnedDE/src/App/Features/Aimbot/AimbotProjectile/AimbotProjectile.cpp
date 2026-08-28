@@ -103,12 +103,15 @@ namespace
 		return true;
 	}
 
-	float GetPredictionTimingBias(C_TFWeaponBase* pWeapon)
+	float GetPredictionTimingBias(C_TFWeaponBase* pWeapon, bool bCommandChoked)
 	{
 		const bool bUsesPseudoSilent = CFG::Aimbot_Projectile_Aim_Type == 1
 			&& pWeapon && pWeapon->GetWeaponID() != TF_WEAPON_FLAMETHROWER;
-		const float flPacketDelay = bUsesPseudoSilent ? TICK_INTERVAL : 0.0f;
-		return ProjectilePredictionMath::ComputeTimingBias(SDKUtils::GetOutgoingLatency(), SDKUtils::GetLerp()) + flPacketDelay;
+		const float flPacketDelay = bUsesPseudoSilent && bCommandChoked ? TICK_INTERVAL : 0.0f;
+		// accuracy mode extrapolates from the newest network pose, so only the
+		// vanilla pose clock has to cross the interpolation window on top of the latency
+		const float flLerp = CFG::Misc_Accuracy_Improvements ? 0.0f : SDKUtils::GetLerp();
+		return ProjectilePredictionMath::ComputeTimingBias(SDKUtils::GetOutgoingLatency(), flLerp) + flPacketDelay;
 	}
 
 	float GetProjectileGravity(float flGravityMod)
@@ -552,7 +555,6 @@ bool CAimbotProjectile::RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 	CTraceFilterArc filterVal{};
 	filterVal.m_pIgnore = pLocal;
 	filterVal.m_pIgnore2 = target.Entity;
-	(void)pCmd;
 	const bool bUsesPlannedCharge = target.PlannedSpeed > 0.0f;
 	const float flProjectileSpeed = bUsesPlannedCharge ? target.PlannedSpeed : m_CurProjInfo.Speed;
 	const float flGravityMod = bUsesPlannedCharge ? target.PlannedGravityMod : m_CurProjInfo.GravityMod;
@@ -565,7 +567,10 @@ bool CAimbotProjectile::RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 			: 0.0f;
 		flRemainingChargeWait = std::max(0.0f, target.RequiredChargeTime - flCurrentCharge);
 	}
-	const float flTimingBias = GetPredictionTimingBias(pWeapon);
+	const bool bChargeRelease = m_ChargeHold.ReleasePending && pCmd
+		&& pCmd->command_number == m_ChargeHold.LastSolvedCommandNumber;
+	const bool bCommandChoked = G::bCanPrimaryAttack || bChargeRelease;
+	const float flTimingBias = GetPredictionTimingBias(pWeapon, bCommandChoked);
 
 	for (std::size_t n = 0; n < potentialCount; n++)
 	{
@@ -657,7 +662,10 @@ bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon,
 	const float muzzleUpZ = GetMuzzleUpZ(pWeapon);
 	const float dragCoeff = BallisticSolver::ComputeDragCoefficient(GetWeaponDragClass(pWeapon));
 	const bool  useHighArc = CFG::Aimbot_Projectile_High_Arc;
-	const float flTimingBias = GetPredictionTimingBias(pWeapon);
+	const bool bChargeRelease = m_ChargeHold.ReleasePending && pCmd
+		&& pCmd->command_number == m_ChargeHold.LastSolvedCommandNumber;
+	const bool bCommandChoked = G::bCanPrimaryAttack || bChargeRelease;
+	const float flTimingBias = GetPredictionTimingBias(pWeapon, bCommandChoked);
 
 	if (target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
 	{
@@ -1122,7 +1130,8 @@ bool CAimbotProjectile::ShouldAim(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TF
 
 void CAimbotProjectile::Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vAngles)
 {
-	Vec3 vAngleTo = vAngles - pLocal->m_vecPunchAngle();
+	//projectiles fire along the command viewangles without punch, so unlike hitscan the aim angles need no punch adjustment
+	Vec3 vAngleTo = vAngles;
 
 	Math::ClampAngles(vAngleTo);
 

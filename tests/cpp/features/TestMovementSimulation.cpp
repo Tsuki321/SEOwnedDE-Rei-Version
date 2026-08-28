@@ -59,6 +59,20 @@ TEST(MovementSimulationContracts, UsesGuardClausesAndReturns) {
     EXPECT_GE(totalReturns, static_cast<std::size_t>(1));
 }
 
+TEST(MovementSimulationContracts, AirStrafeYawRateDecaysAcrossHorizon) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto mainPath = root / kMainSource;
+
+    ASSERT_TRUE(std::filesystem::exists(mainPath));
+
+    const auto mainSource = testhelpers::ReadTextFile(mainPath);
+    // ground strafe keeps its settle ramp
+    EXPECT_NE(mainSource.find("Math::RemapValClamped(flTimeToTarget, 0.0f, 1.0f, 1.0f, 0.5f)"), std::string::npos);
+    // air strafe decays the per-snapshot turn rate toward zero so a single
+    // snapshot cannot curve the whole prediction horizon
+    EXPECT_NE(mainSource.find("powf(flAirDecayPerTick, static_cast<float>(TIME_TO_TICKS(std::max(flTimeToTarget, 0.0f))))"), std::string::npos);
+}
+
 TEST(MovementPredictionMath, YawDeltaPreservesDirectionAcrossWraparound) {
     EXPECT_FLOAT_EQ(MovementPredictionMath::NormalizeYawDelta(5.0f, 355.0f), 10.0f);
     EXPECT_FLOAT_EQ(MovementPredictionMath::NormalizeYawDelta(355.0f, 5.0f), -10.0f);

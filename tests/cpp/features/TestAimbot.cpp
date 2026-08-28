@@ -206,6 +206,19 @@ TEST(AimbotContracts, ProjectileSplashAndMultipointUseFinalTimingAndLaunchState)
 	EXPECT_EQ(projectileSource.find("traceVal.fraction < 0.9f"), std::string::npos);
 }
 
+TEST(AimbotContracts, ProjectileLeadMatchesPoseClockAndFireAngles) {
+	const auto root = testhelpers::FindRepoRoot();
+	const auto projectileSource = testhelpers::ReadTextFile(root / kProjectileSource);
+
+	// accuracy mode extrapolates from the newest network pose, so the lead must
+	// not cross the interpolation window on top of the outgoing latency
+	EXPECT_NE(projectileSource.find("CFG::Misc_Accuracy_Improvements ? 0.0f : SDKUtils::GetLerp()"), std::string::npos);
+	// the pseudo-silent packet delay only applies to a command that is actually choked
+	EXPECT_NE(projectileSource.find("bUsesPseudoSilent && bCommandChoked ? TICK_INTERVAL : 0.0f"), std::string::npos);
+	// projectiles fire along the command viewangles without punch, unlike hitscan
+	EXPECT_EQ(projectileSource.find("vAngles - pLocal->m_vecPunchAngle()"), std::string::npos);
+}
+
 TEST(AimbotContracts, SharedTargetScoringIsCentralizedAcrossModes) {
     const auto root = testhelpers::FindRepoRoot();
 

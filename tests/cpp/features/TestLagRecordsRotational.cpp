@@ -65,6 +65,26 @@ TEST(LagRecordsRotationalContracts, BoneMatrixHelperPreservesAndRestores) {
     EXPECT_NE(src.find("m_nActiveDepth"), std::string::npos);
 }
 
+// Restore() bail-outs must not leave backtracked bones installed at the live
+// origin. Whenever the saved matrices cannot be safely handed back - missing
+// cached bone data, an implausible Count(), a null Base(), or a bone count
+// that moved between Set and Restore - the player's bone cache is invalidated
+// so the engine rebuilds from the restored origin instead of serving the
+// stretched half-record skeleton those stale bones would produce.
+TEST(LagRecordsRotationalContracts, RestoreBailOutsInvalidateTheBoneCache) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);
+
+    // One invalidation per bail-out path (null data / bad count / null base /
+    // count mismatch), all addressed through the stack entry's player.
+    EXPECT_GE(testhelpers::CountOccurrences(src, "entry.Player->InvalidateBoneCache();"), 4u);
+    EXPECT_NE(src.find("nCachedRestore != entry.BoneCount"), std::string::npos);
+
+    // Capture still must not invalidate: records are copied out of the
+    // engine-owned pose without disturbing it.
+    EXPECT_EQ(src.find("pPlayer->InvalidateBoneCache();"), std::string::npos);
+}
+
 TEST(LagRecordsRotationalContracts, DiffersFromCurrentChecksOriginAnglesFlagsAndFeetYaw) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kFeatureCpp);

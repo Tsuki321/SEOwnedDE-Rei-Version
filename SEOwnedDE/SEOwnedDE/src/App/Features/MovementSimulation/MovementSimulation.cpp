@@ -636,5 +636,7 @@ float CMovementSimulation::GetStrafeYawStep(float flTimeToTarget) const
 	if ((m_PlayerDataBackup.m_fFlags & FL_ONGROUND) && (m_pPlayer->m_fFlags() & FL_ONGROUND))
 		return m_flYawTurnRate * Math::RemapValClamped(flTimeToTarget, 0.0f, 1.0f, 1.0f, 0.5f);
 
-	return m_flYawTurnRate;
+	//air turn rate is a single-snapshot estimate, decay it toward zero so it cannot curve the whole horizon
+	const float flAirDecayPerTick = 0.93f;
+	return m_flYawTurnRate * powf(flAirDecayPerTick, static_cast<float>(TIME_TO_TICKS(std::max(flTimeToTarget, 0.0f))));
 }

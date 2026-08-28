@@ -381,6 +381,19 @@ void CLagRecords::UpdateRecords()
 	if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)
 		flBacktrackWindow = LAG_MIN_BACKTRACK_TIME;
 
+	// Latency is spent from the server's rewind budget before record age even
+	// counts: the tick a shot carries is validated against the server's own
+	// latency estimate, so a record is only honoured while its age stays below
+	// the cutoff minus that latency. Subtract the smoothed one-way value AFTER
+	// the floor - clamping a latency-starved window back up to
+	// LAG_MIN_BACKTRACK_TIME would force-offer records the server discards -
+	// and let the budget collapse to zero, at which point no record is offered
+	// and the live pose is the correct shot.
+	flBacktrackWindow -= std::max(m_flSmoothedLatency, 0.0f);
+
+	if (flBacktrackWindow < 0.0f)
+		flBacktrackWindow = 0.0f;
+
 	// Vanilla render records use this client-clock reference. Accuracy
 	// Improvements selects each player's m_flSimulationTime below because its
 	// records hold the non-interpolated network pose instead. The invariant is
@@ -502,11 +515,14 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 		? pPlayer->m_flSimulationTime()
 		: (I::GlobalVars ? I::GlobalVars->curtime - SDKUtils::GetLerp() : -1.0f);
 	state.AgeReferenceTime = I::GlobalVars ? I::GlobalVars->realtime : -1.0f;
-	// A caller building its own snapshot has no access to the smoothed jitter
-	// estimate, so it gets the fixed margin only. That is conservative by
-	// construction: never deeper than the per-frame window UpdateRecords hands to
-	// consumers, so an ad-hoc snapshot cannot reach further than a shared one.
-	state.MaxBacktrackTime = LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN;
+	// A caller building its own snapshot has no access to the smoothed latency
+	// and jitter estimates, so it gets the fixed margin minus the raw one-way
+	// latency only. That is conservative by construction: never deeper than the
+	// per-frame window UpdateRecords hands to consumers, so an ad-hoc snapshot
+	// cannot reach further than a shared one.
+	state.MaxBacktrackTime = std::max(
+		LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN - std::max(GetOutgoingLatency(), 0.0f),
+		0.0f);
 
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		state.FeetYaw = pAnimState->m_flCurrentFeetYaw;
@@ -688,20 +704,43 @@ void CLagRecordMatrixHelper::Restore()
 	entry.Player->SetAbsOrigin(entry.AbsOrigin);
 	entry.Player->SetAbsAngles(entry.AbsAngles);
 
+	// Every bail-out below would leave the backtracked bones installed at the
+	// live origin, and the engine would serve that hybrid as both hitboxes and
+	// render pose: stretched, teleported models with wrong hitboxes. Invalidate
+	// the cache so the bones are rebuilt from the restored origin instead.
 	const auto pCachedBoneData = entry.CachedBoneData;
 
 	if (!pCachedBoneData)
+	{
+		entry.Player->InvalidateBoneCache();
 		return;
+	}
 
 	// Sanity-guard (see Set): a stale bone-cache offset yields a bogus Count()
 	// and the memcpy below would overrun. Bail instead.
 	const int nCachedRestore = pCachedBoneData->Count();
 	if (nCachedRestore <= 0 || nCachedRestore > MAX_BONE_COUNT)
+	{
+		entry.Player->InvalidateBoneCache();
 		return;
+	}
 
 	const auto pCachedBones = pCachedBoneData->Base();
 	if (!pCachedBones)
+	{
+		entry.Player->InvalidateBoneCache();
 		return;
+	}
+
+	// A bone count that moved between Set and Restore means the prefix copy
+	// below would splice saved bones onto record-era ones (or drop the tail),
+	// handing back a half-record skeleton. Nothing coherent can be restored, so
+	// force a rebuild instead of serving the hybrid.
+	if (nCachedRestore != entry.BoneCount)
+	{
+		entry.Player->InvalidateBoneCache();
+		return;
+	}
 
 	const int nBoneCount = std::min(nCachedRestore, entry.BoneCount);
 	memcpy(pCachedBones, entry.BoneMatrix, sizeof(matrix3x4_t) * nBoneCount);

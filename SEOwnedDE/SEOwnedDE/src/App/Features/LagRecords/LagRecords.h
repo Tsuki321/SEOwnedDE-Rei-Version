@@ -56,7 +56,10 @@ inline constexpr float LAG_BACKTRACK_JITTER_SCALE = 2.0f;
 
 // Floor on the usable window. Without it a badly jittering connection would
 // shrink the window to nothing and disable backtrack entirely, when a shallow
-// rewind is still both useful and safely inside the server's tolerance.
+// rewind is still both useful and safely inside the server's tolerance. The
+// floor only guards the margin/jitter terms: the smoothed one-way latency is
+// subtracted AFTER it (see UpdateRecords), because clamping a latency-starved
+// budget back up to this floor would force-offer records the server discards.
 inline constexpr float LAG_MIN_BACKTRACK_TIME = 0.05f;
 
 // How far past the newest network sample a render pose may sit and still be
@@ -158,11 +161,14 @@ class CLagRecords
 	std::array<uint8_t, MAX_PLAYERS> m_RecordHeads = {};
 	std::array<uint8_t, MAX_PLAYERS> m_RecordCounts = {};
 
-	// Exponentially-smoothed latency (outgoing + lerp) used to scope the
-	// per-frame validity window. Seeded to -1 so the first UpdateRecords adopts
-	// the raw sample verbatim instead of easing up from zero; reset to -1 on
-	// every full-ring clear (death / ghost / kart) so a stale average from a
-	// prior life or server cannot leak into a fresh one.
+	// Exponentially-smoothed outgoing latency. Scopes the per-frame validity
+	// window (lerp is added separately at the point of use) and is subtracted
+	// from the backtrack window, because the server spends our latency from its
+	// rewind budget before record age even counts - so the maximum offered
+	// record age shrinks by this much. Seeded to -1 so the first UpdateRecords
+	// adopts the raw sample verbatim instead of easing up from zero; reset to
+	// -1 on every full-ring clear (death / ghost / kart) so a stale average
+	// from a prior life or server cannot leak into a fresh one.
 	float m_flSmoothedLatency = -1.0f;
 
 	// Exponentially-smoothed magnitude of the frame-to-frame latency swing, i.e.

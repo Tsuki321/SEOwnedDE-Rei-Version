@@ -54,7 +54,7 @@ namespace CFG
 	CFGVAR(Aimbot_Projectile_Ground_Strafe_Prediction, true);
 	CFGVAR(Aimbot_Projectile_Air_Strafe_Prediction, true);
 	CFGVAR(Aimbot_Projectile_BBOX_Multipoint, true);
-	CFGVAR(Aimbot_Projectile_Rocket_Splash, 2); //0 Disabled 1 Enabled 2 Preferred
+	CFGVAR(Aimbot_Projectile_Rocket_Splash, 0); //0 Disabled 1 Enabled 2 Preferred
 	CFGVAR(Aimbot_Projectile_Aim_Type, 1); //0 Normal 1 Silent
 	CFGVAR(Aimbot_Projectile_Sort, 0); //0 FOV 1 Distance
 	CFGVAR(Aimbot_Projectile_Aim_Position, 3); //0 Feet 1 Body 2 Head 3 Auto
@@ -448,7 +448,7 @@ namespace CFG
 	CFGVAR(Misc_Taunt_Spin_Key, 0);
 	CFGVAR(Misc_Taunt_Spin_Speed, 12.0f);
 	CFGVAR(Misc_Taunt_Spin_Sine, false);
-	CFGVAR_NOSAVE(Misc_Accuracy_Improvements, true);
+	CFGVAR(Misc_Accuracy_Improvements, true);
 	CFGVAR(Misc_Pure_Bypass, true);
 	CFGVAR(Misc_NoiseMaker_Spam, false);
 	CFGVAR(Misc_No_Push, true);
