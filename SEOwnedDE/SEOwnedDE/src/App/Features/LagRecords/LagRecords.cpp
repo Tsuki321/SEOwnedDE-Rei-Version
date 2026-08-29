@@ -381,18 +381,13 @@ void CLagRecords::UpdateRecords()
 	if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)
 		flBacktrackWindow = LAG_MIN_BACKTRACK_TIME;
 
-	// Latency is spent from the server's rewind budget before record age even
-	// counts: the tick a shot carries is validated against the server's own
-	// latency estimate, so a record is only honoured while its age stays below
-	// the cutoff minus that latency. Subtract the smoothed one-way value AFTER
-	// the floor - clamping a latency-starved window back up to
-	// LAG_MIN_BACKTRACK_TIME would force-offer records the server discards -
-	// and let the budget collapse to zero, at which point no record is offered
-	// and the live pose is the correct shot.
-	flBacktrackWindow -= std::max(m_flSmoothedLatency, 0.0f);
-
-	if (flBacktrackWindow < 0.0f)
-		flBacktrackWindow = 0.0f;
+	// The window is deliberately latency-independent: the server validates the
+	// shot's tick against its own latency estimate while the client tick clock
+	// already trails the server by that same latency, so the two terms cancel
+	// and the effective bound on record age is sv_maxunlag regardless of ping.
+	// Subtracting latency here double-counts it and collapses the window toward
+	// zero at moderate ping, wiping every ring and making manual backtracks
+	// un-hittable.
 
 	// Vanilla render records use this client-clock reference. Accuracy
 	// Improvements selects each player's m_flSimulationTime below because its
@@ -515,14 +510,16 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 		? pPlayer->m_flSimulationTime()
 		: (I::GlobalVars ? I::GlobalVars->curtime - SDKUtils::GetLerp() : -1.0f);
 	state.AgeReferenceTime = I::GlobalVars ? I::GlobalVars->realtime : -1.0f;
-	// A caller building its own snapshot has no access to the smoothed latency
-	// and jitter estimates, so it gets the fixed margin minus the raw one-way
-	// latency only. That is conservative by construction: never deeper than the
-	// per-frame window UpdateRecords hands to consumers, so an ad-hoc snapshot
-	// cannot reach further than a shared one.
+	// Match the shared window formula UpdateRecords uses: margin plus the
+	// jitter allowance, floored. The jitter estimate may be unpopulated when
+	// this runs before UpdateRecords, so guard it. Latency is deliberately
+	// absent for the same reason as in UpdateRecords: the client clock already
+	// trails the server by the latency, so subtracting it here would
+	// double-count it.
+	const float flJitter = std::max(F::LagRecords->m_flLatencyJitter, 0.0f);
 	state.MaxBacktrackTime = std::max(
-		LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN - std::max(GetOutgoingLatency(), 0.0f),
-		0.0f);
+		LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN - (flJitter * LAG_BACKTRACK_JITTER_SCALE),
+		LAG_MIN_BACKTRACK_TIME);
 
 	if (const auto pAnimState = pPlayer->GetAnimState())
 		state.FeetYaw = pAnimState->m_flCurrentFeetYaw;

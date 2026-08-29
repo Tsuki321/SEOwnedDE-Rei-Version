@@ -448,7 +448,7 @@ namespace CFG
 	CFGVAR(Misc_Taunt_Spin_Key, 0);
 	CFGVAR(Misc_Taunt_Spin_Speed, 12.0f);
 	CFGVAR(Misc_Taunt_Spin_Sine, false);
-	CFGVAR(Misc_Accuracy_Improvements, true);
+	CFGVAR(Misc_Accuracy_Improvements, false);
 	CFGVAR(Misc_Pure_Bypass, true);
 	CFGVAR(Misc_NoiseMaker_Spam, false);
 	CFGVAR(Misc_No_Push, true);

@@ -373,53 +373,12 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 	constexpr float flTraceLength = 8192.0f;
 	const Vec3 vTraceEnd = vTraceStart + (vForward * flTraceLength);
 
-	// The live pose is checked FIRST: whatever the crosshair is actually on is
-	// what the user is shooting at, and rewinding past it to a stale record (or
-	// another player's record) moves the real target off the crosshair
-	// server-side. Only when no live hitbox lies on the ray does a historical
-	// record get to claim the shot.
-	//
-	// Accuracy Improvements pins live bones to the newest network pose, so a
-	// live hit must be paired with GetCommandTick(simTime) or the server
-	// rewinds to the interpolated present and the shot misses. Vanilla
-	// interpolation already matches vanilla tick_count, so leave the command
-	// untouched in that mode.
-	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
-	{
-		if (!pEntity)
-			continue;
-
-		const auto pPlayer = pEntity->As<C_TFPlayer>();
-		if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
-			continue;
-
-		if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
-			continue;
-
-		if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
-			continue;
-
-		if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
-			continue;
-
-		if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
-			continue;
-
-		if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
-			continue;
-
-		if (CFG::Misc_Accuracy_Improvements)
-		{
-			pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
-			G::bCommandTickResolved = true;
-			G::nTargetIndexEarly = pPlayer->entindex();
-			G::nTargetIndex = pPlayer->entindex();
-			return true;
-		}
-
-		return false;
-	}
-
+	// Historical records always win when one lies on the crosshair ray: the
+	// user aims at the ghost the record renderer draws, so rewinding to any
+	// other pose - including the live one - moves the target off the shot
+	// server-side. Checking the live pose first silently disabled manual
+	// backtracking whenever the target's live hull overlapped its own recent
+	// past, which is the normal case for a moving target.
 	const LagRecord_t* pBestRecord = nullptr;
 	C_TFPlayer* pBestPlayer = nullptr;
 
@@ -490,6 +449,48 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 		G::nTargetIndexEarly = pBestPlayer->entindex();
 		G::nTargetIndex = pBestPlayer->entindex();
 		return true;
+	}
+
+	// Live-pose fallback, consulted only when no historical record claimed the
+	// shot. Accuracy Improvements pins live bones to the newest network pose,
+	// so a live hit must be paired with GetCommandTick(simTime) or the server
+	// rewinds to the interpolated present and the shot misses. Vanilla
+	// interpolation already matches vanilla tick_count, so the command is left
+	// untouched in that mode. Deliberately not gated on the manual backtrack
+	// toggle: with backtrack off this is still the correct tick for a shot at
+	// a live pose in accuracy mode.
+	if (CFG::Misc_Accuracy_Improvements)
+	{
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+		{
+			if (!pEntity)
+				continue;
+
+			const auto pPlayer = pEntity->As<C_TFPlayer>();
+			if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+				continue;
+
+			if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
+				continue;
+
+			if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
+				continue;
+
+			pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
+			G::bCommandTickResolved = true;
+			G::nTargetIndexEarly = pPlayer->entindex();
+			G::nTargetIndex = pPlayer->entindex();
+			return true;
+		}
 	}
 
 	return false;

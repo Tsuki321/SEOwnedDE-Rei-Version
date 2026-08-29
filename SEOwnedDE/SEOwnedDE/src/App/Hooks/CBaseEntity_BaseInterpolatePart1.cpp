@@ -41,9 +41,11 @@ MAKE_HOOK(CBaseEntity_BaseInterpolatePart1, Signatures::CBaseEntity_BaseInterpol
 			return Shifting::bRecharging;
 
 		// Keep non-local players at their newest network pose for targeting and
-		// lag-record capture. FrameStageNotify applies a render-only origin/bone
-		// offset after capture, so this restores the accuracy split without
-		// manually advancing or otherwise owning their animation state.
+		// lag-record capture while Accuracy Improvements is enabled. There is
+		// deliberately no render-side smoothing for this mode: the rendered pose
+		// matches the validated pose exactly, at the cost of snapshot-stepped
+		// animation. With the mode off (the default) the engine interpolates
+		// remote players normally.
 		if (pEntity->GetClassId() == ETFClassIds::CTFPlayer)
 			return pEntity != pLocal;
 

@@ -89,7 +89,7 @@ TEST(AimbotAimAssistContracts, ManualShotUsesExactHistoricalRayWithoutFovGate) {
     EXPECT_EQ(functionBody.find("Aimbot_Hitscan_FOV"), std::string::npos);
 }
 
-TEST(AimbotAimAssistContracts, ManualShotStampsLivePoseFirstThenHistoricalRecords) {
+TEST(AimbotAimAssistContracts, ManualShotStampsHistoricalHitBeforeAccuracyGatedLivePose) {
     const auto root = testhelpers::FindRepoRoot();
     const auto source = testhelpers::ReadTextFile(root / kHitscanSource);
     const auto functionStart = source.find("bool CAimbotHitscan::ResolveManualShot");
@@ -102,27 +102,29 @@ TEST(AimbotAimAssistContracts, ManualShotStampsLivePoseFirstThenHistoricalRecord
     EXPECT_EQ(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
     EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 2u);
 
-    // The live pose outranks every record: the crosshair is on it, so rewinding
-    // past it to a stale (or foreign) record moved the real target off the shot
-    // server-side. The live branch runs first and is accuracy-gated; records
-    // are walked only when no live hitbox lies on the ray.
-    const auto liveStamp = functionBody.find("CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime())");
-    const auto accuracyGate = functionBody.find("CFG::Misc_Accuracy_Improvements");
+    // Historical records always win when one lies on the ray: the user aims at
+    // the ghost the record renderer draws, so any other pose - including the
+    // live one - moves the target off the shot server-side. The record stamp
+    // runs first; the live stamp exists only as an Accuracy Improvements
+    // fallback after the record pass found nothing.
     const auto historicalStamp = functionBody.find("CLagRecords::GetCommandTick(pBestRecord->SimulationTime)");
-    ASSERT_NE(liveStamp, std::string::npos);
-    ASSERT_NE(accuracyGate, std::string::npos);
+    const auto accuracyGate = functionBody.find("CFG::Misc_Accuracy_Improvements");
+    const auto liveStamp = functionBody.find("CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime())");
     ASSERT_NE(historicalStamp, std::string::npos);
+    ASSERT_NE(accuracyGate, std::string::npos);
+    ASSERT_NE(liveStamp, std::string::npos);
+    EXPECT_LT(historicalStamp, accuracyGate);
     EXPECT_LT(accuracyGate, liveStamp);
-    EXPECT_LT(liveStamp, historicalStamp);
 
-    // The live scan is not gated on the backtrack toggle: it replaces the old
-    // accuracy-gated fallback that ran after the records, so it must run even
-    // with manual backtrack disabled.
-    const auto liveScan = functionBody.find("H::AimUtils->TraceEntityBullet");
+    // The record scan is gated on the manual backtrack toggle and runs before
+    // any live-pose trace; the live fallback runs after it (and even when the
+    // toggle is off, in accuracy mode) but never preempts records.
     const auto backtrackGate = functionBody.find("Aimbot_Hitscan_Manual_Backtrack");
-    ASSERT_NE(liveScan, std::string::npos);
+    const auto firstTrace = functionBody.find("H::AimUtils->TraceEntityBullet");
     ASSERT_NE(backtrackGate, std::string::npos);
-    EXPECT_LT(liveScan, backtrackGate);
+    ASSERT_NE(firstTrace, std::string::npos);
+    EXPECT_LT(backtrackGate, firstTrace);
+    EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "H::AimUtils->TraceEntityBullet"), 2u);
 
     EXPECT_NE(functionBody.find("if (pBestRecord && pBestPlayer)"), std::string::npos);
     EXPECT_EQ(functionBody.find("TIME_TO_TICKS"), std::string::npos);

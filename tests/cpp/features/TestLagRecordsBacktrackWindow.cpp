@@ -154,30 +154,29 @@ TEST(LagRecordsBacktrackWindow, WindowComesFromTheSnapshotNotTheConstant) {
     EXPECT_FALSE(CLagRecords::IsWithinBacktrackWindow(&record, MakeCached(10.0f, 0.10f)));
 }
 
-TEST(LagRecordsBacktrackWindow, WindowSubtractsLatencyAfterTheFloor) {
+TEST(LagRecordsBacktrackWindow, WindowIsLatencyIndependent) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kLagRecordsSource);
 
-    // Latency is spent from the server's rewind budget before record age even
-    // counts, so UpdateRecords subtracts the smoothed one-way latency from the
-    // offered window AFTER the LAG_MIN_BACKTRACK_TIME floor: clamping a
-    // latency-starved window back up to the floor would force-offer records
-    // the server discards, which is worse than offering none.
-    const auto floor = src.find("if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)");
-    const auto latencyTerm = src.find("flBacktrackWindow -= std::max(m_flSmoothedLatency, 0.0f)");
-    ASSERT_NE(floor, std::string::npos);
-    ASSERT_NE(latencyTerm, std::string::npos);
-    EXPECT_LT(floor, latencyTerm);
+    // The server validates the shot's tick against ITS OWN latency estimate,
+    // and the client tick clock already trails the server by that same
+    // latency, so the two terms cancel: the effective bound on record age is
+    // sv_maxunlag regardless of ping. Latency must NOT be subtracted from the
+    // window - doing so double-counted it, collapsed the window to zero at
+    // moderate ping, and (via the one-way ring prune) wiped every record
+    // ring, which is what made manual backtracks un-hittable.
+    EXPECT_EQ(src.find("flBacktrackWindow -= std::max(m_flSmoothedLatency, 0.0f)"), std::string::npos);
+    EXPECT_EQ(src.find("if (flBacktrackWindow < 0.0f)"), std::string::npos);
 
-    // An exhausted budget collapses the window to zero, and a MaxBacktrackTime
-    // of zero already rejects every record (see
-    // UnpopulatedSnapshotRejectsEveryRecord): the live pose is the only shot
-    // the server can honour at that latency.
-    EXPECT_NE(src.find("if (flBacktrackWindow < 0.0f)"), std::string::npos);
+    // The floor still applies: a bad connection shortens backtrack depth
+    // instead of switching it off entirely.
+    EXPECT_NE(src.find("if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)"), std::string::npos);
 
-    // The ad-hoc snapshot path cannot see the smoothed estimate, but it must
-    // not hand out a latency-blind window either.
-    EXPECT_NE(src.find("std::max(GetOutgoingLatency(), 0.0f)"), std::string::npos);
+    // The ad-hoc snapshot path must not subtract raw latency either, and must
+    // use the same margin-plus-jitter formula as the shared path so every
+    // consumer sees one reachability verdict per frame.
+    EXPECT_EQ(src.find("std::max(GetOutgoingLatency(), 0.0f)"), std::string::npos);
+    EXPECT_NE(src.find("LAG_MAX_BACKTRACK_TIME - LAG_BACKTRACK_SAFETY_MARGIN - (flJitter * LAG_BACKTRACK_JITTER_SCALE)"), std::string::npos);
 }
 
 TEST(LagRecordsBacktrackWindow, UnpopulatedSnapshotRejectsEveryRecord) {
