@@ -35,32 +35,48 @@ struct DisplayPoseTest : testing::Test
 TEST_F(DisplayPoseTest, BlendsOnlyDisplayCopyAndCompletesAtSnapshotInterval)
 {
     Update(1, 1.0f, 1.0f);
+    Update(2, 1.025f, 1.0f);
     bones[0][0][3] = 12.0f;
-    EXPECT_FLOAT_EQ(Update(2, 1.03f, 1.03f)[0][0][3], 0.0f);
-    auto output = Update(3, 1.045f, 1.03f);
+    EXPECT_NEAR(Update(3, 1.03f, 1.03f)[0][0][3], 2.0f, 0.001f);
+    auto output = Update(4, 1.04f, 1.03f);
     ASSERT_NE(output, nullptr);
     EXPECT_NEAR(output[0][0][3], 6.0f, 0.001f);
     EXPECT_FLOAT_EQ(bones[0][0][3], 12.0f); // Shot/historical input is untouched.
-    EXPECT_FLOAT_EQ(Update(4, 1.07f, 1.03f)[0][0][3], 12.0f);
+    EXPECT_FLOAT_EQ(Update(5, 1.07f, 1.03f)[0][0][3], 12.0f);
 }
 
 TEST_F(DisplayPoseTest, RepeatedMaterialPassDoesNotAdvanceTheBlend)
 {
     Update(1, 1.0f, 1.0f);
+    Update(2, 1.025f, 1.0f);
     bones[0][0][3] = 12.0f;
-    Update(2, 1.03f, 1.03f);
-    const float first = Update(3, 1.045f, 1.03f)[0][0][3];
-    EXPECT_FLOAT_EQ(Update(3, 1.045f, 1.03f)[0][0][3], first);
+    Update(3, 1.03f, 1.03f);
+    const float first = Update(4, 1.04f, 1.03f)[0][0][3];
+    EXPECT_FLOAT_EQ(Update(4, 1.04f, 1.03f)[0][0][3], first);
 }
 
-TEST_F(DisplayPoseTest, NewSnapshotStartsAtLastDisplayedPose)
+TEST_F(DisplayPoseTest, NewSnapshotAdvancesFromLastDisplayedPose)
 {
     Update(1, 1.0f, 1.0f);
+    Update(2, 1.025f, 1.0f);
     bones[0][0][3] = 12.0f;
-    Update(2, 1.03f, 1.03f);
-    const float previous = Update(3, 1.045f, 1.03f)[0][0][3];
+    Update(3, 1.03f, 1.03f);
+    const float previous = Update(4, 1.04f, 1.03f)[0][0][3];
     bones[0][0][3] = 24.0f;
-    EXPECT_FLOAT_EQ(Update(4, 1.06f, 1.06f)[0][0][3], previous);
+    const float next = Update(5, 1.045f, 1.06f)[0][0][3];
+    EXPECT_GT(next, previous);
+    EXPECT_NEAR(next, previous + (24.0f - previous) / 6.0f, 0.001f);
+}
+
+TEST_F(DisplayPoseTest, UpdatesEveryFrameDoNotFreezeAtLowFrameRates)
+{
+    Update(1, 1.0f, 1.0f);
+    for (int frame = 2; frame < 20; ++frame)
+    {
+        const float now = 1.0f + (frame - 1) * 0.03f;
+        bones[0][0][3] = static_cast<float>(frame * 10);
+        EXPECT_NEAR(Update(frame, now, now)[0][0][3], bones[0][0][3], 0.001f);
+    }
 }
 
 TEST_F(DisplayPoseTest, ResetsOnTeleportReusedHandleModelChangeAndClockRewind)

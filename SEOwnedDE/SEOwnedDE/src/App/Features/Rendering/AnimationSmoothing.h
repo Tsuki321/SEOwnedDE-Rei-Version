@@ -125,8 +125,10 @@ namespace AnimationSmoothing
 			{
 				std::memcpy(m_From.data(), m_Output.data(), sizeof(Matrix) * count);
 				m_FromValid = m_OutputValid;
-				m_Start = now;
 				m_Duration = std::clamp(delta, std::min(tickInterval, 0.1f), 0.1f);
+				// Advance on the arrival frame too. Starting at zero every time
+				// freezes the display if a new snapshot arrives on every frame.
+				m_Start = now - std::min(now - m_LastTime, m_Duration);
 			}
 			const float amount = m_Duration > 0.0f ? std::clamp((now - m_Start) / m_Duration, 0.0f, 1.0f) : 1.0f;
 			for (int i = 0; i < count; ++i)
