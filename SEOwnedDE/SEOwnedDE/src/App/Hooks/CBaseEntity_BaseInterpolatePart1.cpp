@@ -41,11 +41,10 @@ MAKE_HOOK(CBaseEntity_BaseInterpolatePart1, Signatures::CBaseEntity_BaseInterpol
 			return Shifting::bRecharging;
 
 		// Keep non-local players at their newest network pose for targeting and
-		// lag-record capture while Accuracy Improvements is enabled. There is
-		// deliberately no render-side smoothing for this mode: the rendered pose
-		// matches the validated pose exactly, at the cost of snapshot-stepped
-		// animation. With the mode off (the default) the engine interpolates
-		// remote players normally.
+		// lag-record capture while Accuracy Improvements is enabled. Display-only
+		// smoothing in DrawModelExecute never changes these network fields or
+		// the bones captured for manual hitscan backtracking. With this mode off,
+		// the engine interpolates remote players normally.
 		if (pEntity->GetClassId() == ETFClassIds::CTFPlayer)
 			return pEntity != pLocal;
 

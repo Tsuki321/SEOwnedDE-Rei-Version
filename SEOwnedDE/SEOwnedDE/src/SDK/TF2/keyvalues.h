@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <cstddef>
 #include "../../Utils/Color/Color.h"
 #include "../../Utils/SignatureManager/SignatureManager.h"
 
@@ -39,11 +40,14 @@ private:
 	KeyValues *m_pPeer;
 	KeyValues *m_pSub;
 	KeyValues *m_pChain;
+	void *m_pGrowableStringTable;
 
 public:
 	bool LoadFromBuffer(char const *resource_name, const char *buffer, void *file_system = 0, const char *path_id = 0);
-	void Initialize(char *name);
+	void Initialize(const char *name);
 	KeyValues(const char *name);
+	void* operator new(std::size_t size);
+	void operator delete(void* memory) noexcept;
 	KeyValues *FindKey(const char *keyName, bool bCreate = false);
 
 	int GetInt(const char *keyName, int defaultValue = 0);
@@ -65,3 +69,5 @@ public:
 	void SetColor(const char *keyName, Color_t value);
 	void SetBool(const char *keyName, bool value) { SetInt(keyName, value ? 1 : 0); }
 };
+
+static_assert(sizeof(KeyValues) == 72, "KeyValues must match the current x64 engine layout");

@@ -1,4 +1,5 @@
 #include "SkinChanger.h"
+#include "RuntimeAttributeLayout.h"
 
 #include "../../../Utils/Storage/Storage.h"
 
@@ -16,7 +17,8 @@
 #include <limits>
 
 MAKE_SIGNATURE(CEconItemSystem_GetItemSchema, "client.dll", "48 83 EC 28 E8 ? ? ? ? 48 83 C0 08", 0x0);
-MAKE_SIGNATURE(CEconItemSchema_GetAttributeDefinition, "client.dll", "89 54 24 ? 53 48 83 EC 20 48 8B D9 48 8D 54 24 ? 48 81 C1 50 02 00 00", 0x0);
+// IDA: definitions now use an indexed pointer array, not the old tree lookup.
+MAKE_SIGNATURE(CEconItemSchema_GetAttributeDefinition, "client.dll", "85 D2 78 ? 3B 91 E8 02 00 00 7D ? 48 8B 81 D8 02 00 00 8B D2 48 8B 04 D0", 0x0);
 MAKE_SIGNATURE(CAttributeList_SetRuntimeAttributeValue, "client.dll", "48 89 5C 24 ? 55 56 57 48 8B EC 48 83 EC 50 44 8B 49", 0x0);
 
 namespace
@@ -74,14 +76,6 @@ namespace
 
 	// x64 CEconItemAttribute/CUtlVector layout used by CEconEntity::m_AttributeList.
 	// Copying these views avoids unaligned and strict-aliasing reads from engine memory.
-	struct EconItemAttributeLayout
-	{
-		void *m_pVTable = nullptr;
-		std::uint32_t m_nDefinitionIndex = 0;
-		std::uint32_t m_nRawValue = 0;
-		std::int32_t m_nRefundableCurrency = 0;
-	};
-
 	struct AttributeVectorLayout
 	{
 		const EconItemAttributeLayout *m_pMemory = nullptr;
@@ -193,7 +187,7 @@ namespace
 		for (std::size_t desiredIndex = 0; desiredIndex < desired.m_nCount; ++desiredIndex)
 		{
 			const auto &expected = desired.m_Attributes[desiredIndex];
-			const auto nExpectedIndex = static_cast<std::uint32_t>(expected.m_Attribute);
+			const auto nExpectedIndex = static_cast<std::uint16_t>(expected.m_Attribute);
 			const auto nExpectedValue = std::bit_cast<std::uint32_t>(expected.m_flValue);
 			bool bFound = false;
 
@@ -201,7 +195,7 @@ namespace
 			{
 				EconItemAttributeLayout current = {};
 				std::memcpy(&current, attributes.m_pMemory + currentIndex, sizeof(current));
-				if (current.m_nDefinitionIndex == nExpectedIndex && current.m_nRawValue == nExpectedValue)
+				if (current.Matches(nExpectedIndex, nExpectedValue))
 				{
 					bFound = true;
 					break;
