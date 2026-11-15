@@ -104,15 +104,15 @@ namespace
 
 		if (settings.m_nPaintKit > 0)
 		{
-			result.Add(EEconAttribute::PaintKit, std::bit_cast<float>(settings.m_nPaintKit));
+			result.Add(EEconAttribute::PaintKit, SkinAttributes::EncodeInteger(settings.m_nPaintKit));
 			result.Add(EEconAttribute::PaintKitWear, settings.m_flWear);
 		}
 		if (settings.m_nSeedLow > 0)
-			result.Add(EEconAttribute::PaintKitSeedLow, static_cast<float>(settings.m_nSeedLow));
+			result.Add(EEconAttribute::PaintKitSeedLow, SkinAttributes::EncodeInteger(settings.m_nSeedLow));
 		if (settings.m_nSeedHigh > 0)
-			result.Add(EEconAttribute::PaintKitSeedHigh, static_cast<float>(settings.m_nSeedHigh));
+			result.Add(EEconAttribute::PaintKitSeedHigh, SkinAttributes::EncodeInteger(settings.m_nSeedHigh));
 		if (settings.m_bTeamColored)
-			result.Add(EEconAttribute::TeamColoredPaintKit, 1.0f);
+			result.Add(EEconAttribute::TeamColoredPaintKit, SkinAttributes::EncodeInteger(1));
 		if (settings.m_bAllowInspect)
 			result.Add(EEconAttribute::AllowInspect, 1.0f);
 		if (settings.m_nUnusualEffect > 0)
@@ -122,9 +122,9 @@ namespace
 		if (settings.m_bFestivized)
 			result.Add(EEconAttribute::Festivized, 1.0f);
 		if (settings.m_bAustralium)
-			result.Add(EEconAttribute::Australium, 1.0f);
+			result.Add(EEconAttribute::Australium, SkinAttributes::EncodeInteger(1));
 		if (settings.m_bDecoratedRarity)
-			result.Add(EEconAttribute::DecoratedRarity, 1.0f);
+			result.Add(EEconAttribute::DecoratedRarity, SkinAttributes::EncodeInteger(1));
 		if (settings.m_nStyleOverride > 0)
 			result.Add(EEconAttribute::StyleOverride, static_cast<float>(settings.m_nStyleOverride));
 		if (settings.m_bTurnVictimsToGold)
@@ -144,7 +144,7 @@ namespace
 		if (settings.m_bJingleFootsteps)
 			result.Add(EEconAttribute::JingleFootsteps, 1.0f);
 		if (settings.m_bPipBoyBuildMenu)
-			result.Add(EEconAttribute::PipBoyBuildMenu, 1.0f);
+			result.Add(EEconAttribute::PipBoyBuildMenu, SkinAttributes::EncodeInteger(1));
 
 		return result;
 	}

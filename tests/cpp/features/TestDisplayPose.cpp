@@ -135,3 +135,9 @@ TEST(SkinAttributeLayout, SeedComparisonPreservesAllRawBitsIncludingNanPatterns)
     EXPECT_TRUE(attribute.Matches(866, 0x7fc00001));
     EXPECT_FALSE(attribute.Matches(866, 0x7fc00002));
 }
+
+TEST(SkinAttributeLayout, IntegerSchemaValuesSurviveTheFloatSetterExactly)
+{
+    for (const std::uint32_t value : {1u, 150u, 16777217u, 0x7fffffffu})
+        EXPECT_EQ(std::bit_cast<std::uint32_t>(SkinAttributes::EncodeInteger(value)), value);
+}

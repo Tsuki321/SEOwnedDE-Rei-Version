@@ -98,7 +98,7 @@ namespace AnimationSmoothing
 			int frame, float now, float simulationTime, float tickInterval, const float* origin,
 			const bool* validBones = nullptr)
 		{
-			if (!bones || count <= 0 || count > static_cast<int>(MaxBones)
+			if (!bones || !origin || count <= 0 || count > static_cast<int>(MaxBones)
 				|| !std::isfinite(now) || !std::isfinite(simulationTime)
 				|| !std::isfinite(tickInterval) || tickInterval <= 0.0f)
 				return nullptr;

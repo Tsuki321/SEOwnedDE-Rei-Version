@@ -2,6 +2,13 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <bit>
+
+namespace SkinAttributes
+{
+	// The setter accepts float, but integer schema attributes use its raw bits.
+	inline float EncodeInteger(std::uint32_t value) { return std::bit_cast<float>(value); }
+}
 
 // IDA verified x64 CEconItemAttribute. Its definition ID is a WORD; the
 // following padding can contain nonzero bytes and is not part of the ID.
