@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../SDK/SDK.h"
+#include "RenderedPoseClock.h"
 
 #include <array>
 #include <cstdint>
@@ -95,9 +96,8 @@ struct LagRecord_t
 	int ModelIndex = -1;
 	int BoneCount = 0;
 	std::array<matrix3x4_t, MAX_BONE_COUNT> BoneData{};
-	// Time paired with BoneData. Vanilla interpolation stores the render pose
-	// time; Accuracy Improvements stores the newest network simulation time.
-	// GetCommandTick preserves either pairing when a consumer writes a command.
+	// Render pose time paired with BoneData in both accuracy modes.
+	// GetCommandTick adds lerp once so the server rewinds to this pose.
 	float SimulationTime = -1.0f;
 	// Monotonic client clock at capture, used to age records when a remote
 	// player's simulation time stops advancing during packet choke.
@@ -124,16 +124,7 @@ struct LagRecordCachedState_t
 	Vec3 EyeAngles = {};
 	int Flags = 0;
 	float FeetYaw = 0.0f;
-	// Reference point paired with the current pose. It is always on the same
-	// clock selected at capture: curtime - GetLerp() for a vanilla render pose,
-	// or m_flSimulationTime for Accuracy Improvements' network pose.
-	//
-	// The old failure was mixing these modes: comparing a vanilla client render
-	// time against the target's server-authored simulation stamp. That difference
-	// is not elapsed time and moves with ping/interp settings. Network-pose mode
-	// may correctly use m_flSimulationTime only because its records do too.
-	//
-	// Seeded to -1 to mark "no snapshot has been built for this player yet".
+	// Same render clock used at capture; -1 means no current snapshot.
 	float PoseReferenceTime = -1.0f;
 	// Monotonic client clock for age/pruning. This keeps stale records aging when
 	// a remote simulation timestamp stops during choke or packet loss.
@@ -192,6 +183,7 @@ class CLagRecords
 	// unrelated timestamps.
 	bool m_bPoseModeInitialized = false;
 	bool m_bAccuracyPoseMode = false;
+	RenderedPoseClock m_RenderedPoseClock;
 
 	bool IsSimulationTimeValid(float flCurSimTime, float flCmprSimTime, float flMaxWindow, float flLatency);
 	void ResetForPoseModeIfChanged();
@@ -200,6 +192,18 @@ class CLagRecords
 
 public:
 	static float GetOutgoingLatency();
+	void BeginRenderFrame()
+	{
+		m_RenderedPoseClock.Capture(I::GlobalVars->curtime, SDKUtils::GetLerp());
+	}
+	void ClearRenderPoseTime() { m_RenderedPoseClock.Clear(); }
+	float GetLivePoseTime() const { return m_RenderedPoseClock.PoseTime(); }
+	int GetLiveCommandTick(int fallback) const
+	{
+		return I::GlobalVars
+			? m_RenderedPoseClock.CommandTick(SDKUtils::GetLerp(), I::GlobalVars->interval_per_tick, fallback)
+			: fallback;
+	}
 
 	// Convert the pose time stored with a historical record into the command
 	// tick the server uses for lag compensation.

@@ -1,135 +1,65 @@
 #include <gtest/gtest.h>
-
-#include "../../../SEOwnedDE/SEOwnedDE/src/App/Features/Rendering/AnimationSmoothing.h"
+#include "../../../SEOwnedDE/SEOwnedDE/src/App/Features/LagRecords/RenderedPoseClock.h"
 #include "../../../SEOwnedDE/SEOwnedDE/src/App/Features/SkinChanger/RuntimeAttributeLayout.h"
-
 #include <bit>
 #include <limits>
 
-namespace
+TEST(RenderedPoseClock, VisibleBodyTickCancelsInterpolationExactly)
 {
-using Matrix = float[3][4]; // Same array type used by Source.
-using Pose = AnimationSmoothing::Pose<Matrix, 2>;
-
-void Identity(Matrix& m, float x = 0.0f)
-{
-    std::memset(&m, 0, sizeof(m));
-    m[0][0] = m[1][1] = m[2][2] = 1.0f;
-    m[0][3] = x;
+    RenderedPoseClock clock;
+    clock.Capture(10.0f, 0.1f);
+    EXPECT_NEAR(clock.PoseTime(), 9.9f, 0.0001f);
+    EXPECT_EQ(clock.CommandTick(0.1f, 0.015f, -1), 667);
 }
 
-struct DisplayPoseTest : testing::Test
+TEST(RenderedPoseClock, LocalPredictionAndNewNetworkSamplesCannotAdvanceTheVisiblePose)
 {
-    Pose pose;
-    Matrix bones[2]{};
-    float origin[3]{};
+    RenderedPoseClock clock;
+    clock.Capture(10.0f, 0.1f);
+    // New command ticks arrive before another frame is rendered. The displayed
+    // body has not moved, even if prediction and network simulation have.
+    for (int predictedTick = 668; predictedTick < 674; ++predictedTick)
+        EXPECT_EQ(clock.CommandTick(0.1f, 0.015f, predictedTick), 667);
+    clock.Capture(10.06f, 0.1f);
+    EXPECT_EQ(clock.CommandTick(0.1f, 0.015f, -1), 671);
+}
 
-    void SetUp() override { Identity(bones[0]); Identity(bones[1]); }
-    Matrix* Update(int frame, float now, float sim, std::uint64_t identity = 1, int model = 1)
+TEST(RenderedPoseClock, UpdatedLerpStillTargetsThePreviouslyVisibleBody)
+{
+    RenderedPoseClock clock;
+    clock.Capture(10.0f, 0.1f);
+    const int tick = clock.CommandTick(0.2f, 0.015f, -1);
+    EXPECT_NEAR(tick * 0.015f - 0.2f, clock.PoseTime(), 0.0076f);
+}
+
+TEST(RenderedPoseClock, CaptureAdvancesAtLowAndHighFrameRates)
+{
+    for (float frameTime : {1.0f / 30.0f, 1.0f / 60.0f, 1.0f / 144.0f})
     {
-        return pose.Update(bones, 2, identity, model, frame, now, sim, 0.015f, origin);
-    }
-};
-}
-
-TEST_F(DisplayPoseTest, BlendsOnlyDisplayCopyAndCompletesAtSnapshotInterval)
-{
-    Update(1, 1.0f, 1.0f);
-    Update(2, 1.025f, 1.0f);
-    bones[0][0][3] = 12.0f;
-    EXPECT_NEAR(Update(3, 1.03f, 1.03f)[0][0][3], 2.0f, 0.001f);
-    auto output = Update(4, 1.04f, 1.03f);
-    ASSERT_NE(output, nullptr);
-    EXPECT_NEAR(output[0][0][3], 6.0f, 0.001f);
-    EXPECT_FLOAT_EQ(bones[0][0][3], 12.0f); // Shot/historical input is untouched.
-    EXPECT_FLOAT_EQ(Update(5, 1.07f, 1.03f)[0][0][3], 12.0f);
-}
-
-TEST_F(DisplayPoseTest, RepeatedMaterialPassDoesNotAdvanceTheBlend)
-{
-    Update(1, 1.0f, 1.0f);
-    Update(2, 1.025f, 1.0f);
-    bones[0][0][3] = 12.0f;
-    Update(3, 1.03f, 1.03f);
-    const float first = Update(4, 1.04f, 1.03f)[0][0][3];
-    EXPECT_FLOAT_EQ(Update(4, 1.04f, 1.03f)[0][0][3], first);
-}
-
-TEST_F(DisplayPoseTest, NewSnapshotAdvancesFromLastDisplayedPose)
-{
-    Update(1, 1.0f, 1.0f);
-    Update(2, 1.025f, 1.0f);
-    bones[0][0][3] = 12.0f;
-    Update(3, 1.03f, 1.03f);
-    const float previous = Update(4, 1.04f, 1.03f)[0][0][3];
-    bones[0][0][3] = 24.0f;
-    const float next = Update(5, 1.045f, 1.06f)[0][0][3];
-    EXPECT_GT(next, previous);
-    EXPECT_NEAR(next, previous + (24.0f - previous) / 6.0f, 0.001f);
-}
-
-TEST_F(DisplayPoseTest, UpdatesEveryFrameDoNotFreezeAtLowFrameRates)
-{
-    Update(1, 1.0f, 1.0f);
-    for (int frame = 2; frame < 20; ++frame)
-    {
-        const float now = 1.0f + (frame - 1) * 0.03f;
-        bones[0][0][3] = static_cast<float>(frame * 10);
-        EXPECT_NEAR(Update(frame, now, now)[0][0][3], bones[0][0][3], 0.001f);
+        RenderedPoseClock clock;
+        clock.Capture(10.0f, 0.03f);
+        for (int frame = 1; frame <= 30; ++frame)
+        {
+            const float previous = clock.PoseTime();
+            clock.Capture(10.0f + frame * frameTime, 0.03f);
+            EXPECT_GT(clock.PoseTime(), previous);
+        }
     }
 }
 
-TEST_F(DisplayPoseTest, ResetsOnTeleportReusedHandleModelChangeAndClockRewind)
+TEST(RenderedPoseClock, DisconnectAndInvalidTimesDoNotStampStaleShots)
 {
-    Update(1, 1.0f, 1.0f);
-    bones[0][0][3] = origin[0] = 500.0f;
-    EXPECT_FLOAT_EQ(Update(2, 1.03f, 1.03f)[0][0][3], 500.0f);
-    bones[0][0][3] = 520.0f;
-    EXPECT_FLOAT_EQ(Update(3, 1.06f, 1.06f, 2)[0][0][3], 520.0f);
-    bones[0][0][3] = 540.0f;
-    EXPECT_FLOAT_EQ(Update(4, 1.09f, 1.09f, 2, 2)[0][0][3], 540.0f);
-    bones[0][0][3] = 560.0f;
-    EXPECT_FLOAT_EQ(Update(1, 0.5f, 0.5f, 2, 2)[0][0][3], 560.0f);
-}
-
-TEST_F(DisplayPoseTest, ResetsAfterDormancyAndRejectsInvalidInputs)
-{
-    Update(1, 1.0f, 1.0f);
-    bones[0][0][3] = 12.0f;
-    EXPECT_FLOAT_EQ(Update(50, 2.0f, 2.0f)[0][0][3], 12.0f);
-    EXPECT_EQ(Update(51, std::numeric_limits<float>::quiet_NaN(), 2.0f), nullptr);
-    EXPECT_EQ(pose.Update(bones, 3, 1, 1, 52, 2.1f, 2.1f, 0.015f, origin), nullptr);
-}
-
-TEST(DisplayBone, HalfTurnPreservesScaleAndOrthogonalAxes)
-{
-    Matrix from{}, to{}, out{};
-    Identity(from); Identity(to);
-    to[0][0] = to[1][1] = -1.0f;
-    AnimationSmoothing::BlendBone(from, to, 0.5f, out);
-    for (int col = 0; col < 3; ++col)
-    {
-        float length = 0.0f;
-        for (int row = 0; row < 3; ++row) length += out[row][col] * out[row][col];
-        EXPECT_NEAR(length, 1.0f, 0.0001f);
-    }
-    EXPECT_NEAR(out[0][0], 0.0f, 0.0001f);
-    EXPECT_NEAR(std::abs(out[1][0]), 1.0f, 0.0001f);
-    to[0][0] = to[1][1] = to[2][2] = 2.0f;
-    AnimationSmoothing::BlendBone(from, to, 0.5f, out);
-    EXPECT_FLOAT_EQ(out[0][0], 1.5f);
-    EXPECT_FLOAT_EQ(out[1][1], 1.5f);
-    EXPECT_FLOAT_EQ(out[2][2], 1.5f);
-}
-
-TEST_F(DisplayPoseTest, BoneMissingFromPreviousLodUsesCurrentEngineTransform)
-{
-    bool valid[2]{true, false};
-    pose.Update(bones, 2, 1, 1, 1, 1.0f, 1.0f, 0.015f, origin, valid);
-    bones[1][0][3] = 30.0f;
-    valid[1] = true;
-    const auto output = pose.Update(bones, 2, 1, 1, 2, 1.03f, 1.03f, 0.015f, origin, valid);
-    EXPECT_FLOAT_EQ(output[1][0][3], 30.0f);
+    RenderedPoseClock clock;
+    EXPECT_EQ(clock.CommandTick(0.1f, 0.015f, 123), 123);
+    clock.Capture(10.0f, 0.1f);
+    clock.Clear();
+    EXPECT_EQ(clock.CommandTick(0.1f, 0.015f, 123), 123);
+    clock.Capture(std::numeric_limits<float>::quiet_NaN(), 0.1f);
+    EXPECT_EQ(clock.CommandTick(0.1f, 0.015f, 123), 123);
+    clock.Capture(10.0f, 0.1f);
+    EXPECT_EQ(clock.CommandTick(0.1f, 0.0f, 123), 123);
+    clock.Capture(0.0f, 0.1f);
+    EXPECT_EQ(clock.CommandTick(0.1f, 0.015f, 123), 123);
 }
 
 TEST(SkinAttributeLayout, MatchesDefinitionRegardlessOfPadding)

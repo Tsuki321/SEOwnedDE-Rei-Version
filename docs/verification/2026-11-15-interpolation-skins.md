@@ -1,5 +1,9 @@
 # Accuracy animations, signatures and skin application
 
+The display-smoothing approach described here is superseded by the
+[November 16 correction](2026-11-16-visible-pose-backtracking.md). The signature
+and skin-application findings remain valid.
+
 Reference: [rei-2/Amalgam at da2fae6319deabb603eb51eb281c587f0dfb48c8](https://github.com/rei-2/Amalgam/tree/da2fae6319deabb603eb51eb281c587f0dfb48c8).
 
 ## Behavior

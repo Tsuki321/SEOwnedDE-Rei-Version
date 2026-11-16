@@ -7,61 +7,9 @@
 #include "../Features/Rendering/RenderPassState.h"
 #include "../Features/SpyCamera/SpyCamera.h"
 #include "../Features/VisualUtils/VisualUtils.h"
-#include "../Features/LagRecords/LagRecords.h"
-#include "../Features/Rendering/AnimationSmoothing.h"
-
-#include <unordered_map>
 
 MAKE_SIGNATURE(CBaseAnimating_DrawModel, "client.dll", "4C 8B DC 49 89 5B ? 89 54 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC ? 48 8B 05 ? ? ? ? 48 8D 3D", 0x0);
 MAKE_SIGNATURE(ViewmodelAttachment_DrawModel, "client.dll", "41 8B D5 FF 50 ? 8B 97", 0x6);
-
-static matrix3x4_t* GetDisplayBones(const DrawModelState_t& state,
-	const ModelRenderInfo_t& info, matrix3x4_t* bones)
-{
-	static std::unordered_map<int, AnimationSmoothing::Pose<matrix3x4_t, MAX_BONE_COUNT>> poses;
-	if (!CFG::Misc_Accuracy_Improvements || !I::EngineClient || !I::EngineClient->IsInGame())
-	{
-		poses.clear();
-		return bones;
-	}
-	if (!bones || !state.m_pStudioHdr || !I::GlobalVars || !I::ClientEntityList
-		|| info.entity_index <= 0 || info.entity_index >= NUM_ENT_ENTRIES)
-		return bones;
-
-	const auto entity = I::ClientEntityList->GetClientEntity(info.entity_index);
-	if (!entity) return bones;
-	const auto base = entity->As<C_BaseEntity>();
-	// Bone-merged wearables and weapons follow the same player clock. Do not
-	// include projectiles merely because their owner is a player.
-	auto parent = base;
-	for (int depth = 0; parent && depth < 4 && parent->GetClassId() != ETFClassIds::CTFPlayer; ++depth)
-		parent = parent->GetMoveParent();
-	if (!parent || parent->GetClassId() != ETFClassIds::CTFPlayer)
-		return bones;
-	const auto player = parent->As<C_TFPlayer>();
-	if (player == H::Entities->GetLocal() || player->deadflag() || player->IsDormant())
-	{
-		poses.erase(info.entity_index);
-		return bones;
-	}
-	// Manual-backtrack chams must remain at the exact stored hitbox pose.
-	if (F::LagRecordMatrixHelper->IsActiveFor(player))
-		return bones;
-
-	const int count = state.m_pStudioHdr->numbones;
-	if (count <= 0 || count > MAX_BONE_COUNT) return bones;
-	bool validBones[MAX_BONE_COUNT]{};
-	const int mask = BONE_USED_BY_ANYTHING_AT_LOD(std::clamp(state.m_lod, 0, 7));
-	for (int i = 0; i < count; ++i)
-		validBones[i] = (state.m_pStudioHdr->pBone(i)->flags & mask) != 0;
-	const auto identity = static_cast<std::uint64_t>(static_cast<std::uint32_t>(base->GetRefEHandle().ToInt()))
-		| (static_cast<std::uint64_t>(static_cast<std::uint32_t>(player->GetRefEHandle().ToInt())) << 32);
-	const auto& origin = player->GetAbsOrigin();
-	auto display = poses[info.entity_index].Update(bones, count, identity, base->m_nModelIndex(),
-		I::GlobalVars->framecount, I::GlobalVars->curtime, player->m_flSimulationTime(),
-		I::GlobalVars->interval_per_tick, &origin.x, validBones);
-	return display ? display : bones;
-}
 
 static IMaterial* GetViewmodelMaterialByIndex(int nIndex)
 {
@@ -205,7 +153,6 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 	if (CFG::Visuals_Simple_Models)
 		*const_cast<int*>(&state.m_lod) = 5;
 
-	pCustomBoneToWorld = GetDisplayBones(state, pInfo, pCustomBoneToWorld);
 	CALL_ORIGINAL(ecx, state, pInfo, pCustomBoneToWorld);
 }
 

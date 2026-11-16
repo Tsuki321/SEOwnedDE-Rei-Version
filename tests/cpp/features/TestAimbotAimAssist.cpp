@@ -79,6 +79,8 @@ TEST(AimbotAimAssistContracts, ManualShotUsesExactHistoricalRayWithoutFovGate) {
     ASSERT_NE(functionEnd, std::string::npos);
 
     const auto functionBody = source.substr(functionStart, functionEnd - functionStart);
+    EXPECT_EQ(functionBody.find("Aimbot_Hitscan_Target_LagRecords"), std::string::npos);
+    EXPECT_EQ(functionBody.find("Aimbot_Target_Players"), std::string::npos);
     EXPECT_NE(functionBody.find("pCmd->viewangles + pLocal->m_vecPunchAngle()"), std::string::npos);
     EXPECT_NE(functionBody.find("EEntGroup::PLAYERS_ENEMIES"), std::string::npos);
     EXPECT_NE(functionBody.find("CLagRecords::IsRecordUsable"), std::string::npos);
@@ -89,7 +91,7 @@ TEST(AimbotAimAssistContracts, ManualShotUsesExactHistoricalRayWithoutFovGate) {
     EXPECT_EQ(functionBody.find("Aimbot_Hitscan_FOV"), std::string::npos);
 }
 
-TEST(AimbotAimAssistContracts, ManualShotStampsHistoricalHitBeforeAccuracyGatedLivePose) {
+TEST(AimbotAimAssistContracts, ManualShotPrefersVisiblePoseThenSearchesHistory) {
     const auto root = testhelpers::FindRepoRoot();
     const auto source = testhelpers::ReadTextFile(root / kHitscanSource);
     const auto functionStart = source.find("bool CAimbotHitscan::ResolveManualShot");
@@ -109,11 +111,11 @@ TEST(AimbotAimAssistContracts, ManualShotStampsHistoricalHitBeforeAccuracyGatedL
     // fallback after the record pass found nothing.
     const auto historicalStamp = functionBody.find("CLagRecords::GetCommandTick(pBestRecord->SimulationTime)");
     const auto accuracyGate = functionBody.find("CFG::Misc_Accuracy_Improvements");
-    const auto liveStamp = functionBody.find("CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime())");
+    const auto liveStamp = functionBody.find("F::LagRecords->GetLiveCommandTick(pCmd->tick_count)");
     ASSERT_NE(historicalStamp, std::string::npos);
     ASSERT_NE(accuracyGate, std::string::npos);
     ASSERT_NE(liveStamp, std::string::npos);
-    EXPECT_LT(historicalStamp, accuracyGate);
+    EXPECT_LT(liveStamp, historicalStamp);
     EXPECT_LT(accuracyGate, liveStamp);
 
     // The record scan is gated on the manual backtrack toggle and runs before
@@ -123,7 +125,7 @@ TEST(AimbotAimAssistContracts, ManualShotStampsHistoricalHitBeforeAccuracyGatedL
     const auto firstTrace = functionBody.find("H::AimUtils->TraceEntityBullet");
     ASSERT_NE(backtrackGate, std::string::npos);
     ASSERT_NE(firstTrace, std::string::npos);
-    EXPECT_LT(backtrackGate, firstTrace);
+    EXPECT_LT(firstTrace, backtrackGate);
     EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "H::AimUtils->TraceEntityBullet"), 2u);
 
     EXPECT_NE(functionBody.find("if (pBestRecord && pBestPlayer)"), std::string::npos);

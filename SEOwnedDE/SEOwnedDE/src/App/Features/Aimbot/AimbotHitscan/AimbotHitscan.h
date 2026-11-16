@@ -54,8 +54,8 @@ public:
 	// crosshair is on it, so rewinding past it to a stale (or foreign) record
 	// would move the real target off the shot server-side. Only when no live
 	// hitbox is hit does a historical record claim the command. A live hit is
-	// stamped via GetCommandTick(simTime) when Accuracy Improvements pins live
-	// bones to the newest network pose; otherwise vanilla tick_count is left
+	// stamped with the last render frame when Accuracy Improvements is on;
+	// otherwise vanilla tick_count is left
 	// alone for the interpolated present.
 	// Public because CAimbot::Run drives it from OUTSIDE RunMain: every early
 	// return in RunMain and in Run below used to swallow it, which is why

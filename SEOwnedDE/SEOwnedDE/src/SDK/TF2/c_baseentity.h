@@ -129,7 +129,9 @@ public:
 
 	C_BaseEntity *GetMoveParent()
 	{
-		static auto offset{ NetVars::GetNetVar("CBaseEntity", "moveparent") - 4 };
+		// IDA: network moveparent is at 572; the current move parent is at 556.
+		// The old -4 read the previous-parent field instead.
+		static auto offset{ NetVars::GetNetVar("CBaseEntity", "moveparent") - 16 };
 
 		auto m_pMoveParent{ reinterpret_cast<EHANDLE *>(reinterpret_cast<uintptr_t>(this) + offset) };
 
