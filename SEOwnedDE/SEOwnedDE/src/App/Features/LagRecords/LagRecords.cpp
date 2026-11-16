@@ -91,9 +91,8 @@ void CLagRecords::ResetForPoseModeIfChanged()
 	if (m_bAccuracyPoseMode == bAccuracyPoseMode)
 		return;
 
-	// A record's SimulationTime is either a server simulation stamp or a
-	// rendered client timestamp. Drop the ring at the transition instead of
-	// comparing those unrelated clocks during the next pruning pass.
+	// A mode change can coincide with a reconnect or changed pose overrides.
+	// Drop the old history before the new frame is captured.
 	m_RecordHeads.fill(0u);
 	m_RecordCounts.fill(0u);
 	m_CachedStates = {};
@@ -376,7 +375,6 @@ void CLagRecords::UpdateRecords()
 
 	if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)
 		flBacktrackWindow = LAG_MIN_BACKTRACK_TIME;
-
 
 	// One render clock for record capture, pruning and live command ticks.
 	const float flPoseReference = GetLivePoseTime();

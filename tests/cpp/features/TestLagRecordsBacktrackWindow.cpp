@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "App/Features/LagRecords/LagRecords.h"
+#include "App/Features/CFG.h"
 
 #include "../helpers/SourceContractAssertions.h"
 
@@ -57,6 +58,26 @@ constexpr const char* kBackstabSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Tr
 constexpr const char* kMaterialsSource = "SEOwnedDE/SEOwnedDE/src/App/Features/Materials/Materials.cpp";
 
 }  // namespace
+
+TEST(LagRecordsManualCapture, ManualHitscanWorksWithAimbotAndGhostsDisabled) {
+    struct RestoreBool {
+        bool& value;
+        bool previous;
+        RestoreBool(bool& v, bool replacement) : value(v), previous(v) { value = replacement; }
+        ~RestoreBool() { value = previous; }
+    };
+    RestoreBool aimbot(CFG::Aimbot_Active, false);
+    RestoreBool players(CFG::Aimbot_Target_Players, false);
+    RestoreBool targetRecords(CFG::Aimbot_Hitscan_Target_LagRecords, false);
+    RestoreBool manualMelee(CFG::Aimbot_Melee_Manual_Backtrack, false);
+    RestoreBool trigger(CFG::Triggerbot_Active, false);
+    RestoreBool materials(CFG::Materials_Active, false);
+    RestoreBool manual(CFG::Aimbot_Hitscan_Manual_Backtrack, true);
+
+    EXPECT_TRUE(CLagRecords::AreConsumersActive());
+    CFG::Aimbot_Hitscan_Manual_Backtrack = false;
+    EXPECT_FALSE(CLagRecords::AreConsumersActive());
+}
 
 TEST(LagRecordsBacktrackWindow, TailPruneUsesTheModeMatchedPoseReference) {
     const auto root = testhelpers::FindRepoRoot();
@@ -231,7 +252,7 @@ TEST(LagRecordsBacktrackWindow, MarginConstantsLeaveAUsableWindow) {
     EXPECT_GT(LAG_MIN_BACKTRACK_TIME, 0.0f);
 }
 
-TEST(LagRecordsTickOwnership, AutoShootStampsLivePoseOnlyWhenAccuracyImprovementsPinsBones) {
+TEST(LagRecordsTickOwnership, AutoShootStampsRenderedPoseOnlyInAccuracyMode) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
 
@@ -245,7 +266,7 @@ TEST(LagRecordsTickOwnership, AutoShootStampsLivePoseOnlyWhenAccuracyImprovement
     const auto accuracyGate = src.rfind("CFG::Misc_Accuracy_Improvements", tickWrite);
     ASSERT_NE(accuracyGate, std::string::npos);
     EXPECT_LT(accuracyGate, tickWrite);
-    EXPECT_NE(src.find("CLagRecords::GetCommandTick", tickWrite), std::string::npos);
+    EXPECT_NE(src.find("F::LagRecords->GetLiveCommandTick", tickWrite), std::string::npos);
     EXPECT_EQ(src.find("TIME_TO_TICKS"), std::string::npos);
     EXPECT_EQ(src.find("tick_count +="), std::string::npos);
     EXPECT_EQ(src.find("pCmd->tick_count =", tickWrite + 1), std::string::npos);

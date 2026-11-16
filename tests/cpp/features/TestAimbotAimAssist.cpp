@@ -104,11 +104,7 @@ TEST(AimbotAimAssistContracts, ManualShotPrefersVisiblePoseThenSearchesHistory) 
     EXPECT_EQ(functionBody.find("pRecord->SimulationTime <= pBestRecord->SimulationTime"), std::string::npos);
     EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 2u);
 
-    // Historical records always win when one lies on the ray: the user aims at
-    // the ghost the record renderer draws, so any other pose - including the
-    // live one - moves the target off the shot server-side. The record stamp
-    // runs first; the live stamp exists only as an Accuracy Improvements
-    // fallback after the record pass found nothing.
+    // Direct hits use the visible pose; a miss searches recent history.
     const auto historicalStamp = functionBody.find("CLagRecords::GetCommandTick(pBestRecord->SimulationTime)");
     const auto accuracyGate = functionBody.find("CFG::Misc_Accuracy_Improvements");
     const auto liveStamp = functionBody.find("F::LagRecords->GetLiveCommandTick(pCmd->tick_count)");
@@ -118,9 +114,7 @@ TEST(AimbotAimAssistContracts, ManualShotPrefersVisiblePoseThenSearchesHistory) 
     EXPECT_LT(liveStamp, historicalStamp);
     EXPECT_LT(accuracyGate, liveStamp);
 
-    // The record scan is gated on the manual backtrack toggle and runs before
-    // any live-pose trace; the live fallback runs after it (and even when the
-    // toggle is off, in accuracy mode) but never preempts records.
+    // The manual history toggle does not disable live Accuracy correction.
     const auto backtrackGate = functionBody.find("Aimbot_Hitscan_Manual_Backtrack");
     const auto firstTrace = functionBody.find("H::AimUtils->TraceEntityBullet");
     ASSERT_NE(backtrackGate, std::string::npos);

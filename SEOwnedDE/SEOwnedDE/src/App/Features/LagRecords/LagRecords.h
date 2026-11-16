@@ -177,10 +177,7 @@ class CLagRecords
 	// results instead of redundantly re-fetching them per pass.
 	std::array<LagRecordCachedState_t, MAX_PLAYERS> m_CachedStates = {};
 
-	// Records captured with Accuracy Improvements use simulation time; vanilla
-	// records use the rendered client clock. A runtime mode change must not let
-	// those two clocks share one ring, because the age/pruning math would compare
-	// unrelated timestamps.
+	// Reset history when Accuracy Improvements changes its pose overrides.
 	bool m_bPoseModeInitialized = false;
 	bool m_bAccuracyPoseMode = false;
 	RenderedPoseClock m_RenderedPoseClock;
