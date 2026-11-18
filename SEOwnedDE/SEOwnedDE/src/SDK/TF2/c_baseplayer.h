@@ -81,10 +81,11 @@ public:
 		return *reinterpret_cast<Vec3 *>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
 	}
 
-	void SetCurrentCommand(CUserCmd *pCmd) {
+	CUserCmd*& CurrentCommand() {
 		static int nOffset = NetVars::GetNetVar("CBasePlayer", "m_hConstraintEntity") - 8;
-		*reinterpret_cast<CUserCmd **>(reinterpret_cast<std::uintptr_t>(this) + nOffset) = pCmd;
+		return *reinterpret_cast<CUserCmd **>(reinterpret_cast<std::uintptr_t>(this) + nOffset);
 	}
+	void SetCurrentCommand(CUserCmd *pCmd) { CurrentCommand() = pCmd; }
 
 	int &m_nButtons() {
 		static int nOffset = NetVars::GetNetVar("CBasePlayer", "m_hConstraintEntity") - 12;

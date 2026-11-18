@@ -113,6 +113,9 @@ struct TextSurface {
     TextSurface() {
         functions[17] = reinterpret_cast<uintptr_t>(&SetFont);
         functions[18] = reinterpret_cast<uintptr_t>(&SetColor);
+        // MSVC places overloaded virtual methods in reverse declaration order.
+        // Both color overloads are harmless no-ops in this text-only surface.
+        functions[19] = reinterpret_cast<uintptr_t>(&SetColor);
         functions[20] = reinterpret_cast<uintptr_t>(&SetPosition);
         functions[22] = reinterpret_cast<uintptr_t>(&Print);
         functions[156] = reinterpret_cast<uintptr_t>(&DisableClipping);
