@@ -49,9 +49,14 @@ cosmetic model styles are used; unusual particle effects are not simulated.
   schema failures, crate pools, duplicate instances, equip conflicts, item
   removal, capacity, bodygroup packing, persistence, and stale loadout cleanup. Both projects include
   the new files. The XML, source paths, and whitespace checks passed locally.
-- **Pending:** GitHub Actions DLL build and compiled tests. Local compilation is
-  prohibited by the repository and the no-local-compilation skill.
-- **Pending:** in-game checks with the compiled DLL: hats and glasses on multiple
+- **Passed:** [GitHub Actions DLL build](https://github.com/Tsuki321/SEOwnedDE-Rei-Version/actions/runs/44245062047)
+  and [all 634 compiled tests](https://github.com/Tsuki321/SEOwnedDE-Rei-Version/actions/runs/44245066484),
+  including all 13 cosmetic tests, for source commit
+  `c7d6f379fe4211cf64a63ee8361daf78cdb8e610`. No local compilation was performed.
+  The downloaded x64 DLL is in `SEOwnedDE/bin/ReleaseAVX2/SEOwnedDE.dll`;
+  `SEOwnedDE.build.json` beside it records the SHA-256 and run links. PE header
+  validation and the comparison of workspace sources to the compiled snapshot passed.
+- **User will test:** in-game checks with the compiled DLL: hats and glasses on multiple
   classes, red/blue skins, movement and third-person bone merging, replacement
   of owned wearables, death/respawn, class/team changes, disconnect/reconnect,
   screenshots, and unload. Static disassembly does not prove these behaviors.
