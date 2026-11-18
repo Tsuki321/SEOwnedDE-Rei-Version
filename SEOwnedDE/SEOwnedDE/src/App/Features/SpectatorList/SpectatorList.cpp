@@ -158,7 +158,7 @@ void CSpectatorList::Run()
 			nTextY + (CFG::Menu_Drag_Bar_Height / 2) + 1,
 			CFG::Menu_Text_Inactive,
 			POS_CENTERXY,
-			spectator.m_nMode == OBS_MODE_IN_EYE ? "1st" : "3rd"
+			"%s", spectator.m_nMode == OBS_MODE_IN_EYE ? "1st" : "3rd"
 		);
 
 		I::MatSystemSurface->DisableClipping(false);
@@ -171,7 +171,7 @@ void CSpectatorList::Run()
 			nTextY + (CFG::Menu_Drag_Bar_Height / 2) + 1,
 			CFG::Menu_Text_Inactive,
 			POS_CENTERY,
-			spectator.Name.c_str()
+			"%s", spectator.Name.c_str()
 		);
 
 		I::MatSystemSurface->DisableClipping(true);

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "App/Features/LagRecords/LagRecords.h"
+#include "App/Features/CFG.h"
 
 #include "../helpers/SourceContractAssertions.h"
 
@@ -58,6 +59,26 @@ constexpr const char* kMaterialsSource = "SEOwnedDE/SEOwnedDE/src/App/Features/M
 
 }  // namespace
 
+TEST(LagRecordsManualCapture, ManualHitscanWorksWithAimbotAndGhostsDisabled) {
+    struct RestoreBool {
+        bool& value;
+        bool previous;
+        RestoreBool(bool& v, bool replacement) : value(v), previous(v) { value = replacement; }
+        ~RestoreBool() { value = previous; }
+    };
+    RestoreBool aimbot(CFG::Aimbot_Active, false);
+    RestoreBool players(CFG::Aimbot_Target_Players, false);
+    RestoreBool targetRecords(CFG::Aimbot_Hitscan_Target_LagRecords, false);
+    RestoreBool manualMelee(CFG::Aimbot_Melee_Manual_Backtrack, false);
+    RestoreBool trigger(CFG::Triggerbot_Active, false);
+    RestoreBool materials(CFG::Materials_Active, false);
+    RestoreBool manual(CFG::Aimbot_Hitscan_Manual_Backtrack, true);
+
+    EXPECT_TRUE(CLagRecords::AreConsumersActive());
+    CFG::Aimbot_Hitscan_Manual_Backtrack = false;
+    EXPECT_FALSE(CLagRecords::AreConsumersActive());
+}
+
 TEST(LagRecordsBacktrackWindow, TailPruneUsesTheModeMatchedPoseReference) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kLagRecordsSource);
@@ -68,7 +89,7 @@ TEST(LagRecordsBacktrackWindow, TailPruneUsesTheModeMatchedPoseReference) {
               std::string::npos);
     EXPECT_EQ(src.find("const float flCurSimTime = pFirstPlayer->m_flSimulationTime()"),
               std::string::npos);
-    EXPECT_NE(src.find("state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements"),
+    EXPECT_NE(src.find("state.PoseReferenceTime = F::LagRecords->GetLivePoseTime()"),
               std::string::npos);
 }
 
@@ -231,7 +252,7 @@ TEST(LagRecordsBacktrackWindow, MarginConstantsLeaveAUsableWindow) {
     EXPECT_GT(LAG_MIN_BACKTRACK_TIME, 0.0f);
 }
 
-TEST(LagRecordsTickOwnership, AutoShootStampsLivePoseOnlyWhenAccuracyImprovementsPinsBones) {
+TEST(LagRecordsTickOwnership, AutoShootStampsRenderedPoseOnlyInAccuracyMode) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
 
@@ -245,7 +266,7 @@ TEST(LagRecordsTickOwnership, AutoShootStampsLivePoseOnlyWhenAccuracyImprovement
     const auto accuracyGate = src.rfind("CFG::Misc_Accuracy_Improvements", tickWrite);
     ASSERT_NE(accuracyGate, std::string::npos);
     EXPECT_LT(accuracyGate, tickWrite);
-    EXPECT_NE(src.find("CLagRecords::GetCommandTick", tickWrite), std::string::npos);
+    EXPECT_NE(src.find("F::LagRecords->GetLiveCommandTick", tickWrite), std::string::npos);
     EXPECT_EQ(src.find("TIME_TO_TICKS"), std::string::npos);
     EXPECT_EQ(src.find("tick_count +="), std::string::npos);
     EXPECT_EQ(src.find("pCmd->tick_count =", tickWrite + 1), std::string::npos);
@@ -361,7 +382,7 @@ TEST(LagRecordsTickOwnership, HitscanOnlyRewindsShotsTheAimbotActuallyAimed) {
     // stamp GetCommandTick. Live poses stamp it too when Accuracy Improvements
     // pins bones to the newest network pose; otherwise vanilla tick_count is
     // left alone for the interpolated present.
-    EXPECT_NE(src.find("if (target.LagRecord || CFG::Misc_Accuracy_Improvements)"), std::string::npos);
+    EXPECT_NE(src.find("else if (CFG::Misc_Accuracy_Improvements)"), std::string::npos);
     EXPECT_NE(src.find("G::bCommandTickResolved = true;"), std::string::npos);
 
     const auto directed = src.find("if (bAimbotDirectedShot)");
@@ -370,7 +391,7 @@ TEST(LagRecordsTickOwnership, HitscanOnlyRewindsShotsTheAimbotActuallyAimed) {
     const auto accuracy = src.find("CFG::Misc_Accuracy_Improvements", directed);
     ASSERT_NE(tickStamp, std::string::npos);
     ASSERT_NE(accuracy, std::string::npos);
-    EXPECT_LT(accuracy, tickStamp);
+    EXPECT_LT(tickStamp, accuracy);
 
     // The manual resolver must NOT be called from inside this feature any more.
     // Every early return in Run and in CAimbot::RunMain above it used to swallow
@@ -437,7 +458,7 @@ TEST(LagRecordsTickOwnership, MeleeVerifiesAimAndInstalledPose) {
     EXPECT_NE(src.find("bAimbotDirectedSwing"), std::string::npos);
     EXPECT_NE(src.find("if (bAimbotDirectedSwing)"), std::string::npos);
     EXPECT_NE(src.find("CLagRecords::GetCommandTick(target.SimulationTime)"), std::string::npos);
-    EXPECT_NE(src.find("if (target.LagRecord || CFG::Misc_Accuracy_Improvements)"), std::string::npos);
+    EXPECT_NE(src.find("else if (CFG::Misc_Accuracy_Improvements)"), std::string::npos);
     EXPECT_NE(src.find("G::bCommandTickResolved = true;"), std::string::npos);
 
     const auto directed = src.find("if (bAimbotDirectedSwing)");
@@ -446,7 +467,7 @@ TEST(LagRecordsTickOwnership, MeleeVerifiesAimAndInstalledPose) {
     const auto accuracy = src.find("CFG::Misc_Accuracy_Improvements", directed);
     ASSERT_NE(tickStamp, std::string::npos);
     ASSERT_NE(accuracy, std::string::npos);
-    EXPECT_LT(accuracy, tickStamp);
+    EXPECT_LT(tickStamp, accuracy);
 
     // A scope that failed to install leaves the live pose in place, so the trace
     // would validate the present while the stamp commits a historical tick.
@@ -475,7 +496,7 @@ TEST(LagRecordsTickOwnership, ManualMeleeUsesFinalCommandHullAndExactRecord) {
     EXPECT_EQ(testhelpers::CountOccurrences(functionBody, "pCmd->tick_count ="), 2u);
 
     const auto historicalStamp = functionBody.find("CLagRecords::GetCommandTick(pBestRecord->SimulationTime)");
-    const auto liveStamp = functionBody.find("CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime())");
+    const auto liveStamp = functionBody.find("F::LagRecords->GetLiveCommandTick(pCmd->tick_count)");
     const auto accuracyGate = functionBody.find("CFG::Misc_Accuracy_Improvements");
     ASSERT_NE(historicalStamp, std::string::npos);
     ASSERT_NE(liveStamp, std::string::npos);
@@ -566,7 +587,7 @@ TEST(LagRecordsTickOwnership, BackstabStampsLivePoseOnlyWhenAccuracyImprovements
     // When Accuracy Improvements pins live bones to the newest network pose,
     // the live branch stamps via GetCommandTick as well.
     EXPECT_NE(src.find("CFG::Misc_Accuracy_Improvements"), std::string::npos);
-    EXPECT_NE(src.find("CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime())"), std::string::npos);
+    EXPECT_NE(src.find("F::LagRecords->GetLiveCommandTick(pCmd->tick_count)"), std::string::npos);
 
     EXPECT_NE(src.find("if (!scope.IsActive())"), std::string::npos);
 }

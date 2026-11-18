@@ -467,11 +467,8 @@ bool CAimbotMelee::ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 		return true;
 	}
 
-	// No historical pose on the hull. Accuracy Improvements pins live bones
-	// to the newest network pose, so a live hit must be paired with
-	// GetCommandTick(simTime) or the server rewinds to the interpolated
-	// present and the swing misses. Vanilla interpolation already matches
-	// vanilla tick_count, so leave the command untouched in that mode.
+	// Historical shots use the stored pose time; live Accuracy shots
+	// use the last rendered pose, even after local prediction advances.
 	if (!CFG::Misc_Accuracy_Improvements)
 		return false;
 
@@ -499,7 +496,7 @@ bool CAimbotMelee::ResolveManualSwing(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 		if (!H::AimUtils->TraceEntityMelee(pPlayer, vTraceStart, vTraceEnd))
 			continue;
 
-		pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
+		pCmd->tick_count = F::LagRecords->GetLiveCommandTick(pCmd->tick_count);
 		G::bCommandTickResolved = true;
 		G::nTargetIndexEarly = pPlayer->entindex();
 		G::nTargetIndex = pPlayer->entindex();
@@ -576,17 +573,12 @@ void CAimbotMelee::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeap
 
 					if (bAimbotDirectedSwing)
 					{
-						// Historical records always stamp GetCommandTick so the
-						// server rewinds to the pose we swung at.
-						//
-						// Live pose depends on Accuracy Improvements:
-						// - On: live bones are the newest network pose;
-						//   GetCommandTick(simTime) pairs the command with it
-						//   (the server subtracts lerp).
-						// - Off: live bones are the interpolated present;
-						//   leaving vanilla tick_count is correct.
-						if (target.LagRecord || CFG::Misc_Accuracy_Improvements)
+						// Historical shots use the stored pose time; live Accuracy shots
+						// use the last rendered pose, even after local prediction advances.
+						if (target.LagRecord)
 							pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
+						else if (CFG::Misc_Accuracy_Improvements)
+							pCmd->tick_count = F::LagRecords->GetLiveCommandTick(pCmd->tick_count);
 
 						// Claim the command even when the winner was a live pose.
 						// Without the flag, AutoBackstab reads "nobody owns this"

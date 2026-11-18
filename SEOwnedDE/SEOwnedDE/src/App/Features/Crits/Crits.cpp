@@ -578,8 +578,8 @@ void CCrits::Paint()
 		H::Draw->GradientRect(x, y + nTextAreaH, nFillW, nBarH, barStart, barColor, true);
 	}
 
-	H::Draw->String(H::Fonts->Get(EFonts::ESP_SMALL), x + (nBoxW / 2), y + 4, {220, 220, 220, 255}, POS_CENTERX, topText.c_str());
-	H::Draw->String(H::Fonts->Get(EFonts::ESP_SMALL), x + (nBoxW / 2), y + 14, statusColor, POS_CENTERX, bottomText.c_str());
+	H::Draw->String(H::Fonts->Get(EFonts::ESP_SMALL), x + (nBoxW / 2), y + 4, {220, 220, 220, 255}, POS_CENTERX, "%s", topText.c_str());
+	H::Draw->String(H::Fonts->Get(EFonts::ESP_SMALL), x + (nBoxW / 2), y + 14, statusColor, POS_CENTERX, "%s", bottomText.c_str());
 }
 
 void CCrits::Event(IGameEvent* pEvent, std::uint32_t eventHash)

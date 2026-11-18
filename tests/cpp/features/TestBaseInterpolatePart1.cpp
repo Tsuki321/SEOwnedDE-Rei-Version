@@ -20,7 +20,7 @@ TEST(BaseInterpolatePart1Contracts, HookFileExists) {
     EXPECT_NE(src.find("MAKE_HOOK(CBaseEntity_BaseInterpolatePart1"), std::string::npos);
 }
 
-TEST(BaseInterpolatePart1Contracts, HandlesShiftingRemotePlayersAndDoors) {
+TEST(BaseInterpolatePart1Contracts, OnlySuppressesLocalRechargeAndAccuracyDoors) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kHookSource);
 
@@ -29,14 +29,9 @@ TEST(BaseInterpolatePart1Contracts, HandlesShiftingRemotePlayersAndDoors) {
 
     // Door interpolation suppression (only when accuracy improvements is on).
     EXPECT_NE(src.find("CFG::Misc_Accuracy_Improvements"), std::string::npos);
-    EXPECT_NE(src.find("ETFClassIds::CTFPlayer"), std::string::npos);
+    EXPECT_EQ(src.find("ETFClassIds::CTFPlayer"), std::string::npos);
     EXPECT_NE(src.find("ETFClassIds::CBaseDoor"), std::string::npos);
 
-    const auto playerBranch = src.find("pEntity->GetClassId() == ETFClassIds::CTFPlayer");
-    const auto doorBranch = src.find("pEntity->GetClassId() == ETFClassIds::CBaseDoor");
-    ASSERT_NE(playerBranch, std::string::npos);
-    ASSERT_NE(doorBranch, std::string::npos);
-    EXPECT_LT(playerBranch, doorBranch);
 }
 
 TEST(BaseInterpolatePart1Contracts, EarlyOutSetsNoMoreChanges) {

@@ -26,20 +26,20 @@ TEST(FrameStageAnimDriveContracts, DoesNotManuallyDriveAnimations) {
     EXPECT_EQ(src.find("nDifference"), std::string::npos);
 }
 
-TEST(FrameStageAnimDriveContracts, CapturesPoseWithModeMatchedClock) {
+TEST(FrameStageAnimDriveContracts, CapturesTheSameClockUsedForVisibleShots) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kHookSource);
 
     EXPECT_NE(src.find("GetGroup(EEntGroup::PLAYERS_ENEMIES)"), std::string::npos);
-    EXPECT_NE(src.find("I::GlobalVars->curtime - SDKUtils::GetLerp()"), std::string::npos);
-    EXPECT_NE(src.find("? pPlayer->m_flSimulationTime()"), std::string::npos);
+    EXPECT_NE(src.find("F::LagRecords->GetLivePoseTime()"), std::string::npos);
+    EXPECT_EQ(src.find("? pPlayer->m_flSimulationTime()"), std::string::npos);
     EXPECT_NE(src.find("flPoseTime > pPlayer->m_flSimulationTime()"), std::string::npos);
     EXPECT_NE(src.find("CLagRecords::ShouldCaptureRecord(pLocal, pPlayer)"), std::string::npos);
     EXPECT_NE(src.find("F::LagRecords->AddRenderRecord(pPlayer, flPoseTime)"), std::string::npos);
     EXPECT_EQ(src.find("CFG::Misc_SetupBones_Optimization"), std::string::npos);
 }
 
-TEST(FrameStageAnimDriveContracts, AccuracyModeRendersNetworkPoseWithoutSweep) {
+TEST(FrameStageAnimDriveContracts, EngineRenderingDoesNotSweepEntities) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kHookSource);
 

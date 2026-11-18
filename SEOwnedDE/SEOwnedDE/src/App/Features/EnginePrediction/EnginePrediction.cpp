@@ -19,7 +19,12 @@ int CEnginePrediction::GetTickbase(CUserCmd* pCmd, C_TFPlayer* pLocal)
 
 void CEnginePrediction::Start(CUserCmd* pCmd)
 {
-	if (!I::MoveHelper)
+	if (m_bActive)
+		return;
+
+	flags = 0;
+	if (!pCmd || !I::MoveHelper || !I::GlobalVars || !I::Prediction || !I::GameMovement
+		|| !I::EngineClient || !I::ClientEntityList)
 		return;
 
 	if (const auto pLocal = H::Entities->GetLocal())
@@ -35,6 +40,7 @@ void CEnginePrediction::Start(CUserCmd* pCmd)
 		m_fOldCurrentTime = I::GlobalVars->curtime;
 		m_fOldFrameTime = I::GlobalVars->frametime;
 		m_nOldTickCount = I::GlobalVars->tickcount;
+		m_bActive = true;
 
 		const int nOldTickBase = pLocal->m_nTickBase();
 		const bool bOldIsFirstPrediction = I::Prediction->m_bFirstTimePredicted;
@@ -72,15 +78,34 @@ void CEnginePrediction::Start(CUserCmd* pCmd)
 
 void CEnginePrediction::End()
 {
-	if (const auto pLocal = H::Entities->GetLocal())
+	// Start may skip prediction. Never restore an unsaved clock or clear an
+	// engine-owned command when this instance did not start a prediction pass.
+	if (!m_bActive)
+		return;
+
+	m_bActive = false;
+	if (I::GlobalVars)
 	{
 		I::GlobalVars->curtime = m_fOldCurrentTime;
 		I::GlobalVars->frametime = m_fOldFrameTime;
 		I::GlobalVars->tickcount = m_nOldTickCount;
-
-		I::MoveHelper->SetHost(nullptr);
-		pLocal->SetCurrentCommand(nullptr);
-
-		*SDKUtils::RandomSeed() = -1;
 	}
+
+	if (I::MoveHelper)
+		I::MoveHelper->SetHost(nullptr);
+
+	if (I::EngineClient && I::ClientEntityList)
+	{
+		if (const auto pLocal = H::Entities->GetLocal())
+			pLocal->SetCurrentCommand(nullptr);
+	}
+	*SDKUtils::RandomSeed() = -1;
+}
+
+void CEnginePrediction::Reset()
+{
+	End();
+	m_pLastCmd = nullptr;
+	m_nTick = 0;
+	flags = 0;
 }

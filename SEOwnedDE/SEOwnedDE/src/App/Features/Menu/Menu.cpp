@@ -126,7 +126,7 @@ void CMenu::GroupBoxStart(const char *szLabel, int nWidth)
 
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
-		x + (w / 2), y - (CFG::Menu_Spacing_Y - 1), CFG::Menu_Text_Inactive, POS_CENTERXY, szLabel
+		x + (w / 2), y - (CFG::Menu_Spacing_Y - 1), CFG::Menu_Text_Inactive, POS_CENTERXY, "%s", szLabel
 	);
 
 	m_nCursorX += CFG::Menu_Spacing_X * 2;
@@ -155,7 +155,7 @@ void CMenu::Label(const char *szText)
 		m_nCursorY,
 		CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szText
+		"%s", szText
 	);
 
 	m_nCursorY += H::Fonts->Get(EFonts::Menu).m_nTall + CFG::Menu_Spacing_Y;
@@ -198,7 +198,7 @@ bool CMenu::CheckBox(const char *szLabel, bool &bVar)
 		y + (h / 2),
 		(bHovered) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERY,
-		szLabel
+		"%s", szLabel
 	);
 
 	m_nCursorY += h + CFG::Menu_Spacing_Y;
@@ -279,7 +279,7 @@ bool CMenu::SliderFloat(const char *szLabel, float &flVar, float flMin, float fl
 		x, y,
 		(bHovered || IsControlActive(&flVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	Color_t clr = CFG::Menu_Accent_Primary;
@@ -376,7 +376,7 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 		x, y,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	Color_t clr = CFG::Menu_Accent_Primary;
@@ -488,7 +488,7 @@ bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
 		y,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	H::Draw->OutlinedRect(x, nInputY, w, h, CFG::Menu_Accent_Primary);
@@ -501,7 +501,7 @@ bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
 		nInputY + (h / 2) - 1,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERXY,
-		displayValue.c_str()
+		"%s", displayValue.c_str()
 	);
 
 	m_nCursorY += h + nTextH + (CFG::Menu_Spacing_Y * 2);
@@ -617,7 +617,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 		y + (h / 2),
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERXY,
-		IsControlActive(&nKeyOut) ? "..." : VK2STR(nKeyOut).c_str());
+		"%s", IsControlActive(&nKeyOut) ? "..." : VK2STR(nKeyOut).c_str());
 
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
@@ -625,7 +625,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 		y + (h / 2),
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERY,
-		szLabel);
+		"%s", szLabel);
 
 	m_nCursorY += h + CFG::Menu_Spacing_Y;
 
@@ -771,7 +771,7 @@ bool CMenu::Button(const char *szLabel, bool bActive, int nCustomWidth)
 		H::Fonts->Get(EFonts::Menu),
 		x + (w / 2), y + (h / 2) - 1,
 		(bHovered || bActive) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-		POS_CENTERXY, szLabel
+		POS_CENTERXY, "%s", szLabel
 	);
 
 	m_nCursorY += h + CFG::Menu_Spacing_Y;
@@ -807,7 +807,7 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 			H::Fonts->Get(EFonts::Menu),
 			x + (w / 2), y + (h / 2) - 1,
 			clr,
-			POS_CENTERXY, label
+			POS_CENTERXY, L"%ls", label
 		);
 	}
 
@@ -817,7 +817,7 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 			H::Fonts->Get(EFonts::Menu),
 			x + CFG::Menu_Spacing_X, y + (h / 2) - 1,
 			clr,
-			POS_CENTERY, label
+			POS_CENTERY, L"%ls", label
 		);
 	}
 
@@ -873,7 +873,7 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, std::initializer_list<s
 		x + (w / 2), y + (h / 2) + (nTextH + CFG::Menu_Spacing_Y) - 1,
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERXY,
-		pszCurSelected
+		"%s", pszCurSelected
 	);
 
 	H::Draw->String(
@@ -881,7 +881,7 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, std::initializer_list<s
 		x, y,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	if (IsControlActive(&nVar))
@@ -969,7 +969,7 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 		x, y,
 		(bHovered || IsControlActive(&vecSelects)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	std::string strSelected = {};
@@ -993,7 +993,7 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 		x + CFG::Menu_Spacing_X, y + (nTextH + CFG::Menu_Spacing_Y) + (h / 2) - 1,
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERY,
-		strSelected.empty() ? "None" : strSelected.c_str()
+		"%s", strSelected.empty() ? "None" : strSelected.c_str()
 	);
 
 	I::MatSystemSurface->DisableClipping(true);
@@ -1087,7 +1087,7 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 		x + w + CFG::Menu_Spacing_X,
 		y + (h / 2),
 		(bHovered || IsControlActive(&colVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-		POS_CENTERY, szLabel
+		POS_CENTERY, "%s", szLabel
 	);
 
 	if (IsControlActive(&colVar))

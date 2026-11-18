@@ -21,8 +21,7 @@ TEST(SkinChangerContracts, UsesIdaVerifiedSignaturesAndDynamicAttributeLayout) {
 
     EXPECT_NE(source.find("48 83 EC 28 E8 ? ? ? ? 48 83 C0 08"), std::string::npos);
     EXPECT_NE(source.find(
-                  "89 54 24 ? 53 48 83 EC 20 48 8B D9 48 8D 54 24 ? "
-                  "48 81 C1 50 02 00 00"),
+                  "85 D2 78 ? 3B 91 E8 02 00 00 7D ? 48 8B 81 D8 02 00 00 8B D2 48 8B 04 D0"),
               std::string::npos);
     EXPECT_NE(source.find(
                   "48 89 5C 24 ? 55 56 57 48 8B EC 48 83 EC 50 44 8B 49"),
@@ -113,9 +112,7 @@ TEST(SkinChangerContracts, ValidatesEveryDesiredRuntimeAttributeByIdAndValue) {
     EXPECT_NE(validator.find("expected.m_Attribute"), std::string::npos);
     EXPECT_NE(validator.find("std::bit_cast<std::uint32_t>(expected.m_flValue)"),
               std::string::npos);
-    EXPECT_NE(validator.find("current.m_nDefinitionIndex == nExpectedIndex"),
-              std::string::npos);
-    EXPECT_NE(validator.find("current.m_nRawValue == nExpectedValue"),
+    EXPECT_NE(validator.find("current.Matches(nExpectedIndex, nExpectedValue)"),
               std::string::npos);
     EXPECT_NE(validator.find("if (!bFound)"), std::string::npos);
 

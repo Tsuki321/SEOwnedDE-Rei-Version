@@ -71,13 +71,14 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 
 		case FRAME_RENDER_START:
 		{
-			// Animations are engine-owned in both modes. With Accuracy Improvements
-			// enabled, BaseInterpolatePart1 keeps the origin at the newest network
-			// sample, so pair those bones with m_flSimulationTime. Otherwise capture
-			// the vanilla rendered pose at curtime - lerp.
+			if (I::GlobalVars && H::Entities->GetLocal())
+				F::LagRecords->BeginRenderFrame();
+			else
+				F::LagRecords->ClearRenderPoseTime();
+			// Capture the engine-rendered body and the timestamp shared by live shots.
 			if (const auto pLocal = H::Entities->GetLocal(); pLocal && I::GlobalVars)
 			{
-				const float flRenderPoseTime = I::GlobalVars->curtime - SDKUtils::GetLerp();
+				const float flRenderPoseTime = F::LagRecords->GetLivePoseTime();
 				if (std::isfinite(flRenderPoseTime) && flRenderPoseTime > 0.0f)
 				{
 					for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
@@ -86,19 +87,12 @@ MAKE_HOOK(IBaseClientDLL_FrameStageNotify, Memory::GetVFunc(I::BaseClientDLL, 35
 							continue;
 
 						const auto pPlayer = pEntity->As<C_TFPlayer>();
-						const float flPoseTime = CFG::Misc_Accuracy_Improvements
-							? pPlayer->m_flSimulationTime()
-							: flRenderPoseTime;
+						const float flPoseTime = flRenderPoseTime;
 						if (!std::isfinite(flPoseTime) || flPoseTime <= 0.0f)
 							continue;
 
-						// Vanilla interpolation can put the render target just beyond
-						// the latest network sample. Admit one bounded extrapolation
-						// tick in that mode so jitter does not starve the ring. Accuracy
-						// mode already selected the exact network simulation time and
-						// therefore needs no extrapolation allowance here.
-						if (!CFG::Misc_Accuracy_Improvements
-							&& flPoseTime > pPlayer->m_flSimulationTime() + CLagRecords::GetMaxExtrapolationTime())
+						// Admit at most one tick beyond the latest network sample during jitter.
+						if (flPoseTime > pPlayer->m_flSimulationTime() + CLagRecords::GetMaxExtrapolationTime())
 							continue;
 
 						if (CLagRecords::ShouldCaptureRecord(pLocal, pPlayer))

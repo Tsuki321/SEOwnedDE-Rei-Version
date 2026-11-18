@@ -163,7 +163,7 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 			G::nTicksTargetSame++;
 		}
 
-		if (G::nTargetIndexEarly <= 1)
+		if (G::nTargetIndexEarly <= 0)
 			G::nTicksTargetSame = 0;
 	}
 

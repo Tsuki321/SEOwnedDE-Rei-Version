@@ -531,18 +531,10 @@ void CMisc::AutoMedigun(CUserCmd* cmd)
 
 			G::bPSilentAngles = true;
 
-			// Live pose depends on Accuracy Improvements:
-			// - On: live bones are the newest network pose, so stamp
-			//   GetCommandTick(simTime). The server subtracts lerp and lands
-			//   on that pose.
-			// - Off: live bones are the interpolated present; leaving vanilla
-			//   tick_count is correct.
-			// Claim either way so the shared ownership rule holds for every
-			// tick writer. Safe against the aimbot and triggerbot paths, which
-			// all require a HITSCAN or MELEE weapon and so cannot be live
-			// while a medigun is equipped.
+			// Historical shots use the stored pose time; live Accuracy shots
+			// use the last rendered pose, even after local prediction advances.
 			if (CFG::Misc_Accuracy_Improvements)
-				cmd->tick_count = CLagRecords::GetCommandTick(pl->m_flSimulationTime());
+				cmd->tick_count = F::LagRecords->GetLiveCommandTick(cmd->tick_count);
 			G::bCommandTickResolved = true;
 
 			break;
