@@ -63,7 +63,8 @@ TEST_F(SkinProfileFilesTest, ModernNumbersCannotWrapIntoAnotherPaintKitOrSeed) {
 }
 
 TEST_F(SkinProfileFilesTest, LegacyOverflowDoesNotEnableAttributesAndStillMigratesValidOnes) {
-    Write({ { "18", { { "2025", 1e100 }, { "2026", 1e30 }, { "2027", 1.0 } } } });
+    // Attribute IDs from EEconAttribute: decorated rarity, Australium, festive.
+    Write({ { "18", { { "2022", 1e100 }, { "2027", 1e30 }, { "2053", 1.0 } } } });
     CSkinChanger skins;
     ASSERT_TRUE(skins.Load());
     const auto settings = skins.GetSettings(18);
@@ -74,7 +75,7 @@ TEST_F(SkinProfileFilesTest, LegacyOverflowDoesNotEnableAttributesAndStillMigrat
     nlohmann::json migrated;
     file >> migrated;
     EXPECT_EQ(migrated.at("version"), 1);
-    EXPECT_TRUE(migrated.at("weapons").contains("18"));
+    EXPECT_TRUE(migrated.at("weapons").contains(std::to_string(CSkinChanger::NormalizeItemDefinition(18))));
 }
 
 TEST_F(SkinProfileFilesTest, SettingsRoundTripAndMalformedLoadPreservesExistingProfiles) {
