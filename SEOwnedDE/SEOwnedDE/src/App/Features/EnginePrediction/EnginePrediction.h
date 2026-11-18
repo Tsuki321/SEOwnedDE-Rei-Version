@@ -20,6 +20,7 @@ public:
 	void Start(CUserCmd* pCmd);
 	void End();
 	void Reset();
+	bool IsActive() const { return m_bActive; }
 };
 
 MAKE_SINGLETON_SCOPED(CEnginePrediction, EnginePrediction, F)

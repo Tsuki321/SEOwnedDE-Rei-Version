@@ -21,6 +21,7 @@ TEST(EnginePredictionLifecycle, EndWithoutStartLeavesTheEngineClockAlone) {
     CEnginePrediction prediction;
     prediction.End();
     prediction.End();
+    EXPECT_FALSE(prediction.IsActive());
     EXPECT_FLOAT_EQ(globals.curtime, 123.0f);
     EXPECT_FLOAT_EQ(globals.frametime, 0.015f);
     EXPECT_EQ(globals.tickcount, 8123);
@@ -44,6 +45,7 @@ TEST(EnginePredictionLifecycle, SkippedStartAndResetLeaveTheClockAlone) {
     CEnginePrediction prediction;
     prediction.flags = FL_ONGROUND;
     prediction.Start(&cmd);
+    EXPECT_FALSE(prediction.IsActive());
     prediction.End();
     prediction.Reset();
     prediction.Start(nullptr);

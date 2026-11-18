@@ -126,7 +126,7 @@ MAKE_HOOK(ClientModeShared_CreateMove, Memory::GetVFunc(I::ClientModeShared, 21)
 			}
 		}
 
-		if (CFG::Misc_Choke_On_Bhop && CFG::Misc_Bunnyhop)
+		if (F::EnginePrediction->IsActive() && CFG::Misc_Choke_On_Bhop && CFG::Misc_Bunnyhop)
 		{
 			if (pLocal)
 			{

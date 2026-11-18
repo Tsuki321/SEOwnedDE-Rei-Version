@@ -100,6 +100,7 @@ struct TextSurface {
 
     static void __fastcall SetFont(Instance*, HFont) {}
     static void __fastcall SetColor(Instance*, int, int, int, int) {}
+    static void __fastcall SetColorValue(Instance*, Color_t) {}
     static void __fastcall SetPosition(Instance*, int, int) {}
     static void __fastcall Print(Instance* self, const wchar_t* text, int size, FontDrawType_t) {
         self->owner->text.emplace_back(text, size);
@@ -112,9 +113,8 @@ struct TextSurface {
     }
     TextSurface() {
         functions[17] = reinterpret_cast<uintptr_t>(&SetFont);
-        functions[18] = reinterpret_cast<uintptr_t>(&SetColor);
+        functions[18] = reinterpret_cast<uintptr_t>(&SetColorValue);
         // MSVC places overloaded virtual methods in reverse declaration order.
-        // Both color overloads are harmless no-ops in this text-only surface.
         functions[19] = reinterpret_cast<uintptr_t>(&SetColor);
         functions[20] = reinterpret_cast<uintptr_t>(&SetPosition);
         functions[22] = reinterpret_cast<uintptr_t>(&Print);
