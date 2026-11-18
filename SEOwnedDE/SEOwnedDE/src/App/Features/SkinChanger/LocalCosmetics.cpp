@@ -182,7 +182,7 @@ void CLocalCosmetics::Run()
     { ResetRuntime(); m_runtimeStatus = "Preview inactive"; return; }
     const int playerClass = local->m_iClass();
     if (playerClass < 1 || playerClass > 9) { ResetRuntime(); return; }
-    if (m_owner != local->GetRefEHandle() || m_class != playerClass || m_team != local->m_iTeamNum()) ResetRuntime();
+    if (m_owner.ToInt() != local->GetRefEHandle().ToInt() || m_class != playerClass || m_team != local->m_iTeamNum()) ResetRuntime();
     m_owner = local->GetRefEHandle();
     m_class = playerClass;
     m_team = local->m_iTeamNum();
@@ -250,8 +250,8 @@ bool CLocalCosmetics::ShouldHideOriginal(C_BaseEntity* entity) const
     if (!m_state.enabled || !m_state.hideOriginals || !entity || m_shutdownRequested.load()) return false;
     if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached()) return false;
     const auto local = H::Entities->GetLocal();
-    if (!local || local->deadflag() || m_owner != local->GetRefEHandle()) return false;
-    if (entity->GetClassId() != ETFClassIds::CTFWearable || entity->m_hOwnerEntity() != m_owner) return false;
+    if (!local || local->deadflag() || m_owner.ToInt() != local->GetRefEHandle().ToInt()) return false;
+    if (entity->GetClassId() != ETFClassIds::CTFWearable || entity->m_hOwnerEntity().ToInt() != m_owner.ToInt()) return false;
     return std::any_of(m_runtime.begin(), m_runtime.end(), [](const auto& slot) { return slot.entity.IsValid(); });
 }
 
@@ -271,7 +271,7 @@ int CLocalCosmetics::PlayerBody(const ModelRenderInfo_t& info) const
     if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached()) return info.body;
     const auto local = H::Entities->GetLocal();
     if (!local || local->deadflag() || info.entity_index != local->entindex()
-        || m_owner != local->GetRefEHandle() || m_class < 1 || m_class > 9) return info.body;
+        || m_owner.ToInt() != local->GetRefEHandle().ToInt() || m_class < 1 || m_class > 9) return info.body;
     const auto studio = I::ModelInfoClient->GetStudiomodel(info.pModel);
     if (!studio || studio->numbodyparts < 0 || studio->numbodyparts > 128) return info.body;
     int body = info.body;
