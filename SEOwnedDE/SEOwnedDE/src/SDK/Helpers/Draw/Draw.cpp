@@ -150,15 +150,16 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 		return;
 
 	va_list va_alist = {};
-	// No aggregate zero-init: vsprintf_s/swprintf_s null-terminate their output,
-	// so memsetting 3 KB of stack every text draw is pure waste on a hot primitive.
+	// Truncate long display text instead of invoking the CRT invalid-parameter
+	// handler. Both formatting functions terminate the bounded output.
 	char cbuffer[1024];
 	wchar_t wstr[1024];
 
 	va_start(va_alist, str);
-	vsprintf_s(cbuffer, str, va_alist);
+	_vsnprintf_s(cbuffer, _countof(cbuffer), _TRUNCATE, str, va_alist);
 	va_end(va_alist);
-	swprintf_s(wstr, 1024, L"%hs", cbuffer);
+	if (swprintf_s(wstr, 1024, L"%hs", cbuffer) < 0)
+		return;
 
 	if (pos & (POS_LEFT | POS_TOP | POS_CENTERX | POS_CENTERY))
 	{
@@ -187,11 +188,11 @@ void CDraw::String(const CFont &font, int x, int y, Color_t clr, short pos, cons
 		return;
 
 	va_list va_alist{};
-	// See narrow overload: vswprintf_s null-terminates, no need to zero the buffer.
+	// Match the bounded truncation behavior of the narrow overload.
 	wchar_t wstr[1024];
 
 	va_start(va_alist, str);
-	vswprintf_s(wstr, str, va_alist);
+	_vsnwprintf_s(wstr, _countof(wstr), _TRUNCATE, str, va_alist);
 	va_end(va_alist);
 
 	if (pos & (POS_LEFT | POS_TOP | POS_CENTERX | POS_CENTERY))

@@ -1,4 +1,5 @@
 #include "SkinChanger.h"
+#include "RuntimeAttributeLayout.h"
 
 #include "../../../Utils/Storage/Storage.h"
 
@@ -16,7 +17,8 @@
 #include <limits>
 
 MAKE_SIGNATURE(CEconItemSystem_GetItemSchema, "client.dll", "48 83 EC 28 E8 ? ? ? ? 48 83 C0 08", 0x0);
-MAKE_SIGNATURE(CEconItemSchema_GetAttributeDefinition, "client.dll", "89 54 24 ? 53 48 83 EC 20 48 8B D9 48 8D 54 24 ? 48 81 C1 50 02 00 00", 0x0);
+// IDA: definitions now use an indexed pointer array, not the old tree lookup.
+MAKE_SIGNATURE(CEconItemSchema_GetAttributeDefinition, "client.dll", "85 D2 78 ? 3B 91 E8 02 00 00 7D ? 48 8B 81 D8 02 00 00 8B D2 48 8B 04 D0", 0x0);
 MAKE_SIGNATURE(CAttributeList_SetRuntimeAttributeValue, "client.dll", "48 89 5C 24 ? 55 56 57 48 8B EC 48 83 EC 50 44 8B 49", 0x0);
 
 namespace
@@ -74,14 +76,6 @@ namespace
 
 	// x64 CEconItemAttribute/CUtlVector layout used by CEconEntity::m_AttributeList.
 	// Copying these views avoids unaligned and strict-aliasing reads from engine memory.
-	struct EconItemAttributeLayout
-	{
-		void *m_pVTable = nullptr;
-		std::uint32_t m_nDefinitionIndex = 0;
-		std::uint32_t m_nRawValue = 0;
-		std::int32_t m_nRefundableCurrency = 0;
-	};
-
 	struct AttributeVectorLayout
 	{
 		const EconItemAttributeLayout *m_pMemory = nullptr;
@@ -110,15 +104,15 @@ namespace
 
 		if (settings.m_nPaintKit > 0)
 		{
-			result.Add(EEconAttribute::PaintKit, std::bit_cast<float>(settings.m_nPaintKit));
+			result.Add(EEconAttribute::PaintKit, SkinAttributes::EncodeInteger(settings.m_nPaintKit));
 			result.Add(EEconAttribute::PaintKitWear, settings.m_flWear);
 		}
 		if (settings.m_nSeedLow > 0)
-			result.Add(EEconAttribute::PaintKitSeedLow, static_cast<float>(settings.m_nSeedLow));
+			result.Add(EEconAttribute::PaintKitSeedLow, SkinAttributes::EncodeInteger(settings.m_nSeedLow));
 		if (settings.m_nSeedHigh > 0)
-			result.Add(EEconAttribute::PaintKitSeedHigh, static_cast<float>(settings.m_nSeedHigh));
+			result.Add(EEconAttribute::PaintKitSeedHigh, SkinAttributes::EncodeInteger(settings.m_nSeedHigh));
 		if (settings.m_bTeamColored)
-			result.Add(EEconAttribute::TeamColoredPaintKit, 1.0f);
+			result.Add(EEconAttribute::TeamColoredPaintKit, SkinAttributes::EncodeInteger(1));
 		if (settings.m_bAllowInspect)
 			result.Add(EEconAttribute::AllowInspect, 1.0f);
 		if (settings.m_nUnusualEffect > 0)
@@ -128,9 +122,9 @@ namespace
 		if (settings.m_bFestivized)
 			result.Add(EEconAttribute::Festivized, 1.0f);
 		if (settings.m_bAustralium)
-			result.Add(EEconAttribute::Australium, 1.0f);
+			result.Add(EEconAttribute::Australium, SkinAttributes::EncodeInteger(1));
 		if (settings.m_bDecoratedRarity)
-			result.Add(EEconAttribute::DecoratedRarity, 1.0f);
+			result.Add(EEconAttribute::DecoratedRarity, SkinAttributes::EncodeInteger(1));
 		if (settings.m_nStyleOverride > 0)
 			result.Add(EEconAttribute::StyleOverride, static_cast<float>(settings.m_nStyleOverride));
 		if (settings.m_bTurnVictimsToGold)
@@ -150,7 +144,7 @@ namespace
 		if (settings.m_bJingleFootsteps)
 			result.Add(EEconAttribute::JingleFootsteps, 1.0f);
 		if (settings.m_bPipBoyBuildMenu)
-			result.Add(EEconAttribute::PipBoyBuildMenu, 1.0f);
+			result.Add(EEconAttribute::PipBoyBuildMenu, SkinAttributes::EncodeInteger(1));
 
 		return result;
 	}
@@ -193,7 +187,7 @@ namespace
 		for (std::size_t desiredIndex = 0; desiredIndex < desired.m_nCount; ++desiredIndex)
 		{
 			const auto &expected = desired.m_Attributes[desiredIndex];
-			const auto nExpectedIndex = static_cast<std::uint32_t>(expected.m_Attribute);
+			const auto nExpectedIndex = static_cast<std::uint16_t>(expected.m_Attribute);
 			const auto nExpectedValue = std::bit_cast<std::uint32_t>(expected.m_flValue);
 			bool bFound = false;
 
@@ -201,7 +195,7 @@ namespace
 			{
 				EconItemAttributeLayout current = {};
 				std::memcpy(&current, attributes.m_pMemory + currentIndex, sizeof(current));
-				if (current.m_nDefinitionIndex == nExpectedIndex && current.m_nRawValue == nExpectedValue)
+				if (current.Matches(nExpectedIndex, nExpectedValue))
 				{
 					bFound = true;
 					break;
@@ -279,23 +273,29 @@ namespace
 	SkinChangerSettings DeserializeSettings(const nlohmann::json &value)
 	{
 		SkinChangerSettings settings = {};
+		const auto number = [&value]<typename T>(const char* name, T fallback)
+		{
+			if (const auto it = value.find(name); it != value.end())
+				Config::ReadNumber(*it, fallback);
+			return fallback;
+		};
 		settings.m_bEnabled = value.value("enabled", false);
-		settings.m_nPaintKit = value.value("paint_kit", 0);
-		settings.m_flWear = value.value("wear", 0.0f);
+		settings.m_nPaintKit = number("paint_kit", 0);
+		settings.m_flWear = number("wear", 0.0f);
 		settings.m_bTeamColored = value.value("team_colored", false);
 		settings.m_bAllowInspect = value.value("allow_inspect", false);
-		settings.m_nSeedLow = value.value("seed_low", 0);
-		settings.m_nSeedHigh = value.value("seed_high", 0);
-		settings.m_nUnusualEffect = value.value("unusual_effect", 0);
-		settings.m_nUnusualEffectStatic = value.value("unusual_effect_static", 0);
+		settings.m_nSeedLow = number("seed_low", 0);
+		settings.m_nSeedHigh = number("seed_high", 0);
+		settings.m_nUnusualEffect = number("unusual_effect", 0);
+		settings.m_nUnusualEffectStatic = number("unusual_effect_static", 0);
 		settings.m_bFestivized = value.value("festivized", false);
 		settings.m_bAustralium = value.value("australium", false);
 		settings.m_bDecoratedRarity = value.value("decorated_rarity", false);
-		settings.m_nStyleOverride = value.value("style_override", 0);
+		settings.m_nStyleOverride = number("style_override", 0);
 		settings.m_bTurnVictimsToGold = value.value("turn_victims_to_gold", false);
-		settings.m_nKillstreakTier = value.value("killstreak_tier", 0);
-		settings.m_nKillstreakSheen = value.value("killstreak_sheen", 0);
-		settings.m_nKillstreakEffect = value.value("killstreak_effect", 0);
+		settings.m_nKillstreakTier = number("killstreak_tier", 0);
+		settings.m_nKillstreakSheen = number("killstreak_sheen", 0);
+		settings.m_nKillstreakEffect = number("killstreak_effect", 0);
 		settings.m_bPumpkinBombs = value.value("pumpkin_bombs", false);
 		settings.m_bHalloweenFlames = value.value("halloween_flames", false);
 		settings.m_bHalloweenVoices = value.value("halloween_voices", false);
@@ -306,6 +306,13 @@ namespace
 
 	void ApplyLegacyAttribute(SkinChangerSettings &settings, int nAttribute, float flValue)
 	{
+		// The legacy format stores every attribute as a float. Check before
+		// converting integer attributes or treating an invalid value as true.
+		if (!std::isfinite(flValue)
+			|| flValue < static_cast<float>(std::numeric_limits<int>::lowest())
+			|| flValue >= static_cast<float>(std::numeric_limits<int>::max()))
+			return;
+
 		switch (static_cast<EEconAttribute>(nAttribute))
 		{
 			case EEconAttribute::PaintKit:
@@ -465,8 +472,8 @@ CSkinChanger::ApplyResult CSkinChanger::ApplyProfile(C_TFWeaponBase *pWeapon, in
 	if (!pWeapon || !profile.m_Settings.m_bEnabled)
 		return ApplyResult::PermanentFailure;
 
-	int &nWeaponItemDefinition = pWeapon->m_iItemDefinitionIndex();
-	nWeaponItemDefinition = nItemDefinition;
+	auto &nWeaponItemDefinition = pWeapon->m_iItemDefinitionIndex();
+	nWeaponItemDefinition = static_cast<std::uint16_t>(nItemDefinition);
 
 	const auto desired = BuildRuntimeAttributes(profile.m_Settings);
 	if (desired.m_nCount == 0)
@@ -567,7 +574,7 @@ void CSkinChanger::Run()
 		if (!pWeapon)
 			continue;
 
-		int &nRawItemDefinition = pWeapon->m_iItemDefinitionIndex();
+		auto &nRawItemDefinition = pWeapon->m_iItemDefinitionIndex();
 		const int nItemDefinition = NormalizeItemDefinition(nRawItemDefinition);
 		const auto profile = m_mapProfiles.find(nItemDefinition);
 		if (profile == m_mapProfiles.end() || !profile->second.m_Settings.m_bEnabled)
@@ -575,7 +582,7 @@ void CSkinChanger::Run()
 
 		const bool bItemDefinitionReverted = nRawItemDefinition != nItemDefinition;
 		if (bItemDefinitionReverted)
-			nRawItemDefinition = nItemDefinition;
+			nRawItemDefinition = static_cast<std::uint16_t>(nItemDefinition);
 
 		const int nEntryIndex = handle.GetEntryIndex();
 		if (nEntryIndex < 0 || nEntryIndex >= static_cast<int>(m_arrAppliedWeapons.size()))

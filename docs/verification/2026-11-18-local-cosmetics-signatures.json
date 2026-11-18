@@ -1,0 +1,36 @@
+{
+  "verified_at": "2026-11-18",
+  "source": "IDA MCP py_eval on installed TF2 client.dll",
+  "client_sha256": "b6f45c74805edacf0cf61d965f658158fc22960f66d583ef3a6549eb56696b95",
+  "signatures": {
+    "Create": {
+      "pattern": "48 83 EC 28 B9 E0 0E 00 00 E8 ? ? ? ? 48 85 C0 74 0C 48 8B C8 48 83 C4 28 E9 C1 FD FF FF",
+      "matches": [
+        "0x1803c5400"
+      ]
+    },
+    "Follow": {
+      "pattern": "48 89 5C 24 08 57 48 83 EC 20 41 0F B6 F8 48 8B D9 48 85 D2 74 5C 45 33 C0 E8 ? ? ? ? 45 33 C0 33 D2",
+      "matches": [
+        "0x1801a9100"
+      ]
+    },
+    "SetModel": {
+      "pattern": "48 89 5C 24 10 57 48 83 EC 20 66 89 91 CC 00 00 00 48 8B D9 48 8B 0D ? ? ? ? 0F BF D2 48 8B 01 FF 50 08",
+      "matches": [
+        "0x1801e73e0"
+      ]
+    }
+  },
+  "econ_item_definition": {
+    "registration": "0x18001db00",
+    "item_view_offset": 72,
+    "field_size": 2
+  },
+  "initialize_client_entity": {
+    "vtable_index": 82,
+    "econ_override": "0x18035bdc0",
+    "base": "0x1801e3170",
+    "client_only_flag_offset": 3617
+  }
+}

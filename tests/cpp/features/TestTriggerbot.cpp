@@ -85,7 +85,7 @@ TEST(TriggerbotContracts, AutoShootLeavesManualHitscanTickOwnedByAimbot) {
     ASSERT_NE(accuracyGate, std::string::npos);
     EXPECT_LT(trace, accuracyGate);
     EXPECT_LT(accuracyGate, tickWrite);
-    EXPECT_NE(src.find("CLagRecords::GetCommandTick", tickWrite), std::string::npos);
+    EXPECT_NE(src.find("F::LagRecords->GetLiveCommandTick", tickWrite), std::string::npos);
     EXPECT_EQ(src.find("TIME_TO_TICKS"), std::string::npos);
     EXPECT_EQ(src.find("pCmd->tick_count =", tickWrite + 1), std::string::npos);
     EXPECT_NE(src.find("G::bCommandTickResolved = true;", trace), std::string::npos);

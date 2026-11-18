@@ -11,15 +11,15 @@ private:
 	bool m_bGameFocused = false;
 
 public:
-	inline bool IsPressed(short key) { return m_Keys[key] == PRESSED; }
-	inline bool IsHeld(short key) { return m_Keys[key] == HELD; }
-	inline bool IsDown(short key) { return IsPressed(key) || IsHeld(key); }
+	inline bool IsPressed(int key) { return key >= 0 && key < 256 && m_Keys[key] == PRESSED; }
+	inline bool IsHeld(int key) { return key >= 0 && key < 256 && m_Keys[key] == HELD; }
+	inline bool IsDown(int key) { return IsPressed(key) || IsHeld(key); }
 	inline int GetMouseX() { return m_nMouseX; }
 	inline int GetMouseY() { return m_nMouseY; }
 	inline bool IsGameFocused() { return m_bGameFocused; }
 
 public:
-	bool IsPressedAndHeld(short key);
+	bool IsPressedAndHeld(int key);
 
 public:
 	void Update();

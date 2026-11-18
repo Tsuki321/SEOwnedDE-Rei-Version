@@ -166,7 +166,7 @@ void CTeamWellBeing::Run()
 			textY,
 			CFG::Menu_Text_Inactive,
 			POS_CENTERY,
-			Utils::ConvertUtf8ToWide(pi.name).c_str()
+			L"%ls", Utils::ConvertUtf8ToWide(pi.name).c_str()
 		);
 
 		H::Draw->EndClipping();

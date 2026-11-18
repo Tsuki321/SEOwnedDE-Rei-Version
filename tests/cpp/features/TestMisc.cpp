@@ -61,7 +61,7 @@ TEST(MiscContracts, AutoMedigunStampsLivePoseThroughGetCommandTick) {
     const auto accuracyGate = body.rfind("CFG::Misc_Accuracy_Improvements", tickWrite);
     ASSERT_NE(accuracyGate, std::string::npos);
     EXPECT_LT(accuracyGate, tickWrite);
-    EXPECT_NE(body.find("CLagRecords::GetCommandTick(pl->m_flSimulationTime())"), std::string::npos);
+    EXPECT_NE(body.find("F::LagRecords->GetLiveCommandTick(cmd->tick_count)"), std::string::npos);
     EXPECT_EQ(body.find("TIME_TO_TICKS(pl->m_flSimulationTime()"), std::string::npos);
 
     const auto claim = body.find("G::bCommandTickResolved = true;", tickWrite);

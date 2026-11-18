@@ -365,7 +365,7 @@ void CESP::Run()
 						(y - (H::Fonts->Get(EFonts::ESP_SMALL).m_nTall - 1)) - SPACING_Y,
 						textColor,
 						POS_CENTERX,
-						F::VisualUtils->GetCachedWideName(pLocal, pPlayer, PlayerInfo.name).c_str()
+						L"%ls", F::VisualUtils->GetCachedWideName(pLocal, pPlayer, PlayerInfo.name).c_str()
 					);
 				}
 			}
@@ -613,7 +613,7 @@ void CESP::Run()
 					(y - (H::Fonts->Get(EFonts::ESP_SMALL).m_nTall - 1)) - SPACING_Y,
 					textColor,
 					POS_CENTERX,
-					GetBuildingName(pBuilding)
+					"%s", GetBuildingName(pBuilding)
 				);
 			}
 
@@ -833,7 +833,7 @@ void CESP::Run()
 						(y - (H::Fonts->Get(EFonts::ESP_SMALL).m_nTall - 1)) - SPACING_Y,
 						textColor,
 						POS_CENTERX,
-						GetProjectileName(pEntity)
+						"%s", GetProjectileName(pEntity)
 					);
 				}
 

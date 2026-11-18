@@ -146,14 +146,9 @@ void CAutoShoot::Run(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, CUserCmd* pCmd
 
 	G::bFiring = true;
 
-	// Live pose depends on Accuracy Improvements:
-	// - On: the trace ran against the newest network pose, so stamp
-	//   GetCommandTick(simTime). The server subtracts lerp and lands on
-	//   that pose.
-	// - Off: the trace ran against the interpolated present; leaving
-	//   vanilla tick_count is correct.
-	// Claim the command so nothing downstream retargets it either.
+	// Historical shots use the stored pose time; live Accuracy shots
+	// use the last rendered pose, even after local prediction advances.
 	if (CFG::Misc_Accuracy_Improvements)
-		pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
+		pCmd->tick_count = F::LagRecords->GetLiveCommandTick(pCmd->tick_count);
 	G::bCommandTickResolved = true;
 }

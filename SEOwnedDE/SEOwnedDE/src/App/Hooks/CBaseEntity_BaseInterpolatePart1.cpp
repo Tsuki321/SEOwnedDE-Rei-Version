@@ -7,59 +7,16 @@ MAKE_SIGNATURE(CBaseEntity_BaseInterpolatePart1, "client.dll", "48 89 5C 24 ? 56
 MAKE_HOOK(CBaseEntity_BaseInterpolatePart1, Signatures::CBaseEntity_BaseInterpolatePart1.Get(), int, __fastcall,
 	void* ecx, float& currentTime, Vector& oldOrigin, QAngle& oldAngles, Vector& oldVel, int& bNoMoreChanges)
 {
-	auto shouldDisableInterp = [&]
-	{
-		if (!CFG::Misc_Accuracy_Improvements)
-		{
-			const auto pLocal = H::Entities->GetLocal();
-
-			if (!pLocal)
-				return false;
-
-			const auto pEntity = static_cast<C_BaseEntity*>(ecx);
-
-			if (!pEntity)
-				return false;
-
-			if (pEntity == pLocal)
-				return Shifting::bRecharging;
-
-			return false;
-		}
-
-		const auto pLocal = H::Entities->GetLocal();
-
-		if (!pLocal)
-			return false;
-
-		const auto pEntity = static_cast<C_BaseEntity*>(ecx);
-
-		if (!pEntity)
-			return false;
-
-		if (pEntity == pLocal)
-			return Shifting::bRecharging;
-
-		// Keep non-local players at their newest network pose for targeting and
-		// lag-record capture while Accuracy Improvements is enabled. There is
-		// deliberately no render-side smoothing for this mode: the rendered pose
-		// matches the validated pose exactly, at the cost of snapshot-stepped
-		// animation. With the mode off (the default) the engine interpolates
-		// remote players normally.
-		if (pEntity->GetClassId() == ETFClassIds::CTFPlayer)
-			return pEntity != pLocal;
-
-		if (pEntity->GetClassId() == ETFClassIds::CBaseDoor)
-			return true;
-
-		return false;
-	};
-
-	if (shouldDisableInterp())
+	const auto pLocal = H::Entities->GetLocal();
+	const auto pEntity = static_cast<C_BaseEntity*>(ecx);
+	if (pLocal && pEntity && ((pEntity == pLocal && Shifting::bRecharging)
+		|| (CFG::Misc_Accuracy_Improvements && pEntity->GetClassId() == ETFClassIds::CBaseDoor)))
 	{
 		bNoMoreChanges = 1;
 		return 0;
 	}
 
+	// Players, wearables and weapons must share the engine's interpolated pose.
+	// Accuracy Improvements resolves shots against that pose and its history.
 	return CALL_ORIGINAL(ecx, currentTime, oldOrigin, oldAngles, oldVel, bNoMoreChanges);
 }

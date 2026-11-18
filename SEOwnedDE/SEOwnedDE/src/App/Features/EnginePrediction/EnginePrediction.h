@@ -10,6 +10,7 @@ class CEnginePrediction
 	int m_nOldTickCount = 0;
 	int m_nTick = 0;
 	CUserCmd* m_pLastCmd = nullptr;
+	bool m_bActive = false;
 
 	int GetTickbase(CUserCmd* pCmd, C_TFPlayer* pLocal);
 
@@ -18,6 +19,8 @@ public:
 
 	void Start(CUserCmd* pCmd);
 	void End();
+	void Reset();
+	bool IsActive() const { return m_bActive; }
 };
 
 MAKE_SINGLETON_SCOPED(CEnginePrediction, EnginePrediction, F)

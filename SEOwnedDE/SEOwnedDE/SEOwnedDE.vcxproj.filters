@@ -22,6 +22,7 @@
     <ClCompile Include="src\App\Features\Radar\Radar.cpp" />
     <ClCompile Include="src\App\Features\RapidFire\RapidFire.cpp" />
     <ClCompile Include="src\App\Features\SkinChanger\SkinChanger.cpp" />
+    <ClCompile Include="src\App\Features\SkinChanger\LocalCosmetics.cpp" />
     <ClCompile Include="src\App\Features\SpectatorList\SpectatorList.cpp" />
     <ClCompile Include="src\App\Features\VisualUtils\VisualUtils.cpp" />
     <ClCompile Include="src\App\Features\WorldModulation\WorldModulation.cpp" />
@@ -154,7 +155,12 @@
     <ClInclude Include="src\App\Features\RapidFire\RapidFire.h" />
     <ClInclude Include="src\App\Features\Rendering\RenderContextScope.h" />
     <ClInclude Include="src\App\Features\Rendering\RenderPassState.h" />
+    <ClInclude Include="src\App\Features\LagRecords\RenderedPoseClock.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\RuntimeAttributeLayout.h" />
     <ClInclude Include="src\App\Features\SkinChanger\SkinChanger.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\LocalCosmetics.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\CosmeticInventory.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\CosmeticInventoryPersistence.h" />
     <ClInclude Include="src\App\Features\SpectatorList\SpectatorList.h" />
     <ClInclude Include="src\App\Features\VisualUtils\VisualUtils.h" />
     <ClInclude Include="src\App\Features\WorldModulation\WorldModulation.h" />

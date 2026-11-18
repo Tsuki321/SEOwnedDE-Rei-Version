@@ -450,7 +450,8 @@ float CMovementSimulation::CalculateHitchance(C_TFPlayer* pPlayer, int iSamples)
 
 bool CMovementSimulation::Initialize(C_TFPlayer* pPlayer)
 {
-	if (!pPlayer || pPlayer->deadflag())
+	if (m_pPlayer || !I::MoveHelper || !I::Prediction || !I::GlobalVars || !I::GameMovement
+		|| !I::EngineClient || !I::ClientEntityList || !pPlayer || pPlayer->deadflag())
 		return false;
 
 	//set player
@@ -460,6 +461,10 @@ bool CMovementSimulation::Initialize(C_TFPlayer* pPlayer)
 	//we'll use this to set current player's command, without it CGameMovement::CheckInterval will try to access a nullptr
 	static CUserCmd dummyCmd = {};
 
+	// Simulation may run inside local prediction. Preserve its host and command
+	// rather than clearing the enclosing prediction's state on Restore.
+	m_pOldMoveHost = I::MoveHelper->GetHost();
+	m_pOldCommand = m_pPlayer->CurrentCommand();
 	I::MoveHelper->SetHost(m_pPlayer);
 	m_pPlayer->SetCurrentCommand(&dummyCmd);
 
@@ -515,8 +520,8 @@ void CMovementSimulation::Restore()
 	if (!m_pPlayer)
 		return;
 
-	I::MoveHelper->SetHost(nullptr);
-	m_pPlayer->SetCurrentCommand(nullptr);
+	I::MoveHelper->SetHost(m_pOldMoveHost);
+	m_pPlayer->SetCurrentCommand(m_pOldCommand);
 
 	m_PlayerDataBackup.Restore(m_pPlayer);
 
@@ -525,6 +530,8 @@ void CMovementSimulation::Restore()
 	I::GlobalVars->frametime = m_flOldFrametime;
 
 	m_pPlayer = nullptr;
+	m_pOldMoveHost = nullptr;
+	m_pOldCommand = nullptr;
 	m_flYawTurnRate = 0.0f;
 	m_vAccelTrend = {};
 	m_vAdaptiveVelocity = {};

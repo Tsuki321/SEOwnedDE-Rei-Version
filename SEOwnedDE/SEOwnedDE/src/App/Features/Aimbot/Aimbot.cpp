@@ -120,10 +120,8 @@ void CAimbot::Run(CUserCmd* pCmd)
 	// RunMain, so re-deriving "am I firing" here would read false.
 	//
 	// The ownership flag stops this from second-guessing a decision the aimbot
-	// already made. ResolveManualShot then tries historical records, and if
-	// none lie on the ray, stamps GetCommandTick for the live network pose
-	// when Accuracy Improvements is on. Vanilla interpolation keeps the
-	// incoming tick.
+	// already made. ResolveManualShot tries the visible body first, then its
+	// recent history, and stamps the corresponding rendered-pose time.
 	if (G::bManualHitscanFiring && !G::bCommandTickResolved)
 	{
 		if (const auto pLocalManual = H::Entities->GetLocal(); pLocalManual && !pLocalManual->deadflag())

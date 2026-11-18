@@ -10,11 +10,17 @@
 #include "../Features/Killstreak/Killstreak.h"
 #include "../Features/NetworkFix/NetworkFix.h"
 #include "../Features/SkinChanger/SkinChanger.h"
+#include "../Features/SkinChanger/LocalCosmetics.h"
+#include "../Features/LagRecords/LagRecords.h"
+#include "../Features/EnginePrediction/EnginePrediction.h"
 
 MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), void, __fastcall,
 	void* ecx)
 {
 	F::NetworkFix->Reset();
+	F::EnginePrediction->Reset();
+	F::LagRecords->ClearRenderPoseTime();
+	F::LocalCosmetics->LevelShutdown();
 	CALL_ORIGINAL(ecx);
 
 	H::Entities->ClearCache();
