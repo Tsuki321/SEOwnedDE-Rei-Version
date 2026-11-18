@@ -11,7 +11,7 @@ constexpr auto schema = R"VDF(
 "items_game" {
  "prefabs" {
   "wearable" { "item_class" "tf_wearable" "item_slot" "head" "hidden" "0" }
-  "hat" { "prefab" "wearable" "equip_region" "hat" }
+  "hat" { "prefab" "wearable" "equip_region" "hat" "visuals" { "player_bodygroups" { "hat" "1" } } }
  }
  "equip_conflicts" { "whole_head" { "hat" "1" "glasses" "1" } }
  "items" {
@@ -44,6 +44,7 @@ TEST(CosmeticSchema, ResolvesPrefabsAndClassModelsWithoutWeaponOrHiddenItems)
     EXPECT_EQ(catalog[1].models[2], "models/sniper_glasses.mdl");
     EXPECT_FALSE(catalog[0].Supports(-1));
     EXPECT_FALSE(catalog[0].Supports(10));
+    EXPECT_EQ(catalog[0].bodygroups.at("hat"), 1);
 }
 
 TEST(CosmeticSchema, SupportsCommentsEscapesAndPlatformConditions)
@@ -72,6 +73,20 @@ TEST(CosmeticSchema, RejectsModelPathsOutsideModelDirectory)
     EXPECT_FALSE(ValidModel("models\\test.mdl"));
     EXPECT_FALSE(ValidModel("models/test.vmt"));
     EXPECT_FALSE(ValidModel("C:/models/test.mdl"));
+}
+
+TEST(CosmeticBodygroups, ChangesOnlyTheSelectedGroupAndRejectsInvalidValues)
+{
+    // Body 5 encodes first group=1 (base 1, count 2), second group=2 (base 2, count 3).
+    EXPECT_EQ(ApplyBodygroup(5, 1, 2, 0), 4);
+    EXPECT_EQ(ApplyBodygroup(5, 2, 3, 0), 1);
+    EXPECT_EQ(ApplyBodygroup(0, 1, 2, 1), 1);
+    EXPECT_EQ(ApplyBodygroup(5, 0, 2, 0), 5);
+    EXPECT_EQ(ApplyBodygroup(5, 1, 2, 2), 5);
+    EXPECT_EQ(ApplyBodygroup(5, 1, 2, -1), 5);
+    EXPECT_EQ(ApplyBodygroup(-1, 1, 2, 0), -1);
+    EXPECT_EQ(ApplyBodygroup(std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 3, 2),
+              std::numeric_limits<int>::max());
 }
 
 TEST(CosmeticCrate, RestrictsClassPoolAndCreatesDistinctInstances)

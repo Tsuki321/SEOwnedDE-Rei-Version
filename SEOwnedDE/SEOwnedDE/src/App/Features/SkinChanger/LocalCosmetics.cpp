@@ -254,3 +254,40 @@ bool CLocalCosmetics::ShouldHideOriginal(C_BaseEntity* entity) const
     if (entity->GetClassId() != ETFClassIds::CTFWearable || entity->m_hOwnerEntity() != m_owner) return false;
     return std::any_of(m_runtime.begin(), m_runtime.end(), [](const auto& slot) { return slot.entity.IsValid(); });
 }
+
+bool CLocalCosmetics::IsPreviewRenderable(IClientRenderable* renderable) const
+{
+    if (!renderable) return false;
+    for (const auto& slot : m_runtime)
+        if (slot.entity.IsValid())
+            if (const auto entity = I::ClientEntityList->GetClientEntityFromHandle(slot.entity))
+                if (entity->GetClientRenderable() == renderable) return true;
+    return false;
+}
+
+int CLocalCosmetics::PlayerBody(const ModelRenderInfo_t& info) const
+{
+    if (!m_state.enabled || !info.pModel || m_shutdownRequested.load()) return info.body;
+    if (CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached()) return info.body;
+    const auto local = H::Entities->GetLocal();
+    if (!local || local->deadflag() || info.entity_index != local->entindex()
+        || m_owner != local->GetRefEHandle() || m_class < 1 || m_class > 9) return info.body;
+    const auto studio = I::ModelInfoClient->GetStudiomodel(info.pModel);
+    if (!studio || studio->numbodyparts < 0 || studio->numbodyparts > 128) return info.body;
+    int body = info.body;
+    for (const auto& slot : m_runtime)
+    {
+        if (!slot.entity.IsValid() || !I::ClientEntityList->GetClientEntityFromHandle(slot.entity)) continue;
+        const auto item = m_state.inventory.Get(slot.item);
+        const auto def = item ? SimulatedCosmetics::Find(m_catalog, item->definition) : nullptr;
+        if (!def) continue;
+        for (int i = 0; i < studio->numbodyparts; ++i)
+        {
+            const auto part = studio->pBodypart(i);
+            const auto replacement = def->bodygroups.find(part->pszName());
+            if (replacement != def->bodygroups.end())
+                body = SimulatedCosmetics::ApplyBodygroup(body, part->base, part->nummodels, replacement->second);
+        }
+    }
+    return body;
+}

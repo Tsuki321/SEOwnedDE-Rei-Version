@@ -24,8 +24,9 @@ previews on death, class/team changes, disconnection, disabling the preview,
 cloaking, disguising, and clean screenshot frames. Unload waits for cleanup on
 the client frame thread. **Hide owned cosmetics** suppresses local character
 wearables during model draws when a simulated preview is present. It defaults
-to off. Bodygroup changes to the player's head/face and unusual particles are
-outside this first implementation; default cosmetic model styles are used.
+to off. Schema player bodygroups (for example the stock hat or headphones) are
+applied to the local player's draw and restored immediately afterward. Default
+cosmetic model styles are used; unusual particle effects are not simulated.
 
 ## Evidence and remaining checks
 
@@ -44,9 +45,9 @@ outside this first implementation; default cosmetic model styles are used.
   `m_iItemDefinitionIndex` at item-view offset 72 with width 2. The weapon SDK
   accessor and skin changer references now use `uint16_t` as well. A compile-time
   assertion guards this width.
-- Twelve new C++ tests cover prefab/class model resolution, invalid model paths,
+- Thirteen new C++ tests cover prefab/class model resolution, invalid model paths,
   schema failures, crate pools, duplicate instances, equip conflicts, item
-  removal, capacity, persistence, and stale loadout cleanup. Both projects include
+  removal, capacity, bodygroup packing, persistence, and stale loadout cleanup. Both projects include
   the new files. The XML, source paths, and whitespace checks passed locally.
 - **Pending:** GitHub Actions DLL build and compiled tests. Local compilation is
   prohibited by the repository and the no-local-compilation skill.

@@ -37,6 +37,8 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 	const bool bSpyCamRendering = F::SpyCamera->IsRendering();
 	const bool bTakingScreenshot = F::VisualUtils->IsTakingScreenshotCached();
 	const bool bCleanScreenshot = CFG::Misc_Clean_Screenshot && bTakingScreenshot;
+	if ((bCleanScreenshot || !F::LocalCosmetics->Enabled()) && F::LocalCosmetics->IsPreviewRenderable(pInfo.pRenderable))
+		return;
 	if (pInfo.entity_index > 0)
 		if (const auto entity = I::ClientEntityList->GetClientEntity(pInfo.entity_index))
 			if (F::LocalCosmetics->ShouldHideOriginal(entity->As<C_BaseEntity>()))
@@ -158,7 +160,10 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 	if (CFG::Visuals_Simple_Models)
 		*const_cast<int*>(&state.m_lod) = 5;
 
+	const int originalBody = pInfo.body;
+	pInfo.body = F::LocalCosmetics->PlayerBody(pInfo);
 	CALL_ORIGINAL(ecx, state, pInfo, pCustomBoneToWorld);
+	pInfo.body = originalBody;
 }
 
 MAKE_HOOK(CBaseAnimating_DrawModel, Signatures::CBaseAnimating_DrawModel.Get(), int, __fastcall,

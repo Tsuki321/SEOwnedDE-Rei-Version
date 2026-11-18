@@ -37,6 +37,8 @@ public:
     void LevelShutdown();
     void Shutdown();
     bool ShouldHideOriginal(C_BaseEntity* entity) const;
+    bool IsPreviewRenderable(IClientRenderable* renderable) const;
+    int PlayerBody(const ModelRenderInfo_t& info) const;
 
     const auto& Catalog() const { return m_catalog; }
     const auto& Inventory() const { return m_state.inventory; }

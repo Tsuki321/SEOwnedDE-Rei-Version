@@ -145,6 +145,7 @@ struct Definition
     std::array<std::string, 10> models;
     std::vector<std::string> regions;
     std::vector<std::string> conflicts;
+    std::map<std::string, int> bodygroups;
 
     bool Supports(int playerClass) const
     {
@@ -190,6 +191,13 @@ inline std::vector<Definition> ReadCatalog(std::string_view schema)
         for (const auto& [region, value] : item.Get("equip_regions").children)
             if (value.value != "0") def.regions.push_back(region);
         def.conflicts = def.regions;
+        for (const auto& [group, node] : item.Get("visuals").Get("player_bodygroups").children)
+        {
+            int value = 0;
+            const auto [last, status] = std::from_chars(node.value.data(), node.value.data() + node.value.size(), value);
+            if (status == std::errc{} && last == node.value.data() + node.value.size() && value >= 0 && value <= 255)
+                def.bodygroups[group] = value;
+        }
         for (const auto& region : def.regions)
             for (const auto& [other, value] : root.Get("equip_conflicts").Get(region).children)
                 if (value.value != "0") def.conflicts.push_back(other);
@@ -215,6 +223,14 @@ inline bool Conflicts(const Definition& a, const Definition& b)
         return false;
     };
     return a.index == b.index || overlaps(a.regions, b.conflicts) || overlaps(b.regions, a.conflicts);
+}
+
+inline int ApplyBodygroup(int body, int base, int count, int value)
+{
+    if (body < 0 || base <= 0 || count <= 0 || value < 0 || value >= count) return body;
+    const auto result = static_cast<std::int64_t>(body)
+        + static_cast<std::int64_t>(value - (body / base) % count) * base;
+    return result >= 0 && result <= std::numeric_limits<int>::max() ? static_cast<int>(result) : body;
 }
 
 struct Item
