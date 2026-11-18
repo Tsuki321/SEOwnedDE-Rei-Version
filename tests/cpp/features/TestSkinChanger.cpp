@@ -1,4 +1,7 @@
 #include <gtest/gtest.h>
+#include "App/Features/SkinChanger/SkinChanger.h"
+#include "Utils/Storage/Storage.h"
+#include <nlohmann/json.hpp>
 
 #include "../helpers/SourceContractAssertions.h"
 
@@ -13,6 +16,82 @@ constexpr const char* kFrameStageSource =
     "SEOwnedDE/SEOwnedDE/src/App/Hooks/IBaseClientDLL_FrameStageNotify.cpp";
 constexpr const char* kAppSource = "SEOwnedDE/SEOwnedDE/src/App/App.cpp";
 constexpr const char* kProjectSource = "SEOwnedDE/SEOwnedDE/SEOwnedDE.vcxproj";
+}
+
+namespace {
+class SkinProfileFilesTest : public ::testing::Test {
+protected:
+    CStorage storage;
+    CStorage* previousStorage = nullptr;
+    std::filesystem::path directory;
+    void SetUp() override {
+        directory = std::filesystem::temp_directory_path()
+            / (std::string("seownedde_skin_") + std::to_string(GetCurrentProcessId())
+                + "_" + ::testing::UnitTest::GetInstance()->current_test_info()->name());
+        storage.Init(directory.string());
+        previousStorage = U::Storage;
+        U::Storage = &storage;
+    }
+    void TearDown() override {
+        U::Storage = previousStorage;
+        std::error_code error;
+        std::filesystem::remove(directory / "skins.json", error);
+        std::filesystem::remove(directory / "Configs", error);
+        std::filesystem::remove(directory, error);
+    }
+    void Write(const nlohmann::json& json) {
+        std::ofstream file(directory / "skins.json");
+        ASSERT_TRUE(file.is_open());
+        file << json;
+    }
+};
+}
+
+TEST_F(SkinProfileFilesTest, ModernNumbersCannotWrapIntoAnotherPaintKitOrSeed) {
+    Write({ { "version", 1 }, { "weapons", {
+        { "18", { { "enabled", true }, { "paint_kit", 4294967297ULL },
+            { "seed_low", 4294967297ULL }, { "wear", 1e100 }, { "festivized", true } } }
+    } } });
+    CSkinChanger skins;
+    ASSERT_TRUE(skins.Load());
+    const auto settings = skins.GetSettings(18);
+    EXPECT_TRUE(settings.m_bEnabled);
+    EXPECT_TRUE(settings.m_bFestivized);
+    EXPECT_EQ(settings.m_nPaintKit, 0);
+    EXPECT_EQ(settings.m_nSeedLow, 0);
+    EXPECT_FLOAT_EQ(settings.m_flWear, 0.0f);
+}
+
+TEST_F(SkinProfileFilesTest, LegacyOverflowDoesNotEnableAttributesAndStillMigratesValidOnes) {
+    Write({ { "18", { { "2025", 1e100 }, { "2026", 1e30 }, { "2027", 1.0 } } } });
+    CSkinChanger skins;
+    ASSERT_TRUE(skins.Load());
+    const auto settings = skins.GetSettings(18);
+    EXPECT_FALSE(settings.m_bDecoratedRarity);
+    EXPECT_FALSE(settings.m_bAustralium);
+    EXPECT_TRUE(settings.m_bFestivized);
+    std::ifstream file(directory / "skins.json");
+    nlohmann::json migrated;
+    file >> migrated;
+    EXPECT_EQ(migrated.at("version"), 1);
+    EXPECT_TRUE(migrated.at("weapons").contains("18"));
+}
+
+TEST_F(SkinProfileFilesTest, SettingsRoundTripAndMalformedLoadPreservesExistingProfiles) {
+    CSkinChanger skins;
+    SkinChangerSettings settings;
+    settings.m_bEnabled = true;
+    settings.m_nPaintKit = 42;
+    settings.m_nSeedLow = 65535;
+    settings.m_flWear = 0.25f;
+    skins.SetSettings(18, settings);
+    ASSERT_TRUE(skins.Save());
+    CSkinChanger loaded;
+    ASSERT_TRUE(loaded.Load());
+    EXPECT_EQ(loaded.GetSettings(18), settings);
+    Write({ { "weapons", { { "18", { { "enabled", "invalid boolean" } } } } } });
+    EXPECT_FALSE(loaded.Load());
+    EXPECT_EQ(loaded.GetSettings(18), settings);
 }
 
 TEST(SkinChangerContracts, UsesIdaVerifiedSignaturesAndDynamicAttributeLayout) {

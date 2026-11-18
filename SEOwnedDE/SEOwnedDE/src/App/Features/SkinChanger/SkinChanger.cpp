@@ -273,23 +273,29 @@ namespace
 	SkinChangerSettings DeserializeSettings(const nlohmann::json &value)
 	{
 		SkinChangerSettings settings = {};
+		const auto number = [&value]<typename T>(const char* name, T fallback)
+		{
+			if (const auto it = value.find(name); it != value.end())
+				Config::ReadNumber(*it, fallback);
+			return fallback;
+		};
 		settings.m_bEnabled = value.value("enabled", false);
-		settings.m_nPaintKit = value.value("paint_kit", 0);
-		settings.m_flWear = value.value("wear", 0.0f);
+		settings.m_nPaintKit = number("paint_kit", 0);
+		settings.m_flWear = number("wear", 0.0f);
 		settings.m_bTeamColored = value.value("team_colored", false);
 		settings.m_bAllowInspect = value.value("allow_inspect", false);
-		settings.m_nSeedLow = value.value("seed_low", 0);
-		settings.m_nSeedHigh = value.value("seed_high", 0);
-		settings.m_nUnusualEffect = value.value("unusual_effect", 0);
-		settings.m_nUnusualEffectStatic = value.value("unusual_effect_static", 0);
+		settings.m_nSeedLow = number("seed_low", 0);
+		settings.m_nSeedHigh = number("seed_high", 0);
+		settings.m_nUnusualEffect = number("unusual_effect", 0);
+		settings.m_nUnusualEffectStatic = number("unusual_effect_static", 0);
 		settings.m_bFestivized = value.value("festivized", false);
 		settings.m_bAustralium = value.value("australium", false);
 		settings.m_bDecoratedRarity = value.value("decorated_rarity", false);
-		settings.m_nStyleOverride = value.value("style_override", 0);
+		settings.m_nStyleOverride = number("style_override", 0);
 		settings.m_bTurnVictimsToGold = value.value("turn_victims_to_gold", false);
-		settings.m_nKillstreakTier = value.value("killstreak_tier", 0);
-		settings.m_nKillstreakSheen = value.value("killstreak_sheen", 0);
-		settings.m_nKillstreakEffect = value.value("killstreak_effect", 0);
+		settings.m_nKillstreakTier = number("killstreak_tier", 0);
+		settings.m_nKillstreakSheen = number("killstreak_sheen", 0);
+		settings.m_nKillstreakEffect = number("killstreak_effect", 0);
 		settings.m_bPumpkinBombs = value.value("pumpkin_bombs", false);
 		settings.m_bHalloweenFlames = value.value("halloween_flames", false);
 		settings.m_bHalloweenVoices = value.value("halloween_voices", false);
@@ -300,6 +306,13 @@ namespace
 
 	void ApplyLegacyAttribute(SkinChangerSettings &settings, int nAttribute, float flValue)
 	{
+		// The legacy format stores every attribute as a float. Check before
+		// converting integer attributes or treating an invalid value as true.
+		if (!std::isfinite(flValue)
+			|| flValue < static_cast<float>(std::numeric_limits<int>::lowest())
+			|| flValue >= static_cast<float>(std::numeric_limits<int>::max()))
+			return;
+
 		switch (static_cast<EEconAttribute>(nAttribute))
 		{
 			case EEconAttribute::PaintKit:
