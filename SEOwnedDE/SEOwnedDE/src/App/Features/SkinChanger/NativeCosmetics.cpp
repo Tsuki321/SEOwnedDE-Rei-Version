@@ -159,18 +159,44 @@ void CNativeCosmetics::Run(bool enabled, const SimulatedCosmetics::Inventory& in
         if (changed) notify(native);
         return;
     }
+    const auto views = Field<unsigned char*>(native, 96);
+    const int count = Field<int>(native, 112);
+    if (count < 0 || count > 65535 || (count && !views)) { m_status = "Native inventory view unavailable"; return; }
+    // Snapshot IDs and positions once. The engine's FindItem and our saved
+    // inventory Get are linear scans; calling either for every item each frame
+    // makes a full expanded backpack unnecessarily expensive.
+    std::vector<std::uint64_t> nativeIds;
+    nativeIds.reserve(static_cast<std::size_t>(count) + inventory.items.size());
+    std::array<bool, SimulatedCosmetics::MaxNativeBackpackSlots + 1> occupied{};
+    for (int i = 0; i < count; ++i)
+    {
+        const auto view = views + 344 * i;
+        nativeIds.push_back((static_cast<std::uint64_t>(Field<std::uint32_t>(view, 96)) << 32)
+            | Field<std::uint32_t>(view, 100));
+        const auto position = Field<std::uint32_t>(view, 108) & 0xffffU;
+        if (position < occupied.size()) occupied[position] = true;
+    }
+    std::sort(nativeIds.begin(), nativeIds.end());
+    std::vector<std::uint64_t> sourceIds;
+    sourceIds.reserve(inventory.items.size());
+    for (const auto& item : inventory.items) sourceIds.push_back(item.id);
+    std::sort(sourceIds.begin(), sourceIds.end());
     for (auto it = m_items.begin(); it != m_items.end();)
     {
         const auto id = it->first & 0x0000FFFFFFFFFFFFULL;
-        if (!inventory.Get(id))
+        if (!std::binary_search(sourceIds.begin(), sourceIds.end(), id))
         {
-            if (find(native, it->first, nullptr)) Remove(native, it->first);
+            const auto view = std::lower_bound(nativeIds.begin(), nativeIds.end(), it->first);
+            if (view != nativeIds.end() && *view == it->first) { Remove(native, it->first); nativeIds.erase(view); }
+            if (it->second.position > 0 && it->second.position < static_cast<int>(occupied.size())) occupied[it->second.position] = false;
             Destroy(it->second.object);
             it = m_items.erase(it);
             changed = true;
         }
         else ++it;
     }
+    for (const auto& [id, entry] : m_items)
+        if (entry.position > 0 && entry.position < static_cast<int>(occupied.size())) occupied[entry.position] = true;
     for (const auto& item : inventory.items)
     {
         if (!SimulatedCosmetics::Find(F::LocalCosmetics->Catalog(), item.definition)) continue;
@@ -179,21 +205,13 @@ void CNativeCosmetics::Run(bool enabled, const SimulatedCosmetics::Inventory& in
         auto it = m_items.find(id);
         if (it == m_items.end())
         {
-            if (find(native, id, nullptr)) continue;
+            if (std::binary_search(nativeIds.begin(), nativeIds.end(), id)) continue;
             auto object = create();
             if (!object) continue;
             int position = SimulatedCosmetics::MaxNativeBackpackSlots;
-            const auto views = Field<unsigned char*>(native, 96);
-            const int count = Field<int>(native, 112);
-            if (count < 0 || count > 65535 || (count && !views)) { Destroy(object); continue; }
-            for (; position > 0; --position)
-            {
-                bool occupied = false;
-                for (int i = 0; i < count; ++i)
-                    if ((Field<std::uint32_t>(views + 344 * i, 108) & 0xffffU) == static_cast<unsigned int>(position)) { occupied = true; break; }
-                if (!occupied && std::none_of(m_items.begin(), m_items.end(), [position](const auto& pair) { return pair.second.position == position; })) break;
-            }
+            while (position > 0 && occupied[position]) --position;
             if (!position) { Destroy(object); continue; }
+            occupied[position] = true;
             Field<std::uint64_t>(object, 72) = id;
             Field<std::uint32_t>(object, 80) = static_cast<std::uint32_t>(owner);
             Field<std::uint32_t>(object, 84) = static_cast<std::uint32_t>(position);
@@ -208,7 +226,7 @@ void CNativeCosmetics::Run(bool enabled, const SimulatedCosmetics::Inventory& in
             changed = true;
         }
         auto& entry = it->second;
-        if (!find(native, id, nullptr))
+        if (!std::binary_search(nativeIds.begin(), nativeIds.end(), id))
         {
             // Steam may rebuild its view vector. Reinsert without touching SOCache
             // or acknowledging/delivering an item to the game coordinator.
@@ -216,6 +234,7 @@ void CNativeCosmetics::Run(bool enabled, const SimulatedCosmetics::Inventory& in
             if (auto custom = Field<void*>(entry.object, 120)) Field<int>(custom, 72) = 0;
             entry.equipped.fill(-1);
             if (!add(native, entry.object, false, false, false)) continue;
+            nativeIds.insert(std::lower_bound(nativeIds.begin(), nativeIds.end(), id), id);
             changed = true;
         }
         std::array<int, 10> equipped;
@@ -234,7 +253,7 @@ void CNativeCosmetics::Run(bool enabled, const SimulatedCosmetics::Inventory& in
         }
     }
     if (changed) notify(native);
-    const auto visible = std::count_if(m_items.begin(), m_items.end(), [native](const auto& item) { return find(native, item.first, nullptr) != nullptr; });
+    const auto visible = std::count_if(m_items.begin(), m_items.end(), [&nativeIds](const auto& item) { return std::binary_search(nativeIds.begin(), nativeIds.end(), item.first); });
     m_status = visible == static_cast<std::ptrdiff_t>(inventory.items.size())
         ? "Simulated cosmetics available in TF2's backpack and loadouts"
         : "Some cosmetics unavailable or the 4000-slot backpack is full";
