@@ -125,6 +125,8 @@ class CMovementSimulation
 	CPlayerDataBackup m_PlayerDataBackup = {};
 
 	C_TFPlayer* m_pPlayer = nullptr;
+	C_BasePlayer* m_pOldMoveHost = nullptr;
+	CUserCmd* m_pOldCommand = nullptr;
 	CMoveData m_MoveData = {};
 	bool m_bRunning = false;
 	float m_flYawTurnRate = 0.0f;

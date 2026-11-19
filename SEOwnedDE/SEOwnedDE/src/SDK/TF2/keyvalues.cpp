@@ -1,6 +1,7 @@
 #include "keyvalues.h"
 
 #include "../../Utils/Utils.h"
+#include <new>
 
 #pragma warning (disable : 6031)
 #pragma warning (disable : 4244)
@@ -8,8 +9,49 @@
 #define Q_ARRAYSIZE(A) (sizeof(A)/sizeof((A)[0]))
 
 MAKE_SIGNATURE(KeyValues_LoadFromBuffer, "engine.dll", "4C 89 4C 24 ? 48 89 4C 24 ? 55 56", 0x0);
-MAKE_SIGNATURE(KeyValues_Initialize, "engine.dll", "40 53 48 83 EC ? 48 8B D9 C6 41 ? ? 33 C9 48 8B C2", 0x0);
+// rei-2/Amalgam da2fae6, verified against the Steam x64 engine in IDA.
+MAKE_SIGNATURE(KeyValues_Initialize, "engine.dll", "40 53 48 83 EC ? 48 8B D9 66 C7 41", 0x0);
 MAKE_SIGNATURE(KeyValues_FindKey, "client.dll", "48 8B C4 53 55 56 48 81 EC ? ? ? ? 41 0F B6 E8", 0x0);
+
+namespace
+{
+	// Same allocator used by the engine when it takes ownership of a material's
+	// KeyValues. The first three slots match rei-2/Amalgam's IKeyValuesSystem.
+	class IKeyValuesAllocator
+	{
+	public:
+		virtual void RegisterSizeofKeyValues(int size) = 0;
+		virtual void* AllocKeyValuesMemory(int size) = 0;
+		virtual void FreeKeyValuesMemory(void* memory) = 0;
+	};
+
+	IKeyValuesAllocator* GetKeyValuesAllocator()
+	{
+		using Factory = IKeyValuesAllocator* (__cdecl*)();
+		static const auto factory = reinterpret_cast<Factory>(
+			GetProcAddress(GetModuleHandleA("vstdlib.dll"), "KeyValuesSystem"));
+		return factory ? factory() : nullptr;
+	}
+}
+
+void* KeyValues::operator new(std::size_t size)
+{
+	if (const auto allocator = GetKeyValuesAllocator())
+	{
+		if (void* memory = allocator->AllocKeyValuesMemory(static_cast<int>(size)))
+			return memory;
+	}
+	throw std::bad_alloc();
+}
+
+void KeyValues::operator delete(void* memory) noexcept
+{
+	if (memory)
+	{
+		if (const auto allocator = GetKeyValuesAllocator())
+			allocator->FreeKeyValuesMemory(memory);
+	}
+}
 
 int UnicodeToUTF8(const wchar_t *unicode, char *ansi, int ansiBufferSize)
 {
@@ -32,17 +74,15 @@ bool KeyValues::LoadFromBuffer(char const *resource_name, const char *buffer, vo
 	return FN(this, resource_name, buffer, file_system, path_id);
 }
 
-void KeyValues::Initialize(char *name)
+void KeyValues::Initialize(const char *name)
 {
-	static auto FN = reinterpret_cast<KeyValues * (__fastcall*)(KeyValues*, char*)>(Signatures::KeyValues_Initialize.Get());
+	static auto FN = reinterpret_cast<KeyValues * (__fastcall*)(KeyValues*, const char*)>(Signatures::KeyValues_Initialize.Get());
 	FN(this, name);
 }
 
 KeyValues::KeyValues(const char *name)
 {
-	char _name[128];
-	sprintf_s(_name, sizeof(_name), name);
-	this->Initialize((char *)_name);
+	Initialize(name ? name : "");
 }
 
 KeyValues *KeyValues::FindKey(const char *keyName, bool bCreate)

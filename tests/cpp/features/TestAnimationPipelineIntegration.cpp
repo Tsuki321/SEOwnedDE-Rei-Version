@@ -61,15 +61,15 @@ TEST(AnimationPipelineIntegration, NonAccuracyInterpolationRemainsEngineOwned) {
     EXPECT_NE(reset.find("CALL_ORIGINAL(ecx);"), std::string::npos);
 }
 
-TEST(AnimationPipelineIntegration, AccuracyModeKeepsRemoteAimWatchersAtNetworkState) {
+TEST(AnimationPipelineIntegration, AccuracyModeRegistersEveryAnimationWatcher) {
     const auto root = testhelpers::FindRepoRoot();
     const auto addVar = testhelpers::ReadTextFile(root / kAddVar);
-
-    EXPECT_NE(addVar.find("m_iv_angEyeAngles"), std::string::npos);
-    EXPECT_NE(addVar.find("m_iv_flPoseParameter"), std::string::npos);
-    EXPECT_NE(addVar.find("m_iv_flCycle"), std::string::npos);
-    EXPECT_NE(addVar.find("m_iv_vecVelocity"), std::string::npos);
-    EXPECT_NE(addVar.find("vel = pPlayer->m_vecVelocity()"), std::string::npos);
+    const auto start = addVar.find("MAKE_HOOK(CBaseEntity_AddVar");
+    const auto end = addVar.find("MAKE_HOOK(CBaseEntity_EstimateAbsVelocity", start);
+    const auto body = addVar.substr(start, end - start);
+    EXPECT_EQ(body.find("CFG::Misc_Accuracy_Improvements"), std::string::npos);
+    EXPECT_EQ(body.find("return;"), std::string::npos);
+    EXPECT_NE(body.find("CALL_ORIGINAL(ecx, data, watcher, type, bSetup)"), std::string::npos);
 }
 
 TEST(AnimationPipelineIntegration, HistoricalBonesAreIsolatedFromLiveRendering) {

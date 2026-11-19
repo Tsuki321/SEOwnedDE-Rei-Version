@@ -1,4 +1,8 @@
 #include <gtest/gtest.h>
+#include "SDK/SDK.h"
+#include <string_view>
+
+std::string RewriteChatCommand(std::string_view command);
 
 #include "../helpers/SourceContractAssertions.h"
 
@@ -45,4 +49,26 @@ TEST(ChatContracts, UsesGuardClausesAndReturns) {
 
     EXPECT_GE(totalIfs, static_cast<std::size_t>(1));
     EXPECT_GE(totalReturns, static_cast<std::size_t>(1));
+}
+
+TEST(ChatCommands, QuotedAndUnquotedMessagesKeepTheCommandAndMessage) {
+    const auto previousRandom = I::UniformRandomStream;
+    I::UniformRandomStream = nullptr;
+    EXPECT_EQ(RewriteChatCommand("say hello"), "say \"hewwo UwU\"");
+    EXPECT_EQ(RewriteChatCommand("say \"hello\""), "say \"hewwo UwU\"");
+    EXPECT_EQ(RewriteChatCommand("  say_team\t\"hello\"  "), "  say_team\t\"hewwo UwU\"  ");
+    I::UniformRandomStream = previousRandom;
+}
+
+TEST(ChatCommands, EmptyMalformedAndChainedCommandsArePreserved) {
+    for (const auto command : { "", "say", "say ", "say \"\"", "say \"hello", "say hello; echo later", "say \"hello\"; echo later", "say hello\necho later", "say_name hello", "echo say hello" }) {
+        EXPECT_EQ(RewriteChatCommand(command), command);
+    }
+}
+
+TEST(ChatCommands, EscapedQuotesAndSemicolonsInsideMessagesStayInsideTheMessage) {
+    const auto previousRandom = I::UniformRandomStream;
+    I::UniformRandomStream = nullptr;
+    EXPECT_EQ(RewriteChatCommand("say \"hello; \\\"x\\\"\""), "say \"hewwo; \\\"x\\\" UwU\"");
+    I::UniformRandomStream = previousRandom;
 }

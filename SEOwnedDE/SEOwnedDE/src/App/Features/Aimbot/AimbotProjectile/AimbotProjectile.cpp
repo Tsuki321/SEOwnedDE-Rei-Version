@@ -108,9 +108,9 @@ namespace
 		const bool bUsesPseudoSilent = CFG::Aimbot_Projectile_Aim_Type == 1
 			&& pWeapon && pWeapon->GetWeaponID() != TF_WEAPON_FLAMETHROWER;
 		const float flPacketDelay = bUsesPseudoSilent && bCommandChoked ? TICK_INTERVAL : 0.0f;
-		// accuracy mode extrapolates from the newest network pose, so only the
-		// vanilla pose clock has to cross the interpolation window on top of the latency
-		const float flLerp = CFG::Misc_Accuracy_Improvements ? 0.0f : SDKUtils::GetLerp();
+		// The visible target is interpolated in both modes; cross that delay
+		// as well as the outgoing packet latency when predicting its position.
+		const float flLerp = SDKUtils::GetLerp();
 		return ProjectilePredictionMath::ComputeTimingBias(SDKUtils::GetOutgoingLatency(), flLerp) + flPacketDelay;
 	}
 

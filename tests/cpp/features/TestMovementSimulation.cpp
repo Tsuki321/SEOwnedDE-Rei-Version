@@ -78,6 +78,16 @@ TEST(MovementPredictionMath, YawDeltaPreservesDirectionAcrossWraparound) {
     EXPECT_FLOAT_EQ(MovementPredictionMath::NormalizeYawDelta(355.0f, 5.0f), -10.0f);
 }
 
+TEST(MovementSimulationLifecycle, MissingMovementHelperSkipsPlayerAccessAndCleanup) {
+    const auto previousHelper = I::MoveHelper;
+    I::MoveHelper = nullptr;
+    CMovementSimulation simulation;
+    // No entity memory is accessed when prediction interfaces are unavailable.
+    EXPECT_FALSE(simulation.Initialize(reinterpret_cast<C_TFPlayer*>(uintptr_t{ 1 })));
+    simulation.Restore();
+    I::MoveHelper = previousHelper;
+}
+
 TEST(MovementPredictionMath, YawDeltaUsesActualSampleTime) {
     constexpr float tickInterval = 1.0f / 66.0f;
 

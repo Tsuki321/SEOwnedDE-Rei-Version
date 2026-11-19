@@ -1,6 +1,7 @@
 #pragma once
 #include "c_basecombatweapon.h"
 #include "c_baseplayer.h"
+#include <cstdint>
 
 MAKE_SIGNATURE(CTFWeaponBase_GetSpreadAngles, "client.dll", "48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 0F 29 74 24 ? 48 8B DA 48 8B F9 E8 ? ? ? ? 48 8B C8", 0x0);
 MAKE_SIGNATURE(CTFWeaponBase_UpdateAllViewmodelAddons, "client.dll", "48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B D9 E8 ? ? ? ? 48 8B F8", 0x0);
@@ -200,7 +201,7 @@ public:
 	NETVAR(m_flInspectAnimEndTime, float, "CTFWeaponBase", "m_flInspectAnimEndTime");
 	NETVAR(m_nInspectStage, int, "CTFWeaponBase", "m_nInspectStage");
 	NETVAR(m_iConsecutiveShots, int, "CTFWeaponBase", "m_iConsecutiveShots");
-	NETVAR(m_iItemDefinitionIndex, int, "CEconEntity", "m_iItemDefinitionIndex");
+	NETVAR(m_iItemDefinitionIndex, std::uint16_t, "CEconEntity", "m_iItemDefinitionIndex");
 
 	int GetSlot() {
 		return reinterpret_cast<int(__fastcall *)(void *)>(Memory::GetVFunc(this, 331))(this);

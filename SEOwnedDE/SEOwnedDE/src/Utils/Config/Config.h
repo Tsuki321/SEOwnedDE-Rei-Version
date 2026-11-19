@@ -9,6 +9,8 @@
 #include <iomanip>
 #include <filesystem>
 #include <string>
+#include <cmath>
+#include <limits>
 
 namespace Config
 {
@@ -56,6 +58,20 @@ namespace Config
 	};
 
 	inline std::vector<ConfigVarInitializer> vars{};
+
+	template <typename T>
+	bool ReadNumber(const nlohmann::json& value, T& result)
+	{
+		if (!value.is_number())
+			return false;
+		const double number = value.get<double>();
+		if (!std::isfinite(number)
+			|| number < static_cast<double>(std::numeric_limits<T>::lowest())
+			|| number > static_cast<double>(std::numeric_limits<T>::max()))
+			return false;
+		result = static_cast<T>(number);
+		return true;
+	}
 
 	static void Save(const std::filesystem::path& path)
 	{
@@ -154,19 +170,19 @@ namespace Config
 						*static_cast<bool *>(var.m_ptr) = value.get<bool>();
 						break;
 					case EConfigVarType::Integer:
-						*static_cast<int *>(var.m_ptr) = value.get<int>();
+						ReadNumber(value, *static_cast<int *>(var.m_ptr));
 						break;
 					case EConfigVarType::Float:
-						*static_cast<float *>(var.m_ptr) = value.get<float>();
+						ReadNumber(value, *static_cast<float *>(var.m_ptr));
 						break;
 					case EConfigVarType::Color:
-						*static_cast<Color_t *>(var.m_ptr) = Color_t{
-							value.at(0).get<unsigned char>(),
-							value.at(1).get<unsigned char>(),
-							value.at(2).get<unsigned char>(),
-							value.at(3).get<unsigned char>()
-						};
+					{
+						Color_t color{};
+						if (ReadNumber(value.at(0), color.r) && ReadNumber(value.at(1), color.g)
+							&& ReadNumber(value.at(2), color.b) && ReadNumber(value.at(3), color.a))
+							*static_cast<Color_t *>(var.m_ptr) = color;
 						break;
+					}
 					case EConfigVarType::String:
 						*static_cast<std::string *>(var.m_ptr) = value.get<std::string>();
 						break;

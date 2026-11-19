@@ -36,9 +36,7 @@ bool CLagRecords::AreConsumersActive()
 	// manual and turns the aimbot off lost backtracking entirely, and records were
 	// never even captured to backtrack to. Manual hitscan and melee both have to
 	// survive their aimbot gates being off.
-	const bool bManualHitscanBacktrack = CFG::Aimbot_Hitscan_Manual_Backtrack
-		&& CFG::Aimbot_Target_Players
-		&& CFG::Aimbot_Hitscan_Target_LagRecords;
+	const bool bManualHitscanBacktrack = CFG::Aimbot_Hitscan_Manual_Backtrack;
 	const bool bMelee = CFG::Aimbot_Active
 		&& CFG::Aimbot_Target_Players
 		&& CFG::Aimbot_Melee_Active
@@ -93,9 +91,8 @@ void CLagRecords::ResetForPoseModeIfChanged()
 	if (m_bAccuracyPoseMode == bAccuracyPoseMode)
 		return;
 
-	// A record's SimulationTime is either a server simulation stamp or a
-	// rendered client timestamp. Drop the ring at the transition instead of
-	// comparing those unrelated clocks during the next pruning pass.
+	// A mode change can coincide with a reconnect or changed pose overrides.
+	// Drop the old history before the new frame is captured.
 	m_RecordHeads.fill(0u);
 	m_RecordCounts.fill(0u);
 	m_CachedStates = {};
@@ -216,10 +213,8 @@ void CLagRecords::AddRenderRecord(C_TFPlayer* pPlayer, float flPoseTime)
 	const size_t newHead = (m_RecordHeads[idx] + 1) % MAX_LAG_RECORDS;
 	LagRecord_t& newRecord = records[newHead];
 
-	// Capture the current engine-owned animation pose. Its origin is the vanilla
-	// rendered position when interpolation is enabled, or the newest network
-	// position when Accuracy Improvements suppresses remote origin interpolation.
-	// Do not invalidate the cache or run a second animation pass in either mode.
+	// Capture the current engine-rendered body, including its interpolated origin.
+	// Do not invalidate the cache or run a second animation pass.
 	const bool bHistoricalModels = CFG::Materials_Active
 		&& CFG::Materials_Players_Active
 		&& !CFG::Materials_Players_Ignore_LagRecords;
@@ -381,21 +376,8 @@ void CLagRecords::UpdateRecords()
 	if (flBacktrackWindow < LAG_MIN_BACKTRACK_TIME)
 		flBacktrackWindow = LAG_MIN_BACKTRACK_TIME;
 
-	// The window is deliberately latency-independent: the server validates the
-	// shot's tick against its own latency estimate while the client tick clock
-	// already trails the server by that same latency, so the two terms cancel
-	// and the effective bound on record age is sv_maxunlag regardless of ping.
-	// Subtracting latency here double-counts it and collapses the window toward
-	// zero at moderate ping, wiping every ring and making manual backtracks
-	// un-hittable.
-
-	// Vanilla render records use this client-clock reference. Accuracy
-	// Improvements selects each player's m_flSimulationTime below because its
-	// records hold the non-interpolated network pose instead. The invariant is
-	// same-clock subtraction, not one globally hard-coded clock.
-	const float flPoseReference = I::GlobalVars
-		? I::GlobalVars->curtime - SDKUtils::GetLerp()
-		: -1.0f;
+	// One render clock for record capture, pruning and live command ticks.
+	const float flPoseReference = GetLivePoseTime();
 
 	for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ALL))
 	{
@@ -429,9 +411,7 @@ void CLagRecords::UpdateRecords()
 			state.AbsOrigin = pPlayer->GetAbsOrigin();
 			state.EyeAngles = pPlayer->GetEyeAngles();
 			state.Flags = pPlayer->m_fFlags();
-			state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements
-				? pPlayer->m_flSimulationTime()
-				: flPoseReference;
+			state.PoseReferenceTime = flPoseReference;
 			state.AgeReferenceTime = I::GlobalVars ? I::GlobalVars->realtime : -1.0f;
 			state.MaxBacktrackTime = flBacktrackWindow;
 
@@ -467,9 +447,7 @@ void CLagRecords::UpdateRecords()
 		}
 
 		// Use the exact clock selected when this player's cached state was built.
-		// Accuracy Improvements records network poses at m_flSimulationTime;
-		// vanilla interpolation records rendered poses at curtime - lerp. Mixing
-		// either ring with the other clock destructively truncates valid history.
+		// Records and the current body share the last render-frame clock.
 		const float flPoseReferenceTime = m_CachedStates[i].PoseReferenceTime;
 		if (flPoseReferenceTime < 0.0f)
 		{
@@ -506,9 +484,7 @@ LagRecordCachedState_t CLagRecords::CacheCurrentState(C_TFPlayer* pPlayer)
 	state.EyeAngles = pPlayer->GetEyeAngles();
 	state.Flags = pPlayer->m_fFlags();
 	// Match the clock chosen at capture; see LagRecordCachedState_t::PoseReferenceTime.
-	state.PoseReferenceTime = CFG::Misc_Accuracy_Improvements
-		? pPlayer->m_flSimulationTime()
-		: (I::GlobalVars ? I::GlobalVars->curtime - SDKUtils::GetLerp() : -1.0f);
+	state.PoseReferenceTime = F::LagRecords->GetLivePoseTime();
 	state.AgeReferenceTime = I::GlobalVars ? I::GlobalVars->realtime : -1.0f;
 	// Match the shared window formula UpdateRecords uses: margin plus the
 	// jitter allowance, floored. The jitter estimate may be unpopulated when

@@ -1,10 +1,62 @@
 #include <gtest/gtest.h>
+#include "App/Features/EnginePrediction/EnginePrediction.h"
 
 #include "../helpers/SourceContractAssertions.h"
 
 namespace {
 constexpr const char* kFeatureDir = "SEOwnedDE/SEOwnedDE/src/App/Features/EnginePrediction";
 constexpr const char* kMainSource = "SEOwnedDE/SEOwnedDE/src/App/Features/EnginePrediction/EnginePrediction.cpp";
+}
+
+TEST(EnginePredictionLifecycle, EndWithoutStartLeavesTheEngineClockAlone) {
+    CGlobalVarsBase globals{};
+    globals.curtime = 123.0f;
+    globals.frametime = 0.015f;
+    globals.tickcount = 8123;
+    const auto oldGlobals = I::GlobalVars;
+    const auto oldHelper = I::MoveHelper;
+    I::GlobalVars = &globals;
+    I::MoveHelper = nullptr;
+
+    CEnginePrediction prediction;
+    prediction.End();
+    prediction.End();
+    EXPECT_FALSE(prediction.IsActive());
+    EXPECT_FLOAT_EQ(globals.curtime, 123.0f);
+    EXPECT_FLOAT_EQ(globals.frametime, 0.015f);
+    EXPECT_EQ(globals.tickcount, 8123);
+
+    I::MoveHelper = oldHelper;
+    I::GlobalVars = oldGlobals;
+}
+
+TEST(EnginePredictionLifecycle, SkippedStartAndResetLeaveTheClockAlone) {
+    CGlobalVarsBase globals{};
+    globals.curtime = 42.0f;
+    globals.frametime = 0.02f;
+    globals.tickcount = 2100;
+    const auto oldGlobals = I::GlobalVars;
+    const auto oldHelper = I::MoveHelper;
+    I::GlobalVars = &globals;
+    I::MoveHelper = nullptr;
+
+    CUserCmd cmd{};
+    cmd.command_number = 1;
+    CEnginePrediction prediction;
+    prediction.flags = FL_ONGROUND;
+    prediction.Start(&cmd);
+    EXPECT_FALSE(prediction.IsActive());
+    prediction.End();
+    prediction.Reset();
+    prediction.Start(nullptr);
+    prediction.End();
+    EXPECT_EQ(prediction.flags, 0);
+    EXPECT_FLOAT_EQ(globals.curtime, 42.0f);
+    EXPECT_FLOAT_EQ(globals.frametime, 0.02f);
+    EXPECT_EQ(globals.tickcount, 2100);
+
+    I::MoveHelper = oldHelper;
+    I::GlobalVars = oldGlobals;
 }
 
 TEST(EnginePredictionContracts, ContainsExpectedSourceFiles) {

@@ -7,38 +7,8 @@ MAKE_SIGNATURE(CBaseEntity_AddVar, "client.dll", "48 89 5C 24 ? 48 89 6C 24 ? 57
 MAKE_HOOK(CBaseEntity_AddVar, Signatures::CBaseEntity_AddVar.Get(), void, __fastcall,
 	C_BaseEntity* ecx, void* data, IInterpolatedVar* watcher, int type, bool bSetup)
 {
-	if (CFG::Misc_Accuracy_Improvements && watcher)
-	{
-		const auto pDebugName = watcher->GetDebugName();
-		if (!pDebugName)
-		{
-			CALL_ORIGINAL(ecx, data, watcher, type, bSetup);
-			return;
-		}
-
-		const auto hash = HASH_RT(pDebugName);
-
-		static constexpr auto m_iv_vecVelocity = HASH_CT("C_BaseEntity::m_iv_vecVelocity");
-		static constexpr auto m_iv_angEyeAngles = HASH_CT("C_TFPlayer::m_iv_angEyeAngles");
-		static constexpr auto m_iv_flPoseParameter = HASH_CT("C_BaseAnimating::m_iv_flPoseParameter");
-		static constexpr auto m_iv_flCycle = HASH_CT("C_BaseAnimating::m_iv_flCycle");
-		static constexpr auto m_iv_flMaxGroundSpeed = HASH_CT("CMultiPlayerAnimState::m_iv_flMaxGroundSpeed");
-
-		const bool bAccuracyWatcher = hash == m_iv_vecVelocity
-			|| hash == m_iv_angEyeAngles
-			|| hash == m_iv_flPoseParameter
-			|| hash == m_iv_flCycle
-			|| hash == m_iv_flMaxGroundSpeed;
-		if (bAccuracyWatcher)
-		{
-			const auto pLocal = (I::ClientEntityList && I::EngineClient)
-				? H::Entities->GetLocal()
-				: nullptr;
-			if (!pLocal || ecx != pLocal)
-				return;
-		}
-	}
-
+	// Registration is permanent for the entity's lifetime. Keep every watcher
+	// so body animations, eye angles, weapons and cosmetics interpolate together.
 	CALL_ORIGINAL(ecx, data, watcher, type, bSetup);
 }
 

@@ -20,6 +20,13 @@ private:
 	std::unordered_map<int *, std::string> m_mapTempNumbers = {};
 	SkinChangerSettings m_SkinEditorSettings = {};
 	int m_nSkinEditorItemDefinition = -1;
+	int m_nSkinPage = 0;
+	int m_nCosmeticClass = 1;
+	int m_nCosmeticCrateClass = 0;
+	int m_nCosmeticSlot = 0;
+	int m_nCosmeticInventoryPage = 0;
+	std::uint64_t m_nSelectedCosmetic = 0;
+	std::uint64_t m_nPendingCosmeticRemoval = 0;
 
 	bool IsControlActive(const void* pControl) const { return m_pActiveControl == pControl; }
 	bool CanActivateControl(const void* pControl) const { return !m_pActiveControl || IsControlActive(pControl); }
@@ -65,6 +72,7 @@ public:
 
 private:
 	void MainWindow();
+	void CosmeticsMenu();
 	void Snow();
 	void Indicators();
 

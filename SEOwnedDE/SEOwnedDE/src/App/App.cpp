@@ -10,6 +10,7 @@
 #include "Features/Players/Players.h"
 #include "Features/ProjectileSim/ProjectileSim.h"
 #include "Features/SkinChanger/SkinChanger.h"
+#include "Features/SkinChanger/LocalCosmetics.h"
 
 #include "Features/CFG.h"
 
@@ -36,6 +37,7 @@ void CApp::Start()
 	U::SignatureManager->InitializeAllSignatures();
 	U::InterfaceManager->InitializeAllInterfaces();
 	F::SkinChanger->Load();
+	F::LocalCosmetics->Load();
 
 	H::Draw->UpdateScreenSize();
 	
@@ -96,6 +98,7 @@ void CApp::Loop()
 
 void CApp::Shutdown()
 {
+	F::LocalCosmetics->Shutdown();
 	if (!bUnload)
 	{
 		U::HookManager->FreeAllHooks();

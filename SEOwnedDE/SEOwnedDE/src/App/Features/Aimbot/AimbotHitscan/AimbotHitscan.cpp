@@ -373,17 +373,46 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 	constexpr float flTraceLength = 8192.0f;
 	const Vec3 vTraceEnd = vTraceStart + (vForward * flTraceLength);
 
-	// Historical records always win when one lies on the crosshair ray: the
-	// user aims at the ghost the record renderer draws, so rewinding to any
-	// other pose - including the live one - moves the target off the shot
-	// server-side. Checking the live pose first silently disabled manual
-	// backtracking whenever the target's live hull overlapped its own recent
-	// past, which is the normal case for a moving target.
+	// Prefer the visible interpolated body. A miss can still hit its recent
+	// history with ghosts and the aimbot disabled; the crosshair never moves.
+	if (CFG::Misc_Accuracy_Improvements)
+	{
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+		{
+			if (!pEntity)
+				continue;
+
+			const auto pPlayer = pEntity->As<C_TFPlayer>();
+			if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
+				continue;
+
+			if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+				continue;
+
+			if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
+				continue;
+
+			if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
+				continue;
+
+			pCmd->tick_count = F::LagRecords->GetLiveCommandTick(pCmd->tick_count);
+			G::bCommandTickResolved = true;
+			G::nTargetIndexEarly = pPlayer->entindex();
+			G::nTargetIndex = pPlayer->entindex();
+			return true;
+		}
+	}
+
 	const LagRecord_t* pBestRecord = nullptr;
 	C_TFPlayer* pBestPlayer = nullptr;
 
-	if (CFG::Aimbot_Hitscan_Manual_Backtrack
-		&& CFG::Aimbot_Target_Players && CFG::Aimbot_Hitscan_Target_LagRecords)
+	if (CFG::Aimbot_Hitscan_Manual_Backtrack)
 	{
 		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
 		{
@@ -449,48 +478,6 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 		G::nTargetIndexEarly = pBestPlayer->entindex();
 		G::nTargetIndex = pBestPlayer->entindex();
 		return true;
-	}
-
-	// Live-pose fallback, consulted only when no historical record claimed the
-	// shot. Accuracy Improvements pins live bones to the newest network pose,
-	// so a live hit must be paired with GetCommandTick(simTime) or the server
-	// rewinds to the interpolated present and the shot misses. Vanilla
-	// interpolation already matches vanilla tick_count, so the command is left
-	// untouched in that mode. Deliberately not gated on the manual backtrack
-	// toggle: with backtrack off this is still the correct tick for a shot at
-	// a live pose in accuracy mode.
-	if (CFG::Misc_Accuracy_Improvements)
-	{
-		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
-		{
-			if (!pEntity)
-				continue;
-
-			const auto pPlayer = pEntity->As<C_TFPlayer>();
-			if (!pPlayer || pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE))
-				continue;
-
-			if (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
-				continue;
-
-			if (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
-				continue;
-
-			if (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
-				continue;
-
-			if (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING))
-				continue;
-
-			if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))
-				continue;
-
-			pCmd->tick_count = CLagRecords::GetCommandTick(pPlayer->m_flSimulationTime());
-			G::bCommandTickResolved = true;
-			G::nTargetIndexEarly = pPlayer->entindex();
-			G::nTargetIndex = pPlayer->entindex();
-			return true;
-		}
 	}
 
 	return false;
@@ -1271,18 +1258,12 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 
 					if (bAimbotDirectedShot)
 					{
-						// Historical records always stamp GetCommandTick so the
-						// server rewinds to the pose we aimed at.
-						//
-						// Live pose depends on Accuracy Improvements:
-						// - On: CBaseEntity_BaseInterpolatePart1 pins remote
-						//   players to the newest network pose, so live bones
-						//   ARE that pose. GetCommandTick(simTime) pairs the
-						//   command with it (the server subtracts lerp).
-						// - Off: live bones are the interpolated present;
-						//   leaving vanilla tick_count is correct.
-						if (target.LagRecord || CFG::Misc_Accuracy_Improvements)
+						// Historical shots use the stored pose time; live Accuracy shots
+						// use the last rendered pose, even after local prediction advances.
+						if (target.LagRecord)
 							pCmd->tick_count = CLagRecords::GetCommandTick(target.SimulationTime);
+						else if (CFG::Misc_Accuracy_Improvements)
+							pCmd->tick_count = F::LagRecords->GetLiveCommandTick(pCmd->tick_count);
 
 						// Claim the command either way. Without the flag,
 						// AutoBackstab and the manual resolver both read

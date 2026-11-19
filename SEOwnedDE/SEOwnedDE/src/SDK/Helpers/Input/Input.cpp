@@ -2,8 +2,11 @@
 
 #include "../../SDK.h"
 
-bool CInput::IsPressedAndHeld(short key)
+bool CInput::IsPressedAndHeld(int key)
 {
+	if (key < 0 || key >= 256)
+		return false;
+
 	auto Now = std::chrono::steady_clock::now();
 
 	static std::chrono::time_point<std::chrono::steady_clock> KeyTimes[256] = { Now };

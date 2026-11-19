@@ -19,7 +19,7 @@ bool IsRapidFireWeapon(C_TFWeaponBase* pWeapon)
 
 bool CRapidFire::ShouldStart(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
-	if (G::nTicksSinceCanFire < 24 || G::nTargetIndex <= 1 || !G::bFiring || Shifting::bShifting || Shifting::bRecharging || Shifting::bShiftingWarp)
+	if (G::nTicksSinceCanFire < 24 || G::nTargetIndex <= 0 || !G::bFiring || Shifting::bShifting || Shifting::bRecharging || Shifting::bShiftingWarp)
 		return false;
 
 	if (Shifting::nAvailableTicks < CFG::Exploits_RapidFire_Ticks)

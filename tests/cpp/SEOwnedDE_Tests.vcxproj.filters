@@ -63,6 +63,12 @@
     <ClCompile Include="features\TestSkinChanger.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="features\TestCosmeticInventory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="features\TestDisplayPose.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="features\TestSetupBones.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

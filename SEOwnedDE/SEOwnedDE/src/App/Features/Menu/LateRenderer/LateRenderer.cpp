@@ -2,6 +2,8 @@
 
 void CLateRenderer::String(const CFont &font, int x, int y, Color_t col, short align, const char *str, const ClipRegion_t &clip)
 {
+	if (!str)
+		return;
 	m_vecStrings.emplace_back(String_t{ font, x, y, col, align, str, clip });
 }
 
@@ -44,14 +46,14 @@ void CLateRenderer::DrawAll()
 
 	for (const auto &String : m_vecStrings)
 	{
-		if (String.m_Clip.x) {
+		if (String.m_Clip.w > 0 && String.m_Clip.h > 0) {
 			I::MatSystemSurface->DisableClipping(false);
 			I::MatSystemSurface->SetClippingRect(String.m_Clip.x, String.m_Clip.y, String.m_Clip.x + String.m_Clip.w, String.m_Clip.y + String.m_Clip.h);
 		}
 
-		H::Draw->String(String.m_dwFont, String.m_nX, String.m_nY, String.m_Color, String.m_nAlign, String.m_pwszString);
+		H::Draw->String(String.m_dwFont, String.m_nX, String.m_nY, String.m_Color, String.m_nAlign, "%s", String.m_String.c_str());
 
-		if (String.m_Clip.x)
+		if (String.m_Clip.w > 0 && String.m_Clip.h > 0)
 			I::MatSystemSurface->DisableClipping(true);
 	}
 }

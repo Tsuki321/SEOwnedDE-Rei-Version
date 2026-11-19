@@ -7,6 +7,7 @@
 #include "../Features/Rendering/RenderPassState.h"
 #include "../Features/SpyCamera/SpyCamera.h"
 #include "../Features/VisualUtils/VisualUtils.h"
+#include "../Features/SkinChanger/LocalCosmetics.h"
 
 MAKE_SIGNATURE(CBaseAnimating_DrawModel, "client.dll", "4C 8B DC 49 89 5B ? 89 54 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC ? 48 8B 05 ? ? ? ? 48 8D 3D", 0x0);
 MAKE_SIGNATURE(ViewmodelAttachment_DrawModel, "client.dll", "41 8B D5 FF 50 ? 8B 97", 0x6);
@@ -36,6 +37,12 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 	const bool bSpyCamRendering = F::SpyCamera->IsRendering();
 	const bool bTakingScreenshot = F::VisualUtils->IsTakingScreenshotCached();
 	const bool bCleanScreenshot = CFG::Misc_Clean_Screenshot && bTakingScreenshot;
+	if ((bCleanScreenshot || !F::LocalCosmetics->Enabled()) && F::LocalCosmetics->IsPreviewRenderable(pInfo.pRenderable))
+		return;
+	if (pInfo.entity_index > 0)
+		if (const auto entity = I::ClientEntityList->GetClientEntity(pInfo.entity_index))
+			if (F::LocalCosmetics->ShouldHideOriginal(entity->As<C_BaseEntity>()))
+				return;
 
 	if (!bSpyCamRendering)
 	{
@@ -153,7 +160,10 @@ MAKE_HOOK(IVModelRender_DrawModelExecute, Memory::GetVFunc(I::ModelRender, 19), 
 	if (CFG::Visuals_Simple_Models)
 		*const_cast<int*>(&state.m_lod) = 5;
 
+	const int originalBody = pInfo.body;
+	pInfo.body = F::LocalCosmetics->PlayerBody(pInfo);
 	CALL_ORIGINAL(ecx, state, pInfo, pCustomBoneToWorld);
+	pInfo.body = originalBody;
 }
 
 MAKE_HOOK(CBaseAnimating_DrawModel, Signatures::CBaseAnimating_DrawModel.Get(), int, __fastcall,

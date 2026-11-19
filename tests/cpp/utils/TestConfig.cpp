@@ -259,6 +259,71 @@ TEST_F(ConfigTest, MalformedJsonDoesNotCrash) {
     EXPECT_EQ(test_cfg_int, beforeInt);
 }
 
+TEST_F(ConfigTest, OutOfRangeNumbersDoNotCorruptSettings) {
+    test_cfg_int = 42;
+    test_cfg_float = 0.25f;
+    test_cfg_color = Color_t{ 10, 20, 30, 40 };
+    const nlohmann::json badIntegers[] = {
+        2147483648LL, -2147483649LL, std::numeric_limits<unsigned long long>::max(), 1e100
+    };
+    for (const auto& integer : badIntegers) {
+        nlohmann::json j;
+        j["test_cfg_int"] = integer;
+        j["test_cfg_float"] = 1e100;
+        j["test_cfg_color"] = { 100, 200, 256, 255 };
+        j["test_cfg_string"] = "valid setting still loads";
+        {
+            std::ofstream file(m_tempPath);
+            file << j;
+        }
+        Config::Load(m_tempPath);
+        EXPECT_EQ(test_cfg_int, 42);
+        EXPECT_FLOAT_EQ(test_cfg_float, 0.25f);
+        EXPECT_EQ(test_cfg_color.r, 10u);
+        EXPECT_EQ(test_cfg_color.g, 20u);
+        EXPECT_EQ(test_cfg_color.b, 30u);
+        EXPECT_EQ(test_cfg_color.a, 40u);
+        EXPECT_EQ(test_cfg_string, "valid setting still loads");
+    }
+}
+
+TEST_F(ConfigTest, ValidNumericLimitsLoadWithoutWrapping) {
+    for (const int integer : { std::numeric_limits<int>::min(), std::numeric_limits<int>::max() }) {
+        nlohmann::json j;
+        j["test_cfg_int"] = integer;
+        j["test_cfg_float"] = std::numeric_limits<float>::max();
+        j["test_cfg_color"] = { 0, 255, 127, 255 };
+        {
+            std::ofstream file(m_tempPath);
+            file << j;
+        }
+        Config::Load(m_tempPath);
+        EXPECT_EQ(test_cfg_int, integer);
+        EXPECT_FLOAT_EQ(test_cfg_float, std::numeric_limits<float>::max());
+        EXPECT_EQ(test_cfg_color.r, 0u);
+        EXPECT_EQ(test_cfg_color.g, 255u);
+    }
+}
+
+TEST_F(ConfigTest, InvalidNumericTypesAndNegativeColorsLeaveValuesUnchanged) {
+    test_cfg_int = 42;
+    test_cfg_float = 0.25f;
+    test_cfg_color = Color_t{ 10, 20, 30, 40 };
+    nlohmann::json j;
+    j["test_cfg_int"] = true;
+    j["test_cfg_float"] = "1.0";
+    j["test_cfg_color"] = { 1, 2, 3, -1 };
+    {
+        std::ofstream file(m_tempPath);
+        file << j;
+    }
+    Config::Load(m_tempPath);
+    EXPECT_EQ(test_cfg_int, 42);
+    EXPECT_FLOAT_EQ(test_cfg_float, 0.25f);
+    EXPECT_EQ(test_cfg_color.r, 10u);
+    EXPECT_EQ(test_cfg_color.a, 40u);
+}
+
 TEST_F(ConfigTest, MissingKeyInJsonIsSilentlySkipped) {
     // Save only a subset of the registered vars
     test_cfg_bool = false;

@@ -6,6 +6,7 @@
 #include "../VisualUtils/VisualUtils.h"
 #include "../Players/Players.h"
 #include "../SkinChanger/SkinChanger.h"
+#include "../SkinChanger/LocalCosmetics.h"
 #include <algorithm>
 #include <charconv>
 #include <format>
@@ -126,7 +127,7 @@ void CMenu::GroupBoxStart(const char *szLabel, int nWidth)
 
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
-		x + (w / 2), y - (CFG::Menu_Spacing_Y - 1), CFG::Menu_Text_Inactive, POS_CENTERXY, szLabel
+		x + (w / 2), y - (CFG::Menu_Spacing_Y - 1), CFG::Menu_Text_Inactive, POS_CENTERXY, "%s", szLabel
 	);
 
 	m_nCursorX += CFG::Menu_Spacing_X * 2;
@@ -155,7 +156,7 @@ void CMenu::Label(const char *szText)
 		m_nCursorY,
 		CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szText
+		"%s", szText
 	);
 
 	m_nCursorY += H::Fonts->Get(EFonts::Menu).m_nTall + CFG::Menu_Spacing_Y;
@@ -198,7 +199,7 @@ bool CMenu::CheckBox(const char *szLabel, bool &bVar)
 		y + (h / 2),
 		(bHovered) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERY,
-		szLabel
+		"%s", szLabel
 	);
 
 	m_nCursorY += h + CFG::Menu_Spacing_Y;
@@ -279,7 +280,7 @@ bool CMenu::SliderFloat(const char *szLabel, float &flVar, float flMin, float fl
 		x, y,
 		(bHovered || IsControlActive(&flVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	Color_t clr = CFG::Menu_Accent_Primary;
@@ -376,7 +377,7 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 		x, y,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	Color_t clr = CFG::Menu_Accent_Primary;
@@ -488,7 +489,7 @@ bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
 		y,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	H::Draw->OutlinedRect(x, nInputY, w, h, CFG::Menu_Accent_Primary);
@@ -501,7 +502,7 @@ bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
 		nInputY + (h / 2) - 1,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERXY,
-		displayValue.c_str()
+		"%s", displayValue.c_str()
 	);
 
 	m_nCursorY += h + nTextH + (CFG::Menu_Spacing_Y * 2);
@@ -617,7 +618,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 		y + (h / 2),
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERXY,
-		IsControlActive(&nKeyOut) ? "..." : VK2STR(nKeyOut).c_str());
+		"%s", IsControlActive(&nKeyOut) ? "..." : VK2STR(nKeyOut).c_str());
 
 	H::Draw->String(
 		H::Fonts->Get(EFonts::Menu),
@@ -625,7 +626,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 		y + (h / 2),
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERY,
-		szLabel);
+		"%s", szLabel);
 
 	m_nCursorY += h + CFG::Menu_Spacing_Y;
 
@@ -771,7 +772,7 @@ bool CMenu::Button(const char *szLabel, bool bActive, int nCustomWidth)
 		H::Fonts->Get(EFonts::Menu),
 		x + (w / 2), y + (h / 2) - 1,
 		(bHovered || bActive) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-		POS_CENTERXY, szLabel
+		POS_CENTERXY, "%s", szLabel
 	);
 
 	m_nCursorY += h + CFG::Menu_Spacing_Y;
@@ -807,7 +808,7 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 			H::Fonts->Get(EFonts::Menu),
 			x + (w / 2), y + (h / 2) - 1,
 			clr,
-			POS_CENTERXY, label
+			POS_CENTERXY, L"%ls", label
 		);
 	}
 
@@ -817,7 +818,7 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 			H::Fonts->Get(EFonts::Menu),
 			x + CFG::Menu_Spacing_X, y + (h / 2) - 1,
 			clr,
-			POS_CENTERY, label
+			POS_CENTERY, L"%ls", label
 		);
 	}
 
@@ -873,7 +874,7 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, std::initializer_list<s
 		x + (w / 2), y + (h / 2) + (nTextH + CFG::Menu_Spacing_Y) - 1,
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERXY,
-		pszCurSelected
+		"%s", pszCurSelected
 	);
 
 	H::Draw->String(
@@ -881,7 +882,7 @@ bool CMenu::SelectSingle(const char *szLabel, int &nVar, std::initializer_list<s
 		x, y,
 		(bHovered || IsControlActive(&nVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	if (IsControlActive(&nVar))
@@ -969,7 +970,7 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 		x, y,
 		(bHovered || IsControlActive(&vecSelects)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_DEFAULT,
-		szLabel
+		"%s", szLabel
 	);
 
 	std::string strSelected = {};
@@ -993,7 +994,7 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 		x + CFG::Menu_Spacing_X, y + (nTextH + CFG::Menu_Spacing_Y) + (h / 2) - 1,
 		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 		POS_CENTERY,
-		strSelected.empty() ? "None" : strSelected.c_str()
+		"%s", strSelected.empty() ? "None" : strSelected.c_str()
 	);
 
 	I::MatSystemSurface->DisableClipping(true);
@@ -1087,7 +1088,7 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 		x + w + CFG::Menu_Spacing_X,
 		y + (h / 2),
 		(bHovered || IsControlActive(&colVar)) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-		POS_CENTERY, szLabel
+		POS_CENTERY, "%s", szLabel
 	);
 
 	if (IsControlActive(&colVar))
@@ -1116,6 +1117,109 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 	m_nCursorY += h + CFG::Menu_Spacing_Y;
 
 	return bCallback;
+}
+
+void CMenu::CosmeticsMenu()
+{
+	const auto fit = [](std::string text, std::size_t length = 27)
+	{
+		if (text.size() > length) text = text.substr(0, length - 3) + "...";
+		return text;
+	};
+	auto& cosmetics = *F::LocalCosmetics;
+	const auto& inventory = cosmetics.Inventory();
+	const int x = m_nCursorX + CFG::Menu_Spacing_X;
+	const int y = m_nCursorY + CFG::Menu_Spacing_Y;
+	constexpr int rows = 5;
+	m_nCursorX = x;
+	m_nCursorY = y;
+	GroupBoxStart("Simulated crate", 185);
+	{
+		SelectSingle("Drop pool", m_nCosmeticCrateClass, {
+			{"All cosmetics", 0}, {"Scout", 1}, {"Sniper", 2}, {"Soldier", 3}, {"Demoman", 4},
+			{"Medic", 5}, {"Heavy", 6}, {"Pyro", 7}, {"Spy", 8}, {"Engineer", 9}
+		});
+		if (Button("Open simulated crate"))
+		{
+			if (const auto id = cosmetics.OpenCrate(m_nCosmeticCrateClass))
+			{
+				m_nSelectedCosmetic = id;
+				m_nPendingCosmeticRemoval = 0;
+				m_nCosmeticInventoryPage = static_cast<int>((inventory.items.size() - 1) / rows);
+				if (m_nCosmeticCrateClass) m_nCosmeticClass = m_nCosmeticCrateClass;
+			}
+		}
+		Label("Free, uniform simulated drops");
+		Label(fit(cosmetics.Status()).c_str());
+	}
+	GroupBoxEnd();
+	GroupBoxStart("Local inventory", 185);
+	{
+		const int pages = std::max(1, static_cast<int>((inventory.items.size() + rows - 1) / rows));
+		m_nCosmeticInventoryPage = std::clamp(m_nCosmeticInventoryPage, 0, pages - 1);
+		Label(std::format("{} items | Page {}/{}", inventory.items.size(), m_nCosmeticInventoryPage + 1, pages).c_str());
+		for (int row = 0; row < rows; ++row)
+		{
+			const auto index = static_cast<std::size_t>(m_nCosmeticInventoryPage * rows + row);
+			if (index >= inventory.items.size()) break;
+			const auto& item = inventory.items[index];
+			const auto label = fit(std::format("#{} {}", item.id, cosmetics.Name(item.definition)));
+			if (Button(label.c_str(), m_nSelectedCosmetic == item.id, 170))
+			{
+				m_nSelectedCosmetic = item.id;
+				m_nPendingCosmeticRemoval = 0;
+			}
+		}
+		const int pagerY = m_nCursorY;
+		if (Button("Previous", false, 70) && m_nCosmeticInventoryPage > 0) --m_nCosmeticInventoryPage;
+		m_nCursorX += 95;
+		m_nCursorY = pagerY;
+		if (Button("Next", false, 70) && m_nCosmeticInventoryPage + 1 < pages) ++m_nCosmeticInventoryPage;
+		m_nCursorX = x + CFG::Menu_Spacing_X * 2;
+	}
+	GroupBoxEnd();
+
+	m_nCursorX = x + 185 + CFG::Menu_Spacing_X * 2;
+	m_nCursorY = y;
+	GroupBoxStart("Character cosmetics", 200);
+	{
+		bool enabled = cosmetics.Enabled();
+		if (CheckBox("Preview on character", enabled)) cosmetics.SetEnabled(enabled);
+		bool hide = cosmetics.HideOriginals();
+		if (CheckBox("Hide owned cosmetics", hide)) cosmetics.SetHideOriginals(hide);
+		SelectSingle("Loadout class", m_nCosmeticClass, {
+			{"Scout", 1}, {"Sniper", 2}, {"Soldier", 3}, {"Demoman", 4}, {"Medic", 5},
+			{"Heavy", 6}, {"Pyro", 7}, {"Spy", 8}, {"Engineer", 9}
+		});
+		SelectSingle("Cosmetic slot", m_nCosmeticSlot, {{"Slot 1", 0}, {"Slot 2", 1}, {"Slot 3", 2}});
+		const auto selected = inventory.Get(m_nSelectedCosmetic);
+		if (selected)
+		{
+			Label(fit(cosmetics.Name(selected->definition), 30).c_str());
+			Label(std::format("Simulated #{} | Item {}", selected->id, selected->definition).c_str());
+			if (Button("Equip selected")) cosmetics.Equip(m_nSelectedCosmetic, m_nCosmeticClass, m_nCosmeticSlot);
+			if (Button(m_nPendingCosmeticRemoval == m_nSelectedCosmetic ? "Confirm remove" : "Remove selected"))
+			{
+				if (m_nPendingCosmeticRemoval == m_nSelectedCosmetic)
+				{
+					cosmetics.Remove(m_nSelectedCosmetic);
+					m_nSelectedCosmetic = m_nPendingCosmeticRemoval = 0;
+				}
+				else m_nPendingCosmeticRemoval = m_nSelectedCosmetic;
+			}
+		}
+		else Label("Select an inventory item");
+		for (int slot = 0; slot < SimulatedCosmetics::Slots; ++slot)
+		{
+			const auto item = inventory.Get(inventory.equipped[m_nCosmeticClass][slot]);
+			Label(fit(std::format("{}: {}", slot + 1, item ? cosmetics.Name(item->definition) : "Empty"), 30).c_str());
+		}
+		if (Button("Unequip slot")) cosmetics.Unequip(m_nCosmeticClass, m_nCosmeticSlot);
+		if (Button("Reload inventory")) cosmetics.Load();
+		Label("Preview uses third person");
+		Label(fit(cosmetics.RuntimeStatus(), 30).c_str());
+	}
+	GroupBoxEnd();
 }
 
 void CMenu::MainWindow()
@@ -2414,6 +2518,19 @@ void CMenu::MainWindow()
 	}
 
 	if (MainTab == EMainTabs::SKINS)
+	{
+		const int navX = m_nCursorX + CFG::Menu_Spacing_X;
+		const int navY = m_nCursorY;
+		m_nCursorX = navX;
+		if (Button("Weapons", m_nSkinPage == 0, 145)) m_nSkinPage = 0;
+		m_nCursorX = navX + 145 + CFG::Menu_Spacing_X * 2;
+		m_nCursorY = navY;
+		if (Button("Cosmetics", m_nSkinPage == 1, 145)) m_nSkinPage = 1;
+		m_nCursorX = navX - CFG::Menu_Spacing_X;
+		if (m_nSkinPage == 1) CosmeticsMenu();
+	}
+
+	if (MainTab == EMainTabs::SKINS && m_nSkinPage == 0)
 	{
 		const int nCurrentWeapon = F::SkinChanger->GetCurrentWeaponIndex();
 		if (nCurrentWeapon >= 0 && nCurrentWeapon != m_nSkinEditorItemDefinition)
