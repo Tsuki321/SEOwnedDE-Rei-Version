@@ -1517,9 +1517,9 @@ void CMenu::MainWindow()
 				SliderFloat("FOV", CFG::Aimbot_Projectile_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Max Simulation Time", CFG::Aimbot_Projectile_Max_Simulation_Time, 1.0f, 5.0f, 0.5f, "%.1fs");
 				SliderInt("Max Targets", CFG::Aimbot_Projectile_Max_Processing_Targets, 1, 6, 1);
-				CheckBox("Hitchance", CFG::Aimbot_Projectile_Hitchance_Enabled);
+				CheckBox("Movement Confidence", CFG::Aimbot_Projectile_Hitchance_Enabled);
 				if (CFG::Aimbot_Projectile_Hitchance_Enabled)
-					SliderFloat("Minimum Chance", CFG::Aimbot_Projectile_Hitchance_Minimum, 0.0f, 100.0f, 5.0f, "%.0f%%");
+					SliderFloat("Minimum Confidence", CFG::Aimbot_Projectile_Hitchance_Minimum, 0.0f, 100.0f, 5.0f, "%.0f%%");
 				CheckBox("Delay Fire", CFG::Aimbot_Projectile_Delay_Fire);
 				if (CFG::Aimbot_Projectile_Delay_Fire)
 				{

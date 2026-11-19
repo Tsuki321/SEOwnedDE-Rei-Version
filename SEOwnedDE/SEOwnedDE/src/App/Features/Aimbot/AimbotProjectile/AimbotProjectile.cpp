@@ -4,16 +4,10 @@
 #include "../../CFG.h"
 #include "../../MovementSimulation/MovementSimulation.h"
 #include "../../ProjectileSim/ProjectileSim.h"
+#include <cstring>
 
 namespace
 {
-	constexpr float kPipeMuzzleUpZ = 200.0f;
-
-	constexpr float kMaxSimTimeCannon     = 0.95f;
-	constexpr float kMaxSimTimeIronBomber = 1.4f;
-	constexpr float kMaxSimTimePipe       = 2.0f;
-	constexpr float kMaxSimTimeFlame      = 0.18f;
-
 	constexpr int kRocketSplashPointsDefault = 50;
 	constexpr int kRocketSplashPointsReduced = 30;
 
@@ -44,64 +38,7 @@ namespace
 		float Score = 0.0f;
 	};
 
-	BallisticSolver::WeaponClass GetWeaponDragClass(C_TFWeaponBase* pWeapon)
-	{
-		if (!pWeapon)
-			return BallisticSolver::WeaponClass::None;
 
-		switch (pWeapon->GetWeaponID())
-		{
-			case TF_WEAPON_GRENADELAUNCHER:
-				return (pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheLochnLoad)
-					? BallisticSolver::WeaponClass::LochnLoad
-					: BallisticSolver::WeaponClass::GrenadeLauncher;
-			case TF_WEAPON_PIPEBOMBLAUNCHER:
-				return BallisticSolver::WeaponClass::Stickybomb;
-			case TF_WEAPON_CANNON:
-				return BallisticSolver::WeaponClass::Cannonball;
-			default:
-				return BallisticSolver::WeaponClass::None;
-		}
-	}
-
-	float GetMuzzleUpZ(C_TFWeaponBase* pWeapon)
-	{
-		if (!pWeapon)
-			return 0.0f;
-
-		switch (pWeapon->GetWeaponID())
-		{
-			case TF_WEAPON_GRENADELAUNCHER:
-			case TF_WEAPON_PIPEBOMBLAUNCHER:
-			case TF_WEAPON_CANNON:
-				return kPipeMuzzleUpZ;
-			default:
-				return 0.0f;
-		}
-	}
-
-	bool IsWithinSimTimeLimit(C_TFWeaponBase* pWeapon, float flTime)
-	{
-		if (!pWeapon)
-			return true;
-
-		const int nWeaponID = pWeapon->GetWeaponID();
-
-		if (nWeaponID == TF_WEAPON_CANNON)
-			return flTime <= kMaxSimTimeCannon;
-
-		if (nWeaponID == TF_WEAPON_GRENADELAUNCHER || nWeaponID == TF_WEAPON_PIPEBOMBLAUNCHER)
-		{
-			if (pWeapon->m_iItemDefinitionIndex() == Demoman_m_TheIronBomber)
-				return flTime <= kMaxSimTimeIronBomber;
-			return flTime <= kMaxSimTimePipe;
-		}
-
-		if (nWeaponID == TF_WEAPON_FLAME_BALL || nWeaponID == TF_WEAPON_FLAMETHROWER)
-			return flTime <= kMaxSimTimeFlame;
-
-		return true;
-	}
 
 	float GetPredictionTimingBias(C_TFWeaponBase* pWeapon, bool bCommandChoked)
 	{
@@ -122,41 +59,11 @@ namespace
 
 	void GetProjectileHull(const ProjectileInfo& info, Vec3& mins, Vec3& maxs)
 	{
-		mins = { -6.0f, -6.0f, -6.0f };
-		maxs = { 6.0f, 6.0f, 6.0f };
-
-		switch (info.m_type)
-		{
-			case TF_PROJECTILE_PIPEBOMB:
-			case TF_PROJECTILE_PIPEBOMB_REMOTE:
-			case TF_PROJECTILE_PIPEBOMB_PRACTICE:
-			case TF_PROJECTILE_CANNONBALL:
-				mins = { -8.0f, -8.0f, -8.0f };
-				maxs = { 8.0f, 8.0f, 20.0f };
-				break;
-			case TF_PROJECTILE_FLARE:
-				mins = { -8.0f, -8.0f, -8.0f };
-				maxs = { 8.0f, 8.0f, 8.0f };
-				break;
-			case TF_PROJECTILE_FLAME_ROCKET:
-				mins = { -12.0f, -12.0f, -12.0f };
-				maxs = { 12.0f, 12.0f, 12.0f };
-				break;
-			default: break;
-		}
+		mins = info.m_profile.HullMins;
+		maxs = info.m_profile.HullMaxs;
 	}
 
-	bool IsInsideExpandedBounds(const Vec3& point, const Vec3& targetOrigin, const Vec3& targetMins,
-		const Vec3& targetMaxs, const Vec3& projectileMins, const Vec3& projectileMaxs)
-	{
-		constexpr float kEndpointTolerance = 1.0f;
-		const Vec3 mins = targetOrigin + targetMins - projectileMaxs - Vec3(kEndpointTolerance, kEndpointTolerance, kEndpointTolerance);
-		const Vec3 maxs = targetOrigin + targetMaxs - projectileMins + Vec3(kEndpointTolerance, kEndpointTolerance, kEndpointTolerance);
 
-		return point.x >= mins.x && point.x <= maxs.x
-			&& point.y >= mins.y && point.y <= maxs.y
-			&& point.z >= mins.z && point.z <= maxs.z;
-	}
 
 	Vec3 ClosestPointOnBounds(const Vec3& point, const Vec3& origin, const Vec3& mins, const Vec3& maxs)
 	{
@@ -254,57 +161,135 @@ bool CAimbotProjectile::GetProjectileInfo(C_TFWeaponBase* pWeapon)
 	return m_CurProjInfo.Speed > 0.0f;
 }
 
+bool CAimbotProjectile::SeedCandidate(C_TFPlayer* local, C_TFWeaponBase* weapon, ProjectileCandidate_t& candidate)
+{
+	if (!candidate.Path || candidate.Path->size() < 2 || !(candidate.Speed > 0.0f)) return false;
+	const float horizon = std::min(CFG::Aimbot_Projectile_Max_Simulation_Time,
+		static_cast<float>(candidate.Path->size() - 1) * TICK_INTERVAL);
+	if (!(candidate.TimingBias < horizon)) return false;
+	const Vec3 target = ProjectileTrajectory::SamplePath(*candidate.Path, TICK_INTERVAL, candidate.TimingBias);
+	candidate.Angle = Math::CalcAngle(local->GetShootPos(), target);
+	if (!F::ProjectileSim->GetInfo(local, weapon, candidate.Angle, candidate.Launch)) return false;
+	candidate.Launch.m_speed = candidate.Speed;
+	candidate.Launch.m_gravity_mod = candidate.GravityMod;
+	BallisticSolver::SolverParams params;
+	params.ShootPos = candidate.Launch.m_pos;
+	params.TargetPos = target;
+	params.TargetVel = ((*candidate.Path)[1] - (*candidate.Path)[0]) / TICK_INTERVAL;
+	params.Speed = candidate.Speed;
+	params.Gravity = GetProjectileGravity(candidate.GravityMod);
+	params.MuzzleUpZ = candidate.Launch.m_profile.MuzzleUp;
+	params.UseViewUpMuzzle = true;
+	params.UseHighArc = candidate.HighArc;
+	// Analytic motion is a seed only; native drag is evaluated by VPhysics.
+	params.MaxTime = std::min(horizon - candidate.TimingBias, candidate.Launch.m_profile.MaxFlightTime);
+	const auto seed = BallisticSolver::SolveBallistic(params);
+	if (seed.Valid)
+	{
+		Math::VectorAngles(seed.Direction, candidate.Angle);
+		candidate.FlightTime = seed.Time;
+	}
+	else
+	{
+		candidate.FlightTime = std::min(params.MaxTime, target.DistTo(candidate.Launch.m_pos) / candidate.Speed);
+	}
+	candidate.Score = candidate.WaitTime + candidate.FlightTime + candidate.ArcPenalty;
+	return std::isfinite(candidate.FlightTime) && candidate.FlightTime > 0.0f;
+}
+
+bool CAimbotProjectile::RefineCandidate(C_TFPlayer* local, C_TFWeaponBase* weapon, ProjectileCandidate_t& candidate)
+{
+	const float maxFlightTime = std::min(candidate.Launch.m_profile.MaxFlightTime,
+		CFG::Aimbot_Projectile_Max_Simulation_Time - candidate.TimingBias);
+	auto simulate = [&](const Vec3& angle, float time, Vec3& endpoint)
+	{
+		ProjectileInfo launch;
+		if (!F::ProjectileSim->GetInfo(local, weapon, angle, launch)) return false;
+		launch.m_speed = candidate.Speed;
+		launch.m_gravity_mod = candidate.GravityMod;
+		return F::ProjectileSim->Sample(launch, time, endpoint, &m_TrajectoryBudget);
+	};
+	const auto result = ProjectileTrajectory::Refine(*candidate.Path, TICK_INTERVAL, candidate.TimingBias,
+		maxFlightTime, candidate.Angle, candidate.FlightTime, simulate);
+	if (!result.Valid || !F::ProjectileSim->GetInfo(local, weapon, result.Angle, candidate.Launch)) return false;
+	candidate.Angle = result.Angle;
+	candidate.FlightTime = result.FlightTime;
+	candidate.Launch.m_speed = candidate.Speed;
+	candidate.Launch.m_gravity_mod = candidate.GravityMod;
+	candidate.Score = candidate.WaitTime + candidate.FlightTime + candidate.ArcPenalty;
+	return true;
+}
+
 bool CAimbotProjectile::SolveProjectile(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const Vec3& vTo,
 	float flSpeed, float flGravityMod, Vec3& vViewAngleOut, float& flTimeOut, ProjectileInfo& launchOut)
 {
-	if (!pLocal || !pWeapon || flSpeed <= 0.0f)
-		return false;
+	if (!pLocal || !pWeapon || !(TICK_INTERVAL > 0.0f)) return false;
+	const int ticks = std::max(1, static_cast<int>(std::ceil(CFG::Aimbot_Projectile_Max_Simulation_Time / TICK_INTERVAL)));
+	std::vector<Vec3> path(static_cast<std::size_t>(ticks + 1), vTo);
+	ProjectileCandidate_t candidate;
+	candidate.Path = &path;
+	candidate.Speed = flSpeed;
+	candidate.GravityMod = flGravityMod;
+	candidate.HighArc = CFG::Aimbot_Projectile_High_Arc;
+	if (!SeedCandidate(pLocal, pWeapon, candidate) || !RefineCandidate(pLocal, pWeapon, candidate)) return false;
+	vViewAngleOut = candidate.Angle;
+	flTimeOut = candidate.FlightTime;
+	launchOut = candidate.Launch;
+	return true;
+}
 
-	Vec3 vViewAngle = Math::CalcAngle(pLocal->GetShootPos(), vTo);
-	for (int nIteration = 0; nIteration < 8; nIteration++)
+void CAimbotProjectile::CaptureHitboxes(C_TFPlayer* player)
+{
+	m_TargetHitboxes.clear();
+	const auto model = player->GetModel();
+	const auto header = model ? I::ModelInfoClient->GetStudiomodel(model) : nullptr;
+	const auto set = header ? header->pHitboxSet(player->m_nHitboxSet()) : nullptr;
+	matrix3x4_t bones[128] = {};
+	if (!set || !player->SetupBones(bones, 128, BONE_USED_BY_HITBOX, I::GlobalVars->curtime)) return;
+	const Vec3 origin = player->m_vecOrigin();
+	for (int index = 0; index < set->numhitboxes; ++index)
 	{
-		ProjectileInfo launch{};
-		if (!F::ProjectileSim->GetInfo(pLocal, pWeapon, vViewAngle, launch))
-			return false;
-
-		launch.m_speed = flSpeed;
-		launch.m_gravity_mod = flGravityMod;
-
-		BallisticSolver::SolverParams params;
-		params.ShootPos = launch.m_pos;
-		params.TargetPos = vTo;
-		params.TargetVel = {};
-		params.Speed = flSpeed;
-		params.Gravity = GetProjectileGravity(flGravityMod);
-		params.MuzzleUpZ = GetMuzzleUpZ(pWeapon);
-		params.UseViewUpMuzzle = true;
-		params.UseHighArc = CFG::Aimbot_Projectile_High_Arc;
-		params.DragCoeff = BallisticSolver::ComputeDragCoefficient(GetWeaponDragClass(pWeapon));
-		params.DragIters = 3;
-
-		const BallisticSolver::SolveResult result = BallisticSolver::SolveBallistic(params);
-		if (!result.Valid || !IsWithinSimTimeLimit(pWeapon, result.Time))
-			return false;
-
-		const Vec3 vRequiredLaunchAngle = BallisticSolver::DirectionToAngles(result.Direction);
-		Vec3 vCorrection = vRequiredLaunchAngle - launch.m_ang;
-		vCorrection.x = Math::NormalizeAngle(vCorrection.x);
-		vCorrection.y = Math::NormalizeAngle(vCorrection.y);
-		vCorrection.z = 0.0f;
-
-		if (fabsf(vCorrection.x) <= 0.01f && fabsf(vCorrection.y) <= 0.01f)
-		{
-			vViewAngleOut = vViewAngle;
-			flTimeOut = result.Time;
-			launchOut = launch;
-			return true;
-		}
-
-		vViewAngle += vCorrection;
-		Math::ClampAngles(vViewAngle);
+		const auto box = set->pHitbox(index);
+		if (!box || box->bone < 0 || box->bone >= 128) continue;
+		PredictedHitbox_t hitbox;
+		std::memcpy(hitbox.Matrix, bones[box->bone], sizeof(hitbox.Matrix));
+		for (int axis = 0; axis < 3; ++axis) hitbox.Matrix[axis][3] -= origin[axis];
+		hitbox.Mins = box->bbmin;
+		hitbox.Maxs = box->bbmax;
+		hitbox.Index = index;
+		m_TargetHitboxes.push_back(hitbox);
 	}
+}
 
-	return false;
+bool CAimbotProjectile::SweepHitboxes(const Vec3& start, const Vec3& end,
+	const Vec3& originStart, const Vec3& originEnd, float& fraction, int& hitbox) const
+{
+	bool found = false;
+	fraction = 1.0f;
+	for (const auto& box : m_TargetHitboxes)
+	{
+		auto toLocal = [&](const Vec3& world)
+		{
+			const Vec3 delta = world - Vec3{ box.Matrix[0][3], box.Matrix[1][3], box.Matrix[2][3] };
+			Vec3 local;
+			for (int axis = 0; axis < 3; ++axis)
+			{
+				const Vec3 basis{ box.Matrix[0][axis], box.Matrix[1][axis], box.Matrix[2][axis] };
+				local[axis] = basis.LengthSqr() > 1e-8f ? delta.Dot(basis) / basis.LengthSqr() : 0.0f;
+			}
+			return local;
+		};
+		float contact = 1.0f;
+		if (ProjectileTrajectory::SweepBounds(toLocal(start - originStart), toLocal(end - originEnd),
+			{}, {}, box.Mins, box.Maxs, box.Mins, box.Maxs, {}, {}, contact)
+			&& (!found || contact < fraction))
+		{
+			fraction = contact;
+			hitbox = box.Index;
+			found = true;
+		}
+	}
+	return found;
 }
 
 CAimbotProjectile::PredictedTargetState_t CAimbotProjectile::CaptureTargetState(C_TFPlayer* pPlayer,
@@ -446,52 +431,52 @@ Vec3 CAimbotProjectile::GetAimPoint(C_TFWeaponBase* pWeapon, const PredictedTarg
 }
 
 bool CAimbotProjectile::CanArcReach(const ProjectileInfo& launch, float flTargetTime,
-	const PredictedTargetState_t& targetState, C_BaseEntity* pTarget)
+	const PredictedTargetState_t& targetState, C_BaseEntity* pTarget, float timingBias, bool requireHead,
+	float* impactTime)
 {
-	if (flTargetTime <= 0.0f)
-		return false;
-
-	// Pipe-family solvers include the game's +200 view-up launch impulse, so the
-	// verification simulation must initialize with that same impulse enabled.
-	if (!F::ProjectileSim->Init(launch))
-		return false;
-
+	if (!std::isfinite(flTargetTime) || flTargetTime <= 0.0f
+		|| !m_TrajectoryBudget.TakeTrial() || !F::ProjectileSim->Init(launch)) return false;
 	CTraceFilterArc filter{};
 	filter.m_pIgnore = H::Entities->GetLocal();
 	filter.m_pIgnore2 = pTarget;
-
-	Vec3 projectileMins{};
-	Vec3 projectileMaxs{};
+	Vec3 projectileMins{}, projectileMaxs{};
 	GetProjectileHull(launch, projectileMins, projectileMaxs);
-
-	float flElapsed = 0.0f;
-	Vec3 vImpact = F::ProjectileSim->GetOrigin();
-	while (flElapsed + 1e-6f < flTargetTime)
+	float elapsed = 0.0f;
+	while (elapsed + 1e-6f < flTargetTime)
 	{
-		const Vec3 pre = F::ProjectileSim->GetOrigin();
+		if (!m_TrajectoryBudget.TakeStep()) return false;
+		const Vec3 before = F::ProjectileSim->GetOrigin();
 		F::ProjectileSim->RunTick();
-		const Vec3 post = F::ProjectileSim->GetOrigin();
-		const float flStep = std::min(TICK_INTERVAL, flTargetTime - flElapsed);
-		const float flFraction = std::clamp(flStep / TICK_INTERVAL, 0.0f, 1.0f);
-		const Vec3 segmentEnd = pre + (post - pre) * flFraction;
-
+		const float step = std::min(TICK_INTERVAL, flTargetTime - elapsed);
+		const Vec3 after = before + (F::ProjectileSim->GetOrigin() - before) * (step / TICK_INTERVAL);
 		trace_t trace{};
-		H::AimUtils->TraceHull(pre, segmentEnd, projectileMins, projectileMaxs, MASK_SOLID, &filter, &trace);
-		if (trace.DidHit() || trace.startsolid || trace.allsolid)
-			return false;
-
-		vImpact = segmentEnd;
-		flElapsed += flStep;
+		H::AimUtils->TraceHull(before, after, projectileMins, projectileMaxs, MASK_SOLID, &filter, &trace);
+		if (trace.startsolid || trace.allsolid) return false;
+		const bool movingTarget = pTarget->GetClassId() == ETFClassIds::CTFPlayer && !m_TargetStates.empty();
+		const auto startState = movingTarget ? GetTargetStateAtTime(timingBias + elapsed) : targetState;
+		const auto endState = movingTarget ? GetTargetStateAtTime(timingBias + elapsed + step) : targetState;
+		float contact = 1.0f;
+		int hitbox = -1;
+		const bool hitTarget = requireHead
+			? SweepHitboxes(before, after, startState.Origin, endState.Origin, contact, hitbox)
+			: ProjectileTrajectory::SweepBounds(before, after, startState.Origin, endState.Origin,
+				startState.Mins, startState.Maxs, endState.Mins, endState.Maxs, projectileMins, projectileMaxs, contact);
+		if (hitTarget && contact <= (trace.DidHit() ? trace.fraction : 1.0f))
+		{
+			if (requireHead && hitbox != HITBOX_HEAD) return false;
+			if (impactTime) *impactTime = elapsed + step * contact;
+			return true;
+		}
+		if (trace.DidHit()) return false;
+		elapsed += step;
 	}
-
-	return IsInsideExpandedBounds(vImpact, targetState.Origin, targetState.Mins, targetState.Maxs,
-		projectileMins, projectileMaxs);
+	return false;
 }
 
 bool CAimbotProjectile::CanSee(const ProjectileInfo& launch, const PredictedTargetState_t& targetState,
-	C_BaseEntity* pTarget, float flTargetTime)
+	C_BaseEntity* pTarget, float flTargetTime, float timingBias, bool requireHead, float* impactTime)
 {
-	return CanArcReach(launch, flTargetTime, targetState, pTarget);
+	return CanArcReach(launch, flTargetTime, targetState, pTarget, timingBias, requireHead, impactTime);
 }
 
 bool CAimbotProjectile::RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const CUserCmd* pCmd,
@@ -654,347 +639,152 @@ bool CAimbotProjectile::RunSplash(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, c
 
 bool CAimbotProjectile::SolveTarget(C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const CUserCmd* pCmd, ProjTarget_t& target)
 {
-	const Vec3 vLocalPos = pLocal->GetShootPos();
 	m_TargetPath.clear();
 	m_TargetStates.clear();
-
-	const float gravity   = GetProjectileGravity(m_CurProjInfo.GravityMod);
-	const float muzzleUpZ = GetMuzzleUpZ(pWeapon);
-	const float dragCoeff = BallisticSolver::ComputeDragCoefficient(GetWeaponDragClass(pWeapon));
-	const bool  useHighArc = CFG::Aimbot_Projectile_High_Arc;
-	const bool bChargeRelease = m_ChargeHold.ReleasePending && pCmd
+	m_TargetHitboxes.clear();
+	m_TrajectoryBudget = {};
+	target.PlannedSpeed = 0.0f;
+	target.PlannedGravityMod = 0.0f;
+	target.RequiredChargeTime = 0.0f;
+	if (!(TICK_INTERVAL > 0.0f) || !std::isfinite(CFG::Aimbot_Projectile_Max_Simulation_Time)
+		|| !(CFG::Aimbot_Projectile_Max_Simulation_Time > TICK_INTERVAL)) return false;
+	const bool chargeRelease = m_ChargeHold.ReleasePending && pCmd
 		&& pCmd->command_number == m_ChargeHold.LastSolvedCommandNumber;
-	const bool bCommandChoked = G::bCanPrimaryAttack || bChargeRelease;
-	const float flTimingBias = GetPredictionTimingBias(pWeapon, bCommandChoked);
-
-	if (target.Entity->GetClassId() == ETFClassIds::CTFPlayer)
+	const float timingBias = GetPredictionTimingBias(pWeapon, G::bCanPrimaryAttack || chargeRelease);
+	const Vec3 localPos = pLocal->GetShootPos();
+	const int ticks = std::max(1, static_cast<int>(std::ceil(CFG::Aimbot_Projectile_Max_Simulation_Time / TICK_INTERVAL)));
+	const bool isPlayer = target.Entity->GetClassId() == ETFClassIds::CTFPlayer;
+	if (isPlayer)
 	{
-		const auto pPlayer = target.Entity->As<C_TFPlayer>();
-
-		if (CFG::Aimbot_Projectile_Hitchance_Enabled)
+		const auto player = target.Entity->As<C_TFPlayer>();
+		if (CFG::Aimbot_Projectile_Hitchance_Enabled
+			&& F::MovementSimulation->CalculateHitchance(player, player->m_fFlags() & FL_ONGROUND ? 4 : 3)
+				< CFG::Aimbot_Projectile_Hitchance_Minimum / 100.0f) return false;
+		const float scale = player->m_flModelScale();
+		Vec3 headOffset{};
+		if (pWeapon->GetWeaponID() == TF_WEAPON_COMPOUND_BOW)
 		{
-			const int iSamples = pPlayer->m_fFlags() & FL_ONGROUND ? 4 : 3;
-			const float flHitchance = F::MovementSimulation->CalculateHitchance(pPlayer, iSamples);
-			const float flMinimum = CFG::Aimbot_Projectile_Hitchance_Minimum / 100.0f;
-
-			if (flHitchance < flMinimum)
-				return false;
+			CaptureHitboxes(player);
+			for (const auto& box : m_TargetHitboxes)
+				if (box.Index == HITBOX_HEAD) Math::VectorTransform((box.Mins + box.Maxs) * 0.5f, box.Matrix, headOffset);
 		}
-
-		const Vec3 targetVel = pPlayer->m_vecVelocity();
-		const float flTargetModelScale = pPlayer->m_flModelScale();
-		Vec3 vHeadOffset{};
-		if (CFG::Aimbot_Projectile_Advanced_Head_Aim)
+		else if (CFG::Aimbot_Projectile_Advanced_Head_Aim)
 		{
-			const Vec3 vHeadPosition = pPlayer->GetHitboxPos(HITBOX_HEAD);
-			if (!vHeadPosition.IsZero())
-				vHeadOffset = vHeadPosition - pPlayer->m_vecOrigin();
+			const Vec3 head = player->GetHitboxPos(HITBOX_HEAD);
+			if (!head.IsZero()) headOffset = head - player->m_vecOrigin();
 		}
-		const PredictedTargetState_t currentState = CaptureTargetState(
-			pPlayer, pPlayer->m_vecOrigin(), flTargetModelScale, vHeadOffset);
-		const Vec3 vCurrentAimPoint = GetAimPoint(pWeapon, currentState, CFG::Aimbot_Projectile_Aim_Position);
-
-		ProjectileInfo seedLaunch{};
-		if (!F::ProjectileSim->GetInfo(pLocal, pWeapon, pCmd->viewangles, seedLaunch))
-			return false;
-		seedLaunch.m_speed = m_CurProjInfo.Speed;
-		seedLaunch.m_gravity_mod = m_CurProjInfo.GravityMod;
-
-		BallisticSolver::SolverParams initParams;
-		initParams.ShootPos   = seedLaunch.m_pos;
-		initParams.TargetPos  = vCurrentAimPoint;
-		initParams.TargetVel  = targetVel;
-		initParams.Speed      = m_CurProjInfo.Speed;
-		initParams.Gravity    = gravity;
-		initParams.MuzzleUpZ  = muzzleUpZ;
-		initParams.UseViewUpMuzzle = true;
-		initParams.UseHighArc = useHighArc;
-		initParams.DragCoeff   = dragCoeff;
-		initParams.DragIters   = 3;
-
-		BallisticSolver::SolveResult initResult = BallisticSolver::SolveBallistic(initParams);
-		const float flMaxSimulationTime = std::max(TICK_INTERVAL, CFG::Aimbot_Projectile_Max_Simulation_Time);
-		const int hardMaxTicks = std::max(1, TIME_TO_TICKS(flMaxSimulationTime));
-
-		CMovementSimScope simScope(pPlayer);
-		if (!simScope)
-			return false;
-
-		m_TargetPath.reserve(hardMaxTicks + 1);
-		m_TargetStates.reserve(hardMaxTicks + 1);
-		for (int nTick = 0; nTick <= hardMaxTicks; nTick++)
+		// Restore the real entity before launch setup and trajectory validation.
 		{
-			const PredictedTargetState_t state = CaptureTargetState(
-				pPlayer, F::MovementSimulation->GetOrigin(), flTargetModelScale, vHeadOffset);
-			m_TargetStates.push_back(state);
-			m_TargetPath.push_back(state.Origin);
-			if (nTick < hardMaxTicks)
-				F::MovementSimulation->RunTick(TICKS_TO_TIME(nTick));
-		}
-
-		if (m_TargetPath.empty())
-			return false;
-
-		auto buildAimPath = [&](int aimPosition)
-		{
-			std::vector<Vec3> path;
-			path.reserve(m_TargetStates.size());
-			for (const PredictedTargetState_t& state : m_TargetStates)
-				path.push_back(GetAimPoint(pWeapon, state, aimPosition));
-			return path;
-		};
-
-		std::vector<Vec3> aimPath = buildAimPath(CFG::Aimbot_Projectile_Aim_Position);
-		const int baselineAimPosition = m_LastAimPos;
-
-		auto refinePath = [&]()
-		{
-			int startTick = -1;
-			if (initResult.Valid && initResult.Time > 0.0f)
+			CMovementSimScope sim(player);
+			if (!sim) return false;
+			m_TargetStates.reserve(static_cast<std::size_t>(ticks + 1));
+			m_TargetPath.reserve(static_cast<std::size_t>(ticks + 1));
+			m_TargetStates.push_back(CaptureTargetState(player, F::MovementSimulation->GetOrigin(), scale, headOffset));
+			m_TargetPath.push_back(F::MovementSimulation->GetOrigin());
+			for (int tick = 1; tick <= ticks; ++tick)
 			{
-				startTick = std::clamp(TIME_TO_TICKS(initResult.Time + flTimingBias), 0, static_cast<int>(m_TargetPath.size()) - 1);
+				F::MovementSimulation->RunTick(tick * TICK_INTERVAL);
+				m_TargetStates.push_back(CaptureTargetState(player, F::MovementSimulation->GetOrigin(), scale, headOffset));
+				m_TargetPath.push_back(F::MovementSimulation->GetOrigin());
 			}
-			else
-			{
-				startTick = BallisticSolver::ScanMeetingTick(
-					aimPath, TICK_INTERVAL, seedLaunch.m_pos, m_CurProjInfo.Speed,
-					gravity, muzzleUpZ, dragCoeff, flMaxSimulationTime, useHighArc, flTimingBias);
-			}
-
-			return BallisticSolver::NewtonRefineOverPath(
-				aimPath, TICK_INTERVAL, startTick, seedLaunch.m_pos,
-				m_CurProjInfo.Speed, gravity, muzzleUpZ, dragCoeff, useHighArc, 3, flTimingBias);
-		};
-
-		BallisticSolver::NewtonRefineResult refineResult = refinePath();
-
-		if (!refineResult.Valid || refineResult.HorizonLimited || refineResult.AtPathBoundary)
-			return false;
-
-		int meetingTick = std::clamp(refineResult.Tick, 0, static_cast<int>(m_TargetPath.size()) - 1);
-		Vec3 vTarget = refineResult.AimPoint;
-		PredictedTargetState_t impactState = m_TargetStates[meetingTick];
-		impactState.Origin += vTarget - aimPath[meetingTick];
-
-		ProjectileInfo baselineLaunch{};
-		if (!SolveProjectile(pLocal, pWeapon, vTarget, m_CurProjInfo.Speed, m_CurProjInfo.GravityMod,
-			target.AngleTo, target.TimeToTarget, baselineLaunch))
-			return false;
-
-		// The true muzzle origin is angle-dependent. Refine once more with the exact
-		// launch origin, then solve the view/launch fixed point for that aim point.
-		refineResult = BallisticSolver::NewtonRefineOverPath(
-			aimPath, TICK_INTERVAL, meetingTick, baselineLaunch.m_pos,
-			m_CurProjInfo.Speed, gravity, muzzleUpZ, dragCoeff, useHighArc, 3, flTimingBias);
-		if (!refineResult.Valid || refineResult.HorizonLimited || refineResult.AtPathBoundary)
-			return false;
-
-		meetingTick = std::clamp(refineResult.Tick, 0, static_cast<int>(m_TargetStates.size()) - 1);
-		vTarget = refineResult.AimPoint;
-		impactState = m_TargetStates[meetingTick];
-		impactState.Origin += vTarget - aimPath[meetingTick];
-		if (!SolveProjectile(pLocal, pWeapon, vTarget, m_CurProjInfo.Speed, m_CurProjInfo.GravityMod,
-			target.AngleTo, target.TimeToTarget, baselineLaunch))
-			return false;
-		if (fabsf(refineResult.SimulatedTime - (target.TimeToTarget + flTimingBias)) > TICK_INTERVAL * 0.5f)
-			return false;
-
-		const int baselineMeetingTick = meetingTick;
-		const Vec3 baselineTarget = vTarget;
-		const PredictedTargetState_t baselineImpactState = impactState;
-		const Vec3 baselineAngle = target.AngleTo;
-		const float baselineTime = target.TimeToTarget;
-
-		ProjectileInfo selectedLaunch = baselineLaunch;
-		const int nChargeWeaponID = pWeapon->GetWeaponID();
-		if (CFG::Aimbot_AutoShoot && CFG::Aimbot_Projectile_Charge_Shot
-			&& (nChargeWeaponID == TF_WEAPON_COMPOUND_BOW || nChargeWeaponID == TF_WEAPON_PIPEBOMBLAUNCHER))
-		{
-			const bool bIsBow = nChargeWeaponID == TF_WEAPON_COMPOUND_BOW;
-			const float flSpeedMin = bIsBow ? 1800.0f : 900.0f;
-			const float flSpeedMax = bIsBow ? 2600.0f : 2400.0f;
-			const float flChargeRate = bIsBow ? 1.0f : SDKUtils::AttribHookValue(4.0f, "stickybomb_charge_rate", pWeapon);
-			const float flChargeBegin = pWeapon->As<C_TFPipebombLauncher>()->m_flChargeBeginTime();
-			const float flCurCharge = flChargeBegin > 0.0f
-				? static_cast<float>(pLocal->m_nTickBase()) * TICK_INTERVAL - flChargeBegin
-				: 0.0f;
-
-			auto gravityModFor = [&](float flSpeed)
-			{
-				return bIsBow ? 0.5f - 0.4f * ((flSpeed - 1800.0f) / 800.0f) : 1.0f;
-			};
-			auto chargeTimeFor = [&](float flSpeed)
-			{
-				if (bIsBow)
-					return std::clamp((flSpeed - 1800.0f) / 800.0f, 0.0f, 1.0f);
-				return std::clamp(flChargeRate * (flSpeed - 900.0f) / 1500.0f, 0.0f, flChargeRate);
-			};
-
-			float flBestScore = baselineTime;
-			for (int n = 0; n < 8; n++)
-			{
-				const float flSpeed = flSpeedMin + (flSpeedMax - flSpeedMin) * (static_cast<float>(n) / 7.0f);
-				const float flGravityMod = gravityModFor(flSpeed);
-				const float flChargeTime = chargeTimeFor(flSpeed);
-				if (flChargeTime < flCurCharge - 1e-4f)
-					continue;
-
-				const float flWait = std::max(0.0f, flChargeTime - flCurCharge);
-				const float flPlannedBias = flTimingBias + flWait;
-				BallisticSolver::NewtonRefineResult plannedRefine = BallisticSolver::NewtonRefineOverPath(
-					aimPath, TICK_INTERVAL, meetingTick, baselineLaunch.m_pos,
-					flSpeed, GetProjectileGravity(flGravityMod), muzzleUpZ, dragCoeff, useHighArc, 3, flPlannedBias);
-				if (!plannedRefine.Valid || plannedRefine.HorizonLimited || plannedRefine.AtPathBoundary)
-					continue;
-
-				ProjectileInfo plannedLaunch{};
-				Vec3 vPlannedAngle{};
-				float flPlannedFlight = 0.0f;
-				if (!SolveProjectile(pLocal, pWeapon, plannedRefine.AimPoint, flSpeed, flGravityMod,
-					vPlannedAngle, flPlannedFlight, plannedLaunch))
-					continue;
-
-				plannedRefine = BallisticSolver::NewtonRefineOverPath(
-					aimPath, TICK_INTERVAL, plannedRefine.Tick, plannedLaunch.m_pos,
-					flSpeed, GetProjectileGravity(flGravityMod), muzzleUpZ, dragCoeff, useHighArc, 3, flPlannedBias);
-				if (!plannedRefine.Valid || plannedRefine.HorizonLimited || plannedRefine.AtPathBoundary)
-					continue;
-				if (!SolveProjectile(pLocal, pWeapon, plannedRefine.AimPoint, flSpeed, flGravityMod,
-					vPlannedAngle, flPlannedFlight, plannedLaunch))
-					continue;
-				if (fabsf(plannedRefine.SimulatedTime - (flPlannedFlight + flPlannedBias)) > TICK_INTERVAL * 0.5f)
-					continue;
-
-				const float flScore = flWait + flPlannedFlight;
-				if (flScore + 0.05f >= flBestScore)
-					continue;
-
-				flBestScore = flScore;
-				meetingTick = std::clamp(plannedRefine.Tick, 0, static_cast<int>(m_TargetStates.size()) - 1);
-				vTarget = plannedRefine.AimPoint;
-				impactState = m_TargetStates[meetingTick];
-				impactState.Origin += vTarget - aimPath[meetingTick];
-				target.AngleTo = vPlannedAngle;
-				target.TimeToTarget = flPlannedFlight;
-				target.PlannedSpeed = flSpeed;
-				target.PlannedGravityMod = flGravityMod;
-				target.RequiredChargeTime = flChargeTime;
-				selectedLaunch = plannedLaunch;
-			}
-		}
-
-		if (pWeapon->GetWeaponID() == TF_WEAPON_PIPEBOMBLAUNCHER)
-		{
-			const auto sticky_arm_time{ SDKUtils::AttribHookValue(0.8f, "sticky_arm_time", pLocal) };
-			if (target.TimeToTarget < sticky_arm_time)
-				return false;
-		}
-
-		if (CFG::Aimbot_Projectile_Rocket_Splash == 2)
-		{
-			const Vec3 splashCenter = impactState.Origin;
-			if (RunSplash(pLocal, pWeapon, pCmd, vLocalPos, splashCenter, target))
-				return true;
-		}
-
-		if (CanSee(selectedLaunch, impactState, target.Entity, target.TimeToTarget))
-			return true;
-
-		// A rejected charged trajectory must restore every baseline field together;
-		// retaining its meeting tick was the source of the old fallback over-lead.
-		if (target.PlannedSpeed > 0.0f)
-		{
-			meetingTick = baselineMeetingTick;
-			vTarget = baselineTarget;
-			impactState = baselineImpactState;
-			target.AngleTo = baselineAngle;
-			target.TimeToTarget = baselineTime;
-			target.PlannedSpeed = 0.0f;
-			target.PlannedGravityMod = 0.0f;
-			target.RequiredChargeTime = 0.0f;
-			selectedLaunch = baselineLaunch;
-			if (CanSee(selectedLaunch, impactState, target.Entity, target.TimeToTarget))
-				return true;
-		}
-
-		if (CFG::Aimbot_Projectile_BBOX_Multipoint && pWeapon->GetWeaponID() != TF_WEAPON_COMPOUND_BOW)
-		{
-			// multipoint retries use baseline (tap-fire) ballistics, drop any charge plan
-			target.PlannedSpeed = 0.0f;
-			target.PlannedGravityMod = 0.0f;
-			target.RequiredChargeTime = 0.0f;
-
-			for (int n = 0; n < 3; n++)
-			{
-				if (n == baselineAimPosition)
-					continue;
-
-				const std::vector<Vec3> mpPath = buildAimPath(n);
-				BallisticSolver::NewtonRefineResult mpRefine = BallisticSolver::NewtonRefineOverPath(
-					mpPath, TICK_INTERVAL, baselineMeetingTick, baselineLaunch.m_pos,
-					m_CurProjInfo.Speed, gravity, muzzleUpZ, dragCoeff, useHighArc, 3, flTimingBias);
-				if (!mpRefine.Valid || mpRefine.HorizonLimited || mpRefine.AtPathBoundary)
-					continue;
-
-				ProjectileInfo mpLaunch{};
-				if (!SolveProjectile(pLocal, pWeapon, mpRefine.AimPoint, m_CurProjInfo.Speed, m_CurProjInfo.GravityMod,
-					target.AngleTo, target.TimeToTarget, mpLaunch))
-					continue;
-
-				mpRefine = BallisticSolver::NewtonRefineOverPath(
-					mpPath, TICK_INTERVAL, mpRefine.Tick, mpLaunch.m_pos,
-					m_CurProjInfo.Speed, gravity, muzzleUpZ, dragCoeff, useHighArc, 3, flTimingBias);
-				if (!mpRefine.Valid || mpRefine.HorizonLimited || mpRefine.AtPathBoundary)
-					continue;
-				if (!SolveProjectile(pLocal, pWeapon, mpRefine.AimPoint, m_CurProjInfo.Speed, m_CurProjInfo.GravityMod,
-					target.AngleTo, target.TimeToTarget, mpLaunch))
-					continue;
-				if (fabsf(mpRefine.SimulatedTime - (target.TimeToTarget + flTimingBias)) > TICK_INTERVAL * 0.5f)
-					continue;
-
-				const int mpTick = std::clamp(mpRefine.Tick, 0, static_cast<int>(m_TargetStates.size()) - 1);
-				PredictedTargetState_t mpState = m_TargetStates[mpTick];
-				mpState.Origin += mpRefine.AimPoint - mpPath[mpTick];
-				if (CanSee(mpLaunch, mpState, target.Entity, target.TimeToTarget))
-					return true;
-			}
-		}
-
-		if (CFG::Aimbot_Projectile_Rocket_Splash == 1)
-		{
-			const Vec3 splashCenter = baselineImpactState.Origin;
-			if (RunSplash(pLocal, pWeapon, pCmd, vLocalPos, splashCenter, target))
-				return true;
 		}
 	}
 	else
 	{
-		const Vec3 vTarget = target.Entity->GetCenter();
-		ProjectileInfo launch{};
-		if (!SolveProjectile(pLocal, pWeapon, vTarget, m_CurProjInfo.Speed, m_CurProjInfo.GravityMod,
-			target.AngleTo, target.TimeToTarget, launch))
-			return false;
-
-		if (target.TimeToTarget + flTimingBias > CFG::Aimbot_Projectile_Max_Simulation_Time + TICK_INTERVAL * 0.5f)
-			return false;
-
-		if (pWeapon->GetWeaponID() == TF_WEAPON_PIPEBOMBLAUNCHER)
-		{
-			if (target.TimeToTarget < SDKUtils::AttribHookValue(0.8f, "sticky_arm_time", pLocal))
-				return false;
-		}
-
-		PredictedTargetState_t targetState{};
-		targetState.Origin = target.Entity->m_vecOrigin();
-		targetState.Mins = target.Entity->m_vecMins();
-		targetState.Maxs = target.Entity->m_vecMaxs();
-		if (CanSee(launch, targetState, target.Entity, target.TimeToTarget))
-			return true;
-
-		if (CFG::Aimbot_Projectile_Rocket_Splash && RunSplash(pLocal, pWeapon, pCmd, vLocalPos, vTarget, target))
-			return true;
+		PredictedTargetState_t state;
+		state.Origin = target.Entity->m_vecOrigin();
+		state.Mins = target.Entity->m_vecMins();
+		state.Maxs = target.Entity->m_vecMaxs();
+		m_TargetStates.assign(static_cast<std::size_t>(ticks + 1), state);
+		m_TargetPath.assign(static_cast<std::size_t>(ticks + 1), state.Origin);
 	}
-
+	std::vector<Vec3> aimPath;
+	aimPath.reserve(m_TargetStates.size());
+	for (const auto& state : m_TargetStates)
+		aimPath.push_back(isPlayer ? GetAimPoint(pWeapon, state, CFG::Aimbot_Projectile_Aim_Position)
+			: state.Origin + (state.Mins + state.Maxs) * 0.5f);
+	const bool requireHead = pWeapon->GetWeaponID() == TF_WEAPON_COMPOUND_BOW && m_LastAimPos == 2;
+	const float estimate = localPos.DistTo(aimPath.front()) / std::max(m_CurProjInfo.Speed, 1.0f);
+	const float splashTime = std::min(timingBias + estimate, CFG::Aimbot_Projectile_Max_Simulation_Time);
+	const Vec3 splashCenter = GetTargetStateAtTime(splashTime).Origin;
+	if (CFG::Aimbot_Projectile_Rocket_Splash == 2 && RunSplash(pLocal, pWeapon, pCmd, localPos, splashCenter, target))
+		return true;
+	std::vector<ProjectileCandidate_t> candidates;
+	auto add = [&](std::vector<Vec3>& path, float speed, float gravity, float chargeTime, float waitTime, bool highArc)
+	{
+		ProjectileCandidate_t candidate;
+		candidate.Path = &path;
+		candidate.Speed = speed;
+		candidate.GravityMod = gravity;
+		candidate.ChargeTime = chargeTime;
+		candidate.WaitTime = waitTime;
+		candidate.TimingBias = timingBias + waitTime;
+		candidate.HighArc = highArc;
+		candidate.ArcPenalty = highArc == CFG::Aimbot_Projectile_High_Arc
+			? 0.0f : CFG::Aimbot_Projectile_Max_Simulation_Time * 2.0f;
+		if (SeedCandidate(pLocal, pWeapon, candidate)) candidates.push_back(candidate);
+	};
+	const bool highArc = CFG::Aimbot_Projectile_High_Arc;
+	add(aimPath, m_CurProjInfo.Speed, m_CurProjInfo.GravityMod, 0.0f, 0.0f, highArc);
+	if (m_CurProjInfo.GravityMod > 0.0f)
+		add(aimPath, m_CurProjInfo.Speed, m_CurProjInfo.GravityMod, 0.0f, 0.0f, !highArc);
+	const auto chargeProfile = F::ProjectileSim->GetChargeProfile(pWeapon);
+	if (CFG::Aimbot_Projectile_Charge_Shot && chargeProfile.Duration > 0.0f)
+	{
+		const float begin = pWeapon->As<C_TFPipebombLauncher>()->m_flChargeBeginTime();
+		const float current = begin > 0.0f ? std::max(0.0f, pLocal->m_nTickBase() * TICK_INTERVAL - begin) : 0.0f;
+		for (int sample = 1; sample <= 14; ++sample)
+		{
+			const float charge = chargeProfile.Duration * sample / 14.0f;
+			if (charge <= current + TICK_INTERVAL * 0.5f) continue;
+			float speed{}, gravity{};
+			chargeProfile.Evaluate(charge, speed, gravity);
+			add(aimPath, speed, gravity, charge, charge - current, highArc);
+		}
+	}
+	ProjectileCandidate_t selected;
+	auto validate = [&](ProjectileCandidate_t& candidate)
+	{
+		if (selected.Path && candidate.WaitTime + candidate.ArcPenalty >= selected.Score) return false;
+		if (!RefineCandidate(pLocal, pWeapon, candidate)) return false;
+		const auto state = GetTargetStateAtTime(candidate.TimingBias + candidate.FlightTime);
+		float impact = candidate.FlightTime;
+		if (!CanSee(candidate.Launch, state, target.Entity, candidate.FlightTime,
+			candidate.TimingBias, requireHead, &impact)) return false;
+		if (pWeapon->GetWeaponID() == TF_WEAPON_PIPEBOMBLAUNCHER
+			&& impact < SDKUtils::AttribHookValue(0.8f, "sticky_arm_time", pWeapon)) return false;
+		candidate.FlightTime = impact;
+		candidate.Score = candidate.WaitTime + impact + candidate.ArcPenalty;
+		return true;
+	};
+	bool found = ProjectileTrajectory::SelectViable(candidates, selected, validate);
+	// Multipoints have independent paths and do not require a successful baseline.
+	if (!found && CFG::Aimbot_Projectile_BBOX_Multipoint && isPlayer
+		&& pWeapon->GetWeaponID() != TF_WEAPON_COMPOUND_BOW)
+	{
+		std::array<std::vector<Vec3>, 3> multipointPaths;
+		candidates.clear();
+		for (int point = 0; point < 3; ++point)
+		{
+			for (const auto& state : m_TargetStates) multipointPaths[point].push_back(GetAimPoint(pWeapon, state, point));
+			add(multipointPaths[point], m_CurProjInfo.Speed, m_CurProjInfo.GravityMod, 0.0f, 0.0f, highArc);
+		}
+		found = ProjectileTrajectory::SelectViable(candidates, selected, validate);
+	}
+	if (found)
+	{
+		target.AngleTo = selected.Angle;
+		target.TimeToTarget = selected.FlightTime;
+		target.RequiredChargeTime = selected.ChargeTime;
+		if (selected.ChargeTime > 0.0f)
+		{
+			target.PlannedSpeed = selected.Speed;
+			target.PlannedGravityMod = selected.GravityMod;
+		}
+		return true;
+	}
+	if (CFG::Aimbot_Projectile_Rocket_Splash == 1 && RunSplash(pLocal, pWeapon, pCmd, localPos, splashCenter, target))
+		return true;
 	m_TargetPath.clear();
 	m_TargetStates.clear();
 	return false;

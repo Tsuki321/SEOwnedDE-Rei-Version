@@ -518,6 +518,7 @@
     <ClInclude Include="src\App\Features\Paint\Paint.h" />
     <ClInclude Include="src\App\Features\Players\Players.h" />
     <ClInclude Include="src\App\Features\ProjectileSim\ProjectileSim.h" />
+    <ClInclude Include="src\App\Features\ProjectileSim\ProjectileTrajectory.h" />
     <ClInclude Include="src\App\Features\Radar\Radar.h" />
     <ClInclude Include="src\App\Features\RapidFire\RapidFire.h" />
     <ClInclude Include="src\App\Features\Rendering\RenderContextScope.h" />

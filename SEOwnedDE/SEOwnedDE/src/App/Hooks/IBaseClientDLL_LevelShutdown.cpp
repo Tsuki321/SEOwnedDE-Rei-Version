@@ -21,6 +21,7 @@ MAKE_HOOK(IBaseClientDLL_LevelShutdown, Memory::GetVFunc(I::BaseClientDLL, 7), v
 	F::EnginePrediction->Reset();
 	F::LagRecords->ClearRenderPoseTime();
 	F::LocalCosmetics->LevelShutdown();
+	F::ProjectileSim->CleanUp(); // release bodies before model collision data unloads
 	CALL_ORIGINAL(ecx);
 
 	H::Entities->ClearCache();

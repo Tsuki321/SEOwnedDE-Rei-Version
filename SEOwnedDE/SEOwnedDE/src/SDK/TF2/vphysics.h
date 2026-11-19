@@ -3,6 +3,7 @@
 #include "IEngineTrace.h"
 #include "../../Utils/SignatureManager/SignatureManager.h"
 #include "IAppSystem.h"
+#include <cstddef>
 
 MAKE_SIGNATURE(CreatePhysicsObject, "vphysics.dll", "48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 55 41 56 41 57 48 81 EC", 0x0);
 MAKE_SIGNATURE(CPhysicsObject_RecomputeDragBases, "vphysics.dll", "40 57 48 81 EC ? ? ? ? 48 8B 01", 0x0);
@@ -231,6 +232,43 @@ struct objectparams_t
 	float volume{};
 	float dragCoefficient{};
 	bool enableCollisions{};
+};
+
+// Valve's vcollide_parse.h ABI, also verified against this build's solid parser.
+struct solid_t
+{
+	int index{};
+	char name[512]{};
+	char parent[512]{};
+	char surfaceprop[512]{};
+	Vector massCenterOverride{};
+	objectparams_t params{};
+};
+
+static_assert(sizeof(objectparams_t) == 64);
+static_assert(offsetof(solid_t, params) == 1552);
+static_assert(sizeof(solid_t) == 1616);
+
+class IVPhysicsKeyHandler
+{
+public:
+	virtual void ParseKeyValue(void* data, const char* key, const char* value) = 0;
+	virtual void SetDefaults(void* data) = 0;
+};
+
+class IVPhysicsKeyParser
+{
+public:
+	virtual ~IVPhysicsKeyParser() {}
+	virtual const char* GetCurrentBlockName() = 0;
+	virtual bool Finished() = 0;
+	virtual void ParseSolid(solid_t* solid, IVPhysicsKeyHandler* handler) = 0;
+	virtual void ParseFluid(void* fluid, IVPhysicsKeyHandler* handler) = 0;
+	virtual void ParseRagdollConstraint(void* constraint, IVPhysicsKeyHandler* handler) = 0;
+	virtual void ParseSurfaceTable(int* table, IVPhysicsKeyHandler* handler) = 0;
+	virtual void ParseCustom(void* custom, IVPhysicsKeyHandler* handler) = 0;
+	virtual void ParseVehicle(void* vehicle, IVPhysicsKeyHandler* handler) = 0;
+	virtual void SkipBlock() = 0;
 };
 
 class IVP_SurfaceManager;

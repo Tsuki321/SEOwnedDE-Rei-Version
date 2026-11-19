@@ -17,6 +17,7 @@ MAKE_HOOK(IBaseClientDLL_LevelInitPostEntity, Memory::GetVFunc(I::BaseClientDLL,
 	H::Entities->UpdateModelIndexes();
 	F::AimbotHitscan->Reset();
 	F::AimbotProjectile->Reset();
+	F::ProjectileSim->CleanUp();
 	F::Crits->Reset();
 	F::Killstreak->Reset();
 

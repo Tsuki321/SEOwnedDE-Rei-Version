@@ -89,14 +89,9 @@ namespace SDKUtils
 
 	inline void GetProjectileFireSetupRebuilt(C_TFPlayer *player, Vec3 offset, const Vec3 &ang_in, Vec3 &pos_out, Vec3 &ang_out, bool pipes)
 	{
-		static auto cl_flipviewmodels{ I::CVar->FindVar("cl_flipviewmodels") };
+		static auto cl_flipviewmodels{ I::CVar ? I::CVar->FindVar("cl_flipviewmodels") : nullptr };
 
-		if (!cl_flipviewmodels)
-		{
-			return;
-		}
-
-		if (cl_flipviewmodels->GetBool())
+		if (cl_flipviewmodels && cl_flipviewmodels->GetBool())
 		{
 			offset.y *= -1.0f;
 		}
@@ -116,6 +111,21 @@ namespace SDKUtils
 		else
 		{
 			auto end_pos{ shoot_pos + (forward * 2000.0f) };
+			if (I::EngineTrace)
+			{
+				class MuzzleFilter final : public CTraceFilter
+				{
+				public:
+					IHandleEntity* Ignore = nullptr;
+					bool ShouldHitEntity(IHandleEntity* entity, int) override { return entity && entity != Ignore; }
+				} filter;
+				filter.Ignore = player;
+				Ray_t ray;
+				ray.Init(shoot_pos, end_pos);
+				trace_t trace{};
+				I::EngineTrace->TraceRay(ray, MASK_SOLID, &filter, &trace);
+				if (!trace.startsolid && !trace.allsolid && trace.fraction > 0.1f) end_pos = trace.endpos;
+			}
 
 			Math::VectorAngles(end_pos - pos_out, ang_out);
 		}

@@ -201,8 +201,6 @@ TEST(AimbotContracts, ProjectileSplashAndMultipointUseFinalTimingAndLaunchState)
 	EXPECT_NE(projectileSource.find("constexpr float kRocketExplosionRadius = 146.0f"), std::string::npos);
 	EXPECT_NE(projectileSource.find("AttribHookValue(kRocketExplosionRadius, \"mult_explosion_radius\", pWeapon)"), std::string::npos);
 	EXPECT_EQ(projectileSource.find("radius = 130.0f"), std::string::npos);
-	EXPECT_NE(projectileSource.find("mpPath, TICK_INTERVAL, mpRefine.Tick, mpLaunch.m_pos"), std::string::npos);
-	EXPECT_NE(projectileSource.find("mpRefine.SimulatedTime - (target.TimeToTarget + flTimingBias)"), std::string::npos);
 	EXPECT_EQ(projectileSource.find("traceVal.fraction < 0.9f"), std::string::npos);
 }
 

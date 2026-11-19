@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "App/Features/Aimbot/AimbotProjectile/AimbotProjectilePrediction.h"
+#include "App/Features/ProjectileSim/ProjectileTrajectory.h"
 
 #include <cmath>
 #include <vector>
@@ -929,4 +930,145 @@ TEST(NewtonRefine, TimingBiasShiftsTickOutward) {
 	EXPECT_TRUE(rUnbiased.Valid);
 	EXPECT_TRUE(rBiased.Valid);
 	EXPECT_GE(rBiased.Tick, rUnbiased.Tick);
+}
+
+namespace {
+// Synthetic velocity-dependent drag backend. These are solver regression tests,
+// not a claim that this simplified body reproduces captured retail trajectories.
+Vec3 NonlinearEndpoint(const Vec3& angle, float time) {
+	Vec3 forward{}, right{}, up{};
+	Math::AngleVectors(angle, &forward, &right, &up);
+	Vec3 velocity = forward * 1200.0f + up * 200.0f;
+	Vec3 position = forward * 16.0f + right * 8.0f - up * 6.0f;
+	for (float elapsed = 0.0f; elapsed + 1e-6f < time;) {
+		const float step = std::min(0.01f, time - elapsed);
+		velocity.z -= 800.0f * step;
+		const float drag = std::fabs(velocity.x) * 0.00005f + std::fabs(velocity.y) * 0.00009f
+			+ std::fabs(velocity.z) * 0.00007f;
+		velocity *= std::max(0.0f, 1.0f - drag * step);
+		position += velocity * step;
+		elapsed += step;
+	}
+	return position;
+}
+}
+
+TEST(NativeTrajectoryRefinement, CorrectsVelocityDependentDragAndMuzzleOffset) {
+	const Vec3 expectedAngle{ -10.0f, 20.0f, 0.0f };
+	const Vec3 target = NonlinearEndpoint(expectedAngle, 0.9f);
+	std::vector<Vec3> path(151, target);
+	auto result = ProjectileTrajectory::Refine(path, 0.01f, 0.0f, 1.5f, { -8.0f, 18.0f, 0.0f }, 0.8f,
+		[](const Vec3& angle, float time, Vec3& out) { out = NonlinearEndpoint(angle, time); return true; });
+	ASSERT_TRUE(result.Valid);
+	EXPECT_LT(result.Error, 0.5f);
+	EXPECT_NEAR(result.FlightTime, 0.9f, 0.003f);
+	EXPECT_NEAR(result.Angle.x, expectedAngle.x, 0.15f);
+	EXPECT_NEAR(result.Angle.y, expectedAngle.y, 0.15f);
+}
+
+TEST(NativeTrajectoryRefinement, IncludesChargeWaitAndLatencyInMovingTargetClock) {
+	std::vector<Vec3> path;
+	for (int tick = 0; tick <= 100; ++tick) path.emplace_back(800.0f + tick * 2.0f, tick * 1.0f, 0.0f);
+	constexpr float bias = 0.3f;
+	auto result = ProjectileTrajectory::Refine(path, 0.02f, bias, 1.7f, {}, 0.8f,
+		[](const Vec3& angle, float time, Vec3& out) {
+			Vec3 forward; Math::AngleVectors(angle, &forward); out = forward * (1000.0f * time); return true;
+		});
+	ASSERT_TRUE(result.Valid);
+	EXPECT_NEAR(result.TargetTime, bias + result.FlightTime, 1e-6f);
+	EXPECT_LT(result.Endpoint.DistTo(Vec3{ 800.0f + 100.0f * result.TargetTime, 50.0f * result.TargetTime, 0.0f }), 0.5f);
+	EXPECT_GT(result.FlightTime, 0.9f);
+}
+
+TEST(NativeTrajectoryRefinement, RejectsUnreachableHorizonWithoutAcceptingClampedTime) {
+	std::vector<Vec3> path(101, Vec3{ 3000.0f, 0.0f, 0.0f });
+	auto result = ProjectileTrajectory::Refine(path, 0.01f, 0.2f, 1.0f, {}, 3.0f,
+		[](const Vec3& angle, float time, Vec3& out) {
+			EXPECT_LE(time, 0.800001f);
+			Vec3 forward; Math::AngleVectors(angle, &forward); out = forward * (1000.0f * time); return true;
+		});
+	EXPECT_FALSE(result.Valid);
+	EXPECT_GT(result.Error, 2000.0f);
+}
+
+TEST(NativeTrajectoryRefinement, StopsOnBackendBudgetExhaustion) {
+	std::vector<Vec3> path(201, Vec3{ 1500.0f, 0.0f, 0.0f });
+	ProjectileTrajectory::Budget budget{ 3, 3 };
+	int calls = 0;
+	auto result = ProjectileTrajectory::Refine(path, 0.01f, 0.0f, 2.0f, {}, 1.0f,
+		[&](const Vec3& angle, float time, Vec3& out) {
+			++calls;
+			if (!budget.TakeTrial() || !budget.TakeStep()) return false;
+			Vec3 forward; Math::AngleVectors(angle, &forward); out = forward * (1000.0f * time); return true;
+		});
+	EXPECT_FALSE(result.Valid);
+	EXPECT_EQ(result.Reason, ProjectileTrajectory::Failure::Simulation);
+	EXPECT_EQ(budget.Trials, 0);
+	EXPECT_EQ(budget.Steps, 0);
+	EXPECT_EQ(calls, 4);
+}
+
+TEST(NativeTrajectoryRefinement, InvalidInputsDoNotCallBackend) {
+	std::vector<Vec3> path(2, Vec3{ 10.0f, 0.0f, 0.0f });
+	bool called = false;
+	auto simulate = [&](const Vec3&, float, Vec3&) { called = true; return true; };
+	EXPECT_FALSE(ProjectileTrajectory::Refine(path, 0.0f, 0.0f, 1.0f, {}, 0.5f, simulate).Valid);
+	EXPECT_FALSE(ProjectileTrajectory::Refine(path, 0.01f, std::numeric_limits<float>::infinity(), 1.0f, {}, 0.5f, simulate).Valid);
+	EXPECT_FALSE(called);
+}
+
+TEST(ProjectileFirstImpact, FindsTargetBeforeAnEndpointBeyondTheTarget) {
+	float contact = -1.0f;
+	ASSERT_TRUE(ProjectileTrajectory::SweepBounds({}, { 200.0f, 0.0f, 0.0f },
+		{ 100.0f, 0.0f, 0.0f }, { 100.0f, 0.0f, 0.0f },
+		{ -20.0f, -20.0f, -20.0f }, { 20.0f, 20.0f, 20.0f },
+		{ -20.0f, -20.0f, -20.0f }, { 20.0f, 20.0f, 20.0f }, {}, {}, contact));
+	EXPECT_NEAR(contact, 0.4f, 1e-6f);
+}
+
+TEST(ProjectileFirstImpact, SweepsTargetMovementAcrossTheProjectileSegment) {
+	float contact = -1.0f;
+	ASSERT_TRUE(ProjectileTrajectory::SweepBounds({}, { 200.0f, 0.0f, 0.0f },
+		{ 100.0f, -100.0f, 0.0f }, { 100.0f, 100.0f, 0.0f },
+		{ -10.0f, -10.0f, -10.0f }, { 10.0f, 10.0f, 10.0f },
+		{ -10.0f, -10.0f, -10.0f }, { 10.0f, 10.0f, 10.0f }, {}, {}, contact));
+	EXPECT_NEAR(contact, 0.45f, 1e-6f);
+}
+
+TEST(ProjectileChargeMapping, AppliesSpeedAttributesAcrossPartialAndFullCharge) {
+	ProjectileTrajectory::ChargeProfile profile{ 2.0f, 1800.0f, 4800.0f, 1.0f, 1.0f };
+	float speed = 0.0f, gravity = 0.0f;
+	profile.Evaluate(1.0f, speed, gravity);
+	EXPECT_FLOAT_EQ(speed, 3300.0f);
+	EXPECT_FLOAT_EQ(gravity, 1.0f);
+	profile.Evaluate(4.0f, speed, gravity);
+	EXPECT_FLOAT_EQ(speed, 4800.0f);
+	profile.Evaluate(-1.0f, speed, gravity);
+	EXPECT_FLOAT_EQ(speed, 1800.0f);
+}
+
+TEST(ProjectileCandidateSelection, ABlockedFastestCandidateDoesNotSuppressTheNextViableCharge) {
+	struct Candidate { float Score; int Id; };
+	std::vector<Candidate> candidates{ { 0.7f, 2 }, { 0.5f, 0 }, { 0.6f, 1 } };
+	Candidate selected{};
+	ASSERT_TRUE(ProjectileTrajectory::SelectViable(candidates, selected, [](Candidate& candidate) { return candidate.Id != 0; }));
+	EXPECT_EQ(selected.Id, 1);
+}
+
+TEST(ProjectileCandidateSelection, RanksUsingValidatedFlightTime) {
+	struct Candidate { float Score; int Id; };
+	std::vector<Candidate> candidates{ { 0.5f, 0 }, { 0.6f, 1 } };
+	Candidate selected{};
+	ASSERT_TRUE(ProjectileTrajectory::SelectViable(candidates, selected, [](Candidate& candidate) {
+		candidate.Score = candidate.Id == 0 ? 0.8f : 0.7f; return true;
+	}));
+	EXPECT_EQ(selected.Id, 1);
+}
+
+TEST(ProjectileCandidateSelection, DoesNotRequireAnAvailableBaseline) {
+	struct Candidate { float Score; int Id; };
+	std::vector<Candidate> candidates{ { 0.8f, 1 } };
+	Candidate selected{};
+	ASSERT_TRUE(ProjectileTrajectory::SelectViable(candidates, selected, [](Candidate&) { return true; }));
+	EXPECT_EQ(selected.Id, 1);
 }
