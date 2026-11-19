@@ -340,7 +340,8 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 	const float configuredGravity = SDKUtils::GetGravity();
 	Vec3 gravity{ 0.0f, 0.0f, -(configuredGravity > 0.0f ? configuredGravity : 800.0f) };
 	float airDensity = 2.0f, timestep = TICK_INTERVAL;
-	physics_performanceparams_t performance = g_PhysDefaultPerformanceParams;
+	physics_performanceparams_t performance{};
+	performance.Defaults();
 	const auto liveEnvironment = I::Physics ? I::Physics->GetActiveEnvironmentByIndex(0) : nullptr;
 	if (liveEnvironment && liveEnvironment != m_pEnv)
 	{
@@ -446,6 +447,7 @@ Vec3 CProjectileSim::GetOrigin()
 bool CProjectileSim::Sample(const ProjectileInfo& info, float time, Vec3& endpoint, ProjectileTrajectory::Budget* budget)
 {
 	if (!std::isfinite(time) || time < 0.0f || !(TICK_INTERVAL > 0.0f)
+		|| (budget && budget->Steps <= 0 && time > 0.0f)
 		|| (budget && !budget->TakeTrial()) || !Init(info)) return false;
 	float elapsed = 0.0f;
 	endpoint = GetOrigin();

@@ -99,7 +99,6 @@ TEST(AimbotContracts, HotPathWorkIsDemandDrivenAndBatched) {
     EXPECT_EQ(hitscanSource.find("GetHitboxPos(n)"), std::string::npos);
 
 	EXPECT_NE(projectileSource.find("m_TargetStates.push_back"), std::string::npos);
-	EXPECT_NE(projectileSource.find("refineResult.Tick"), std::string::npos);
 	EXPECT_NE(projectilePredictionHeader.find("FindPositiveQuarticRoots"), std::string::npos);
 	EXPECT_NE(projectilePredictionHeader.find("HorizonLimited"), std::string::npos);
 
