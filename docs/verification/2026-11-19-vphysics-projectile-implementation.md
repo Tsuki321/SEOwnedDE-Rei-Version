@@ -26,4 +26,11 @@ The reproducible harness is `tools/verification/capture_projectile_physics.py`. 
 
 Additional captures compared yaw impulses 0, 600, -600, and 1200. At 60 ticks, grenade endpoints differed by 65.14 units between yaw 0 and 1200, versus 5.83 units between 600 and 1200. Sticky/cannon differences were 28.69/45.86 units for 0 versus 1200, and 3.39/3.95 units for 600 versus 1200. The deterministic profile now uses pitch/yaw/roll impulse `600/600/0` as a representative spun trajectory, and respects `grenade_no_spin`. This is an approximation of shot randomness, not prediction of the server RNG. The capture tool's `--spin-yaw` option allows reproducing these comparisons.
 
-Verification: GitHub Actions build and test runs for the final launch profile and muzzle changes are pending. No local compilation was performed.
+## CI verification
+
+Source commit `0c0d50abb3e1a8ed59abdfaaf2c701acef7239e3` passed both checks:
+
+- [ReleaseAVX2 x64 DLL build and artifact upload](https://github.com/Tsuki321/SEOwnedDE-Rei-Version/actions/runs/44485954846).
+- [Full Google Test suite: 648 tests from 157 suites passed](https://github.com/Tsuki321/SEOwnedDE-Rei-Version/actions/runs/44485954824), including the 11 new trajectory regressions.
+
+No local compilation was performed. The native verification harness executed the already installed game DLLs in isolated processes. In-game projectile captures, exact weapon RNG, and performance under real target loads remain separate verification work.
