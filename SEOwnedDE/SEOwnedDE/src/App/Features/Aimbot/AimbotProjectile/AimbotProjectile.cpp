@@ -435,7 +435,7 @@ bool CAimbotProjectile::CanArcReach(const ProjectileInfo& launch, float flTarget
 	float* impactTime)
 {
 	if (!std::isfinite(flTargetTime) || flTargetTime <= 0.0f
-		|| !m_TrajectoryBudget.TakeTrial() || !F::ProjectileSim->Init(launch)) return false;
+		|| !m_TrajectoryBudget.TakeTrial() || !F::ProjectileSim->Init(launch, false, &m_TrajectoryBudget)) return false;
 	CTraceFilterArc filter{};
 	filter.m_pIgnore = H::Entities->GetLocal();
 	filter.m_pIgnore2 = pTarget;

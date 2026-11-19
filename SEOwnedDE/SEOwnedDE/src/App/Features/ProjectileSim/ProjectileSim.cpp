@@ -330,7 +330,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 	}
 }
 
-bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
+bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up, ProjectileTrajectory::Budget* budget)
 {
 	if (!ProjectileTrajectory::IsFinite(info.m_pos) || !ProjectileTrajectory::IsFinite(info.m_ang)
 		|| !std::isfinite(info.m_speed) || !(info.m_speed > 0.0f)
@@ -354,7 +354,7 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 		|| !std::isfinite(timestep) || !(timestep > 0.0f)) return false;
 	if (m_bUseVPhysics)
 	{
-		if (!I::Physics || !I::PhysicsCollision) return false;
+		if (!I::Physics || !I::PhysicsCollision || (budget && !budget->TakeStep())) return false;
 		DestroyBody();
 		if (!m_pEnv) m_pEnv = I::Physics->CreateEnvironment();
 		if (!m_pEnv || !PrepareModel(info.m_profile)) return false;
@@ -362,6 +362,10 @@ bool CProjectileSim::Init(const ProjectileInfo &info, bool no_vec_up)
 		m_pEnv->SetAirDensity(airDensity);
 		m_pEnv->SetGravity(gravity * info.m_gravity_mod);
 		m_pEnv->SetSimulationTimestep(timestep);
+		// ResetSimulationClock does not reset the first-PSI scheduling phase.
+		// Advance the empty environment before resetting: native model checks
+		// otherwise differ by one integration step between fresh/reused trials.
+		m_pEnv->Simulate(timestep);
 		m_pEnv->ResetSimulationClock();
 		m_pObj = m_pEnv->CreatePolyObject(m_pCollide, m_Material, info.m_pos, info.m_ang, &m_ObjectParams);
 		if (!m_pObj) return false;
@@ -448,7 +452,7 @@ bool CProjectileSim::Sample(const ProjectileInfo& info, float time, Vec3& endpoi
 {
 	if (!std::isfinite(time) || time < 0.0f || !(TICK_INTERVAL > 0.0f)
 		|| (budget && budget->Steps <= 0 && time > 0.0f)
-		|| (budget && !budget->TakeTrial()) || !Init(info)) return false;
+		|| (budget && !budget->TakeTrial()) || !Init(info, false, budget)) return false;
 	float elapsed = 0.0f;
 	endpoint = GetOrigin();
 	while (elapsed + 1e-6f < time)

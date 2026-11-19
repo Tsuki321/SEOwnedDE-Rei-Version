@@ -85,7 +85,7 @@ public:
 	bool GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const Vec3 &angles, ProjectileInfo &out);
 	ProjectileTrajectory::ChargeProfile GetChargeProfile(C_TFWeaponBase* weapon);
 	void ConfigureProfile(C_TFWeaponBase* weapon, ProjectileInfo& info);
-	bool Init(const ProjectileInfo &info, bool no_vec_up = false);
+	bool Init(const ProjectileInfo &info, bool no_vec_up = false, ProjectileTrajectory::Budget* budget = nullptr);
 	void RunTick();
 	Vec3 GetOrigin();
 	bool Sample(const ProjectileInfo& info, float time, Vec3& endpoint, ProjectileTrajectory::Budget* budget = nullptr);
