@@ -450,6 +450,7 @@
     <ClCompile Include="src\App\Features\SeedPred\SeedPred.cpp" />
     <ClCompile Include="src\App\Features\SkinChanger\SkinChanger.cpp" />
     <ClCompile Include="src\App\Features\SkinChanger\LocalCosmetics.cpp" />
+    <ClCompile Include="src\App\Features\SkinChanger\NativeCosmetics.cpp" />
     <ClCompile Include="src\App\Features\SpectatorList\SpectatorList.cpp" />
     <ClCompile Include="src\App\Features\SpyCamera\SpyCamera.cpp" />
     <ClCompile Include="src\App\Features\SpyWarning\SpyWarning.cpp" />
@@ -526,6 +527,8 @@
     <ClInclude Include="src\App\Features\SeedPred\SeedPred.h" />
     <ClInclude Include="src\App\Features\SkinChanger\SkinChanger.h" />
     <ClInclude Include="src\App\Features\SkinChanger\LocalCosmetics.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\NativeCosmetics.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\NativeCosmeticBuild.h" />
     <ClInclude Include="src\App\Features\SkinChanger\CosmeticInventory.h" />
     <ClInclude Include="src\App\Features\SkinChanger\CosmeticInventoryPersistence.h" />
     <ClInclude Include="src\App\Features\SpectatorList\SpectatorList.h" />

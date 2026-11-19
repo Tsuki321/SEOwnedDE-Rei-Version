@@ -449,16 +449,17 @@ bool CAimbotHitscan::ResolveManualShot(CUserCmd* pCmd, C_TFPlayer* pLocal)
 				if (!CLagRecords::IsRecordUsable(pRecord, cachedState))
 					continue;
 
-				CLagRecordScope scope(pRecord);
-				if (!scope.IsActive())
-					continue;
-
-				// Get hitbox set after activating historical pose to ensure model index matches
+				// IsRecordUsable already checks the model identity. Cull the ray
+				// before replacing caches, so distant records never rebuild bones.
 				const auto pHitboxSet = GetHitboxSet(pPlayer);
 				if (!pHitboxSet)
 					continue;
 
 				if (!HistoricalPoseMayIntersectRay(pHitboxSet, pRecord, vTraceStart, vForward, flTraceLength))
+					continue;
+
+				CLagRecordScope scope(pRecord);
+				if (!scope.IsActive())
 					continue;
 
 				if (!H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, vTraceEnd))

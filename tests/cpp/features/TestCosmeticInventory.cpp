@@ -4,6 +4,60 @@
 
 using namespace SimulatedCosmetics;
 
+TEST(CosmeticNativeInventory, IDsKeepDistinctInstancesAndRejectUnrepresentableIDs)
+{
+    EXPECT_NE(NativeId(1), NativeId(2));
+    EXPECT_EQ(NativeId(1) & 0x0000FFFFFFFFFFFFULL, 1ULL);
+    EXPECT_EQ(NativeId(0), 0ULL);
+    EXPECT_EQ(NativeId(0x0001000000000000ULL), 0ULL);
+    EXPECT_EQ(CosmeticSlot(NativeSlot(0)), 0);
+    EXPECT_EQ(CosmeticSlot(NativeSlot(1)), 1);
+    EXPECT_EQ(CosmeticSlot(NativeSlot(2)), 2);
+    EXPECT_EQ(CosmeticSlot(0), -1); // Primary weapon must never be a cosmetic slot.
+}
+
+TEST(CosmeticPersistence, BackpackExpansionRoundTripsAndOldFilesDefaultOff)
+{
+    SavedState state;
+    state.expandBackpack = true;
+    EXPECT_TRUE(Decode(Encode(state)).expandBackpack);
+    auto old = Encode(state);
+    old.erase("expand_backpack");
+    EXPECT_FALSE(Decode(old).expandBackpack);
+    old["expand_backpack"] = 4000;
+    EXPECT_THROW(Decode(old), std::runtime_error);
+}
+
+TEST(CosmeticCrates, DifferentSeriesResolveTheirOwnNestedAndCollectionContents)
+{
+    constexpr auto cratesSchema = R"VDF("items_game" {
+      "prefabs" { "hat" { "item_class" "tf_wearable" "item_slot" "head"
+        "used_by_classes" { "scout" "1" } "model_player" "models/test.mdl" }
+        "crate" { "item_class" "supply_crate" } }
+      "items" {
+        "101" { "prefab" "hat" "name" "Hat A" }
+        "102" { "prefab" "hat" "name" "Hat B" }
+        "103" { "item_class" "tf_weapon" "name" "Weapon" }
+        "500" { "prefab" "crate" "name" "Crate A" "static_attrs" { "set supply crate series" "1" } }
+        "501" { "prefab" "crate" "name" "Crate B" "static_attrs" { "set supply crate series" "2" } }
+        "502" { "prefab" "crate" "loot_list_name" "cycle" }
+      }
+      "revolving_loot_lists" { "pool_a" "1" "pool_b" "2" }
+      "client_loot_lists" {
+        "pool_a" { "nested" "1" } "nested" { "Hat A" "1" "Weapon" "1" "101" "1" }
+        "pool_b" { "loot_list_collection" "collection_b" }
+        "cycle" { "cycle" "1" }
+      }
+      "item_collections" { "collection_b" { "items" { "rare" { "Hat B" "1" "Weapon" "1" } } } }
+    })VDF";
+    const auto catalog = ReadCatalog(cratesSchema);
+    const auto crates = ReadCrates(cratesSchema, catalog);
+    ASSERT_EQ(crates.size(), 2U);
+    EXPECT_EQ(crates[0].contents, (std::vector<int>{101}));
+    EXPECT_EQ(crates[1].contents, (std::vector<int>{102}));
+    EXPECT_NE(crates[0].definition, crates[1].definition);
+}
+
 namespace
 {
 constexpr auto schema = R"VDF(

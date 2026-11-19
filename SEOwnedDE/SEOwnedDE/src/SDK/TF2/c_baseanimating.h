@@ -10,6 +10,16 @@ MAKE_SIGNATURE(CBaseAnimating_GetBonePosition, "client.dll", "48 89 5C 24 ? 48 8
 class C_BaseAnimating : public C_BaseEntity
 {
 public:
+	void* GetHitboxBoneCache()
+	{
+		// C_BaseAnimating::GetBoneCache, verified in the installed x64 client.
+		// TestHitboxes reads this CBoneCache independently of m_CachedBoneData.
+		using GetFn = void* (__fastcall*)(void*, void*);
+		static const auto get = reinterpret_cast<GetFn>(Memory::FindSignature("client.dll",
+			"48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 50 48 8B F9 48 8B F2 48 8B 89 ? ? ? ? E8"));
+		return get ? get(this, nullptr) : nullptr;
+	}
+
 	NETVAR(m_nSequence, int, "CBaseAnimating", "m_nSequence");
 	NETVAR(m_nForceBone, int, "CBaseAnimating", "m_nForceBone");
 	NETVAR(m_vecForce, Vec3, "CBaseAnimating", "m_vecForce");

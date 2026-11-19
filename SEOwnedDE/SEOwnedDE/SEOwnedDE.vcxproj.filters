@@ -23,6 +23,7 @@
     <ClCompile Include="src\App\Features\RapidFire\RapidFire.cpp" />
     <ClCompile Include="src\App\Features\SkinChanger\SkinChanger.cpp" />
     <ClCompile Include="src\App\Features\SkinChanger\LocalCosmetics.cpp" />
+    <ClCompile Include="src\App\Features\SkinChanger\NativeCosmetics.cpp" />
     <ClCompile Include="src\App\Features\SpectatorList\SpectatorList.cpp" />
     <ClCompile Include="src\App\Features\VisualUtils\VisualUtils.cpp" />
     <ClCompile Include="src\App\Features\WorldModulation\WorldModulation.cpp" />
@@ -159,6 +160,8 @@
     <ClInclude Include="src\App\Features\SkinChanger\RuntimeAttributeLayout.h" />
     <ClInclude Include="src\App\Features\SkinChanger\SkinChanger.h" />
     <ClInclude Include="src\App\Features\SkinChanger\LocalCosmetics.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\NativeCosmetics.h" />
+    <ClInclude Include="src\App\Features\SkinChanger\NativeCosmeticBuild.h" />
     <ClInclude Include="src\App\Features\SkinChanger\CosmeticInventory.h" />
     <ClInclude Include="src\App\Features\SkinChanger\CosmeticInventoryPersistence.h" />
     <ClInclude Include="src\App\Features\SpectatorList\SpectatorList.h" />

@@ -1,4 +1,5 @@
 #include "Menu.h"
+#include "../SkinChanger/NativeCosmetics.h"
 
 #include "LateRenderer/LateRenderer.h"
 
@@ -832,6 +833,11 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 
 bool CMenu::SelectSingle(const char *szLabel, int &nVar, std::initializer_list<std::pair<const char *, int>> vecSelects)
 {
+    return SelectSingleOptions(szLabel, nVar, {vecSelects.begin(), vecSelects.size()});
+}
+
+bool CMenu::SelectSingleOptions(const char* szLabel, int& nVar, std::span<const std::pair<const char*, int>> vecSelects)
+{
 	bool bCallback = false;
 
 	int x = m_nCursorX;
@@ -1135,13 +1141,38 @@ void CMenu::CosmeticsMenu()
 	m_nCursorY = y;
 	GroupBoxStart("Simulated crate", 185);
 	{
+        InputText("Crate search", "Search crates", m_strCosmeticCrateSearch);
+        std::vector<std::pair<std::string, int>> matchingCrates;
+        for (const auto& crate : cosmetics.Crates())
+        {
+            auto name = cosmetics.Name(crate.definition);
+            if (!m_strCosmeticCrateSearch.empty()
+                && name.find(m_strCosmeticCrateSearch) == std::string::npos
+                && std::to_string(crate.series).find(m_strCosmeticCrateSearch) == std::string::npos) continue;
+            matchingCrates.emplace_back(std::move(name), crate.definition);
+        }
+        constexpr int cratesPerPage = 8;
+        const int lastPage = std::max(0, (static_cast<int>(matchingCrates.size()) - 1) / cratesPerPage);
+        m_nCosmeticCratePage = std::clamp(m_nCosmeticCratePage, 0, lastPage);
+        SliderInt("Crate page", m_nCosmeticCratePage, 0, lastPage, 1);
+        std::vector<std::pair<const char*, int>> crateChoices{{"Any cosmetics", 0}};
+        const int firstCrate = m_nCosmeticCratePage * cratesPerPage;
+        for (int i = firstCrate; i < std::min(firstCrate + cratesPerPage, static_cast<int>(matchingCrates.size())); ++i)
+            crateChoices.emplace_back(matchingCrates[i].first.c_str(), matchingCrates[i].second);
+        if (m_nCosmeticCrate && std::none_of(crateChoices.begin(), crateChoices.end(), [this](const auto& c) { return c.second == m_nCosmeticCrate; }))
+        {
+            const auto selected = std::find_if(matchingCrates.begin(), matchingCrates.end(), [this](const auto& c) { return c.second == m_nCosmeticCrate; });
+            if (selected != matchingCrates.end()) crateChoices.emplace_back(selected->first.c_str(), selected->second);
+            else m_nCosmeticCrate = 0;
+        }
+        SelectSingleOptions("Crate", m_nCosmeticCrate, crateChoices);
 		SelectSingle("Drop pool", m_nCosmeticCrateClass, {
 			{"All cosmetics", 0}, {"Scout", 1}, {"Sniper", 2}, {"Soldier", 3}, {"Demoman", 4},
 			{"Medic", 5}, {"Heavy", 6}, {"Pyro", 7}, {"Spy", 8}, {"Engineer", 9}
 		});
 		if (Button("Open simulated crate"))
 		{
-			if (const auto id = cosmetics.OpenCrate(m_nCosmeticCrateClass))
+			if (const auto id = cosmetics.OpenCrate(m_nCosmeticCrateClass, m_nCosmeticCrate))
 			{
 				m_nSelectedCosmetic = id;
 				m_nPendingCosmeticRemoval = 0;
@@ -1184,7 +1215,9 @@ void CMenu::CosmeticsMenu()
 	GroupBoxStart("Character cosmetics", 200);
 	{
 		bool enabled = cosmetics.Enabled();
-		if (CheckBox("Preview on character", enabled)) cosmetics.SetEnabled(enabled);
+		if (CheckBox("Enable cosmetics", enabled)) cosmetics.SetEnabled(enabled);
+		bool expanded = cosmetics.ExpandedBackpack();
+		if (CheckBox("Expand backpack (4000)", expanded)) cosmetics.SetExpandedBackpack(expanded);
 		bool hide = cosmetics.HideOriginals();
 		if (CheckBox("Hide owned cosmetics", hide)) cosmetics.SetHideOriginals(hide);
 		SelectSingle("Loadout class", m_nCosmeticClass, {
@@ -1218,6 +1251,7 @@ void CMenu::CosmeticsMenu()
 		if (Button("Reload inventory")) cosmetics.Load();
 		Label("Preview uses third person");
 		Label(fit(cosmetics.RuntimeStatus(), 30).c_str());
+		Label(fit(g_NativeCosmetics.Status(), 30).c_str());
 	}
 	GroupBoxEnd();
 }

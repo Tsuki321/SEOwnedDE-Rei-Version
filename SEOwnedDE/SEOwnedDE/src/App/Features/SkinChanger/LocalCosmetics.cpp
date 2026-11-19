@@ -1,4 +1,5 @@
 #include "LocalCosmetics.h"
+#include "NativeCosmetics.h"
 #include "../CFG.h"
 #include "../VisualUtils/VisualUtils.h"
 #include "../../../Utils/Storage/Storage.h"
@@ -34,6 +35,34 @@ namespace
         std::ifstream file(path, std::ios::binary);
         if (!file) throw std::runtime_error("Cannot open file");
         return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    }
+
+    std::string ReadItemSchema()
+    {
+        // IBaseFileSystem searches loose files and VPKs in the GAME search path.
+        auto fs = Memory::FindInterface("filesystem_stdio.dll", "VBaseFileSystem011");
+        if (fs)
+        {
+            using OpenFn = void* (__fastcall*)(void*, const char*, const char*, const char*);
+            using CloseFn = void (__fastcall*)(void*, void*);
+            using SizeFn = unsigned int (__fastcall*)(void*, void*);
+            using ReadFn = int (__fastcall*)(void*, void*, int, void*);
+            const auto handle = reinterpret_cast<OpenFn>(Memory::GetVFunc(fs, 2))(fs, "scripts/items/items_game.txt", "rb", "GAME");
+            if (handle)
+            {
+                const auto close = reinterpret_cast<CloseFn>(Memory::GetVFunc(fs, 3));
+                const auto size = reinterpret_cast<SizeFn>(Memory::GetVFunc(fs, 6))(fs, handle);
+                if (!size || size > 16 * 1024 * 1024) { close(fs, handle); throw std::runtime_error("Schema size limit"); }
+                std::string text;
+                try { text.resize(size); }
+                catch (...) { close(fs, handle); throw; }
+                const int read = reinterpret_cast<ReadFn>(Memory::GetVFunc(fs, 0))(fs, text.data(), static_cast<int>(size), handle);
+                close(fs, handle);
+                if (read != static_cast<int>(size)) throw std::runtime_error("Incomplete schema read");
+                return text;
+            }
+        }
+        return ReadFile(std::filesystem::path(I::EngineClient->GetGameDirectory()) / "scripts/items/items_game.txt", 16 * 1024 * 1024);
     }
 }
 
@@ -86,10 +115,12 @@ void CLocalCosmetics::RefreshCatalog()
 {
     try
     {
-        const auto path = std::filesystem::path(I::EngineClient->GetGameDirectory()) / "scripts/items/items_game.txt";
-        auto catalog = SimulatedCosmetics::ReadCatalog(ReadFile(path, 16 * 1024 * 1024));
+        const auto schema = ReadItemSchema();
+        auto catalog = SimulatedCosmetics::ReadCatalog(schema);
         if (catalog.empty()) throw std::runtime_error("Empty cosmetic catalog");
+        auto crates = SimulatedCosmetics::ReadCrates(schema, catalog);
         m_catalog.swap(catalog);
+        m_crates.swap(crates);
         m_refreshRuntime = true;
         m_state.inventory.ValidateLoadouts(m_catalog);
         if (!m_loadFailed) m_status = std::format("{} cosmetic definitions ready", m_catalog.size());
@@ -100,18 +131,30 @@ void CLocalCosmetics::RefreshCatalog()
 std::string CLocalCosmetics::Name(int definition) const
 {
     const auto* def = SimulatedCosmetics::Find(m_catalog, definition);
-    return def && !def->name.empty() ? def->name : std::format("Item {}", definition);
+    if (def && !def->name.empty()) return def->name;
+    const auto crate = std::find_if(m_crates.begin(), m_crates.end(), [definition](const auto& c) { return c.definition == definition; });
+    if (crate != m_crates.end()) return crate->name;
+    return std::format("Item {}", definition);
 }
 
 void CLocalCosmetics::SetEnabled(bool enabled) { m_state.enabled = enabled; Save(); }
 void CLocalCosmetics::SetHideOriginals(bool hide) { m_state.hideOriginals = hide; Save(); }
 
-std::uint64_t CLocalCosmetics::OpenCrate(int playerClass)
+std::uint64_t CLocalCosmetics::OpenCrate(int playerClass, int crateDefinition)
 {
     if (m_loadFailed) { m_status = "Reload a valid inventory first"; return 0; }
-    const auto id = m_state.inventory.OpenCrate(playerClass, m_catalog, m_random);
+    std::vector<SimulatedCosmetics::Definition> pool;
+    if (crateDefinition)
+    {
+        const auto crate = std::find_if(m_crates.begin(), m_crates.end(), [crateDefinition](const auto& c) { return c.definition == crateDefinition; });
+        if (crate == m_crates.end()) { m_status = "Select an available cosmetic crate"; return 0; }
+        for (const auto definition : crate->contents)
+            if (const auto def = SimulatedCosmetics::Find(m_catalog, definition)) pool.push_back(*def);
+    }
+    const auto id = m_state.inventory.OpenCrate(playerClass, crateDefinition ? pool : m_catalog, m_random);
     if (!id) { m_status = "Crate empty or inventory full"; return 0; }
     m_status = "Unboxed: " + Name(m_state.inventory.Get(id)->definition);
+    m_state.enabled = true;
     Save();
     return id;
 }
@@ -121,6 +164,7 @@ bool CLocalCosmetics::Equip(std::uint64_t id, int playerClass, int slot)
     if (!m_state.inventory.Equip(id, playerClass, slot, m_catalog))
     { m_status = "Cosmetic does not fit this class"; return false; }
     m_status = "Equipped locally";
+    m_state.enabled = true;
     Save();
     return true;
 }
@@ -153,7 +197,7 @@ void CLocalCosmetics::ResetRuntime()
 void CLocalCosmetics::LevelShutdown()
 {
     ResetRuntime();
-    if (m_shutdownRequested.load()) m_shutdownDone.store(true);
+    if (m_shutdownRequested.load()) { g_NativeCosmetics.Shutdown(); m_shutdownDone.store(true); }
 }
 
 void CLocalCosmetics::Shutdown()
@@ -171,10 +215,12 @@ void CLocalCosmetics::Run()
     if (m_shutdownRequested.load())
     {
         ResetRuntime();
+        g_NativeCosmetics.Shutdown();
         m_shutdownDone.store(true);
         return;
     }
     if (m_refreshRuntime) { ResetRuntime(); m_refreshRuntime = false; }
+    g_NativeCosmetics.Run(m_state.enabled, m_state.inventory, m_state.expandBackpack);
     const auto local = H::Entities->GetLocal();
     const bool screenshot = CFG::Misc_Clean_Screenshot && F::VisualUtils->IsTakingScreenshotCached();
     if (!m_state.enabled || !local || local->deadflag() || local->m_flInvisibility() > 0.0f

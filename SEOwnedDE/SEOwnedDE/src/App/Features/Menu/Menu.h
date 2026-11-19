@@ -3,6 +3,7 @@
 #include "../../../SDK/SDK.h"
 #include "../SkinChanger/SkinChanger.h"
 #include <initializer_list>
+#include <span>
 
 class CMenu
 {
@@ -23,6 +24,9 @@ private:
 	int m_nSkinPage = 0;
 	int m_nCosmeticClass = 1;
 	int m_nCosmeticCrateClass = 0;
+    int m_nCosmeticCrate = 0;
+    int m_nCosmeticCratePage = 0;
+    std::string m_strCosmeticCrateSearch;
 	int m_nCosmeticSlot = 0;
 	int m_nCosmeticInventoryPage = 0;
 	std::uint64_t m_nSelectedCosmetic = 0;
@@ -57,6 +61,7 @@ private:
 	bool playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr, bool center_txt);
 	bool InputText(const char *szLabel, const char *szLabel2, std::string &strOutput);
 	bool SelectSingle(const char *szLabel, int &nVar, std::initializer_list<std::pair<const char *, int>> vecSelects);
+    bool SelectSingleOptions(const char* label, int& value, std::span<const std::pair<const char*, int>> options);
 	bool SelectMulti(const char *szLabel, std::vector<std::pair<const char *, bool &>> &vecSelects);
 	bool ColorPicker(const char *szLabel, Color_t &colVar);
 	void GroupBoxStart(const char *szLabel, int nWidth);

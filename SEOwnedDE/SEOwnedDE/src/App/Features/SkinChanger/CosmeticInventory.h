@@ -1,6 +1,6 @@
 #pragma once
 
-// The simulation owns these items. Only schema definitions are read from TF2.
+// The simulation owns these items; the native backpack bridge reads this state.
 // Keep this layer independent of the engine so inventory behavior can be tested.
 #include <algorithm>
 #include <array>
@@ -24,6 +24,14 @@ inline constexpr std::array<const char*, 10> ClassNames = {
 };
 inline constexpr std::size_t MaxItems = 4096;
 inline constexpr int Slots = 3;
+inline constexpr int MaxNativeBackpackSlots = 4000; // Native backpack panel: 80 pages of 50.
+inline constexpr std::uint64_t NativeIdPrefix = 0xF31C000000000000ULL;
+inline std::uint64_t NativeId(std::uint64_t id)
+{
+    return id && id < 0x0001000000000000ULL ? NativeIdPrefix | id : 0;
+}
+inline int NativeSlot(int slot) { return slot == 0 ? 7 : slot == 1 ? 8 : slot == 2 ? 10 : -1; }
+inline int CosmeticSlot(int slot) { return slot == 7 ? 0 : slot == 8 ? 1 : slot == 10 ? 2 : -1; }
 
 struct SchemaNode
 {
@@ -207,11 +215,101 @@ inline std::vector<Definition> ReadCatalog(std::string_view schema)
     return catalog;
 }
 
+inline bool ParseId(std::string_view text, int& id)
+{
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), id);
+    return error == std::errc{} && end == text.data() + text.size() && id > 0 && id <= 65535;
+}
+
 inline const Definition* Find(const std::vector<Definition>& catalog, int index)
 {
     const auto it = std::lower_bound(catalog.begin(), catalog.end(), index,
         [](const auto& def, int value) { return def.index < value; });
     return it != catalog.end() && it->index == index ? &*it : nullptr;
+}
+
+struct Crate
+{
+    int definition = 0;
+    int series = 0;
+    std::string name;
+    std::vector<int> contents;
+};
+
+inline std::vector<Crate> ReadCrates(std::string_view text, const std::vector<Definition>& catalog)
+{
+    const auto document = SchemaParser(text).Parse();
+    const auto& root = document.Get("items_game");
+    const auto& lists = root.Get("client_loot_lists");
+    std::map<std::string, int> names;
+    for (const auto& [key, node] : root.Get("items").children)
+    {
+        int id = 0;
+        if (ParseId(key, id)) names[node.Text("name")] = id;
+    }
+    const auto collectItems = [&](auto&& self, const SchemaNode& node, std::vector<int>& into, int depth) -> void
+    {
+        if (depth > 8) return;
+        for (const auto& [key, value] : node.children)
+        {
+            int id = 0;
+            if (!ParseId(key, id))
+            {
+                const auto found = names.find(key);
+                if (found != names.end()) id = found->second;
+            }
+            if (Find(catalog, id)) into.push_back(id);
+            if (!value.children.empty()) self(self, value, into, depth + 1);
+        }
+    };
+    const auto collect = [&](auto&& self, const std::string& name, std::vector<int>& into,
+        std::vector<std::string>& path) -> void
+    {
+        if (path.size() >= 32 || std::find(path.begin(), path.end(), name) != path.end()) return;
+        path.push_back(name);
+        const auto collection = lists.Get(name).Text("loot_list_collection");
+        if (!collection.empty()) collectItems(collectItems, root.Get("item_collections").Get(collection).Get("items"), into, 0);
+        for (const auto& [key, node] : lists.Get(name).children)
+        {
+            int id = 0;
+            if (!ParseId(key, id))
+            {
+                const auto found = names.find(key);
+                if (found != names.end()) id = found->second;
+            }
+            if (Find(catalog, id)) into.push_back(id);
+            else if (!lists.Get(key).children.empty()) self(self, key, into, path);
+        }
+        path.pop_back();
+    };
+    std::vector<Crate> result;
+    for (const auto& [key, node] : root.Get("items").children)
+    {
+        int id = 0;
+        if (!ParseId(key, id)) continue;
+        const auto item = Resolve(node, root.Get("prefabs"));
+        if (item.Text("item_class") != "supply_crate") continue;
+        int series = 0;
+        auto seriesText = item.Get("static_attrs").Text("set supply crate series");
+        if (seriesText.empty()) seriesText = item.Get("attributes").Get("set supply crate series").Text("value");
+        ParseId(seriesText, series);
+        std::string list = item.Text("loot_list_name");
+        if (list.empty()) list = item.Get("tool").Get("usage").Text("loot_list_name");
+        if (list.empty() && series)
+            for (const auto& [name, value] : root.Get("revolving_loot_lists").children)
+                if (value.value == seriesText) { list = name; break; }
+        const auto collection = item.Text("collection_reference");
+        if (list.empty() && collection.empty()) continue;
+        Crate crate{id, series, item.Text("name"), {}};
+        if (crate.name.empty()) crate.name = item.Text("item_name");
+        std::vector<std::string> path;
+        collect(collect, list, crate.contents, path);
+        if (!collection.empty()) collectItems(collectItems, root.Get("item_collections").Get(collection).Get("items"), crate.contents, 0);
+        std::sort(crate.contents.begin(), crate.contents.end());
+        crate.contents.erase(std::unique(crate.contents.begin(), crate.contents.end()), crate.contents.end());
+        if (!crate.contents.empty()) result.push_back(std::move(crate));
+    }
+    return result;
 }
 
 inline bool Conflicts(const Definition& a, const Definition& b)

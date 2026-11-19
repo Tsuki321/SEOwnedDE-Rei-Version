@@ -309,6 +309,7 @@ class CLagRecordMatrixHelper
 		int BoneCount = 0;
 		int AppliedBoneCount = 0;
 		CUtlVector<matrix3x4_t>* CachedBoneData = nullptr;
+		void* HitboxBoneCache = nullptr;
 	};
 
 	std::array<StackEntry_t, MAX_MATRIX_HELPER_DEPTH> m_Stack = {};

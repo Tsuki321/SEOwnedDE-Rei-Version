@@ -397,6 +397,7 @@
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SeedPred\SeedPred.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SkinChanger\SkinChanger.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SkinChanger\LocalCosmetics.cpp" />
+    <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SkinChanger\NativeCosmetics.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SpectatorList\SpectatorList.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SpyCamera\SpyCamera.cpp" />
     <ClCompile Include="..\..\SEOwnedDE\SEOwnedDE\src\App\Features\SpyWarning\SpyWarning.cpp" />

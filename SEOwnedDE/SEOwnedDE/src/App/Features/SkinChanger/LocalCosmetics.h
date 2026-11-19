@@ -14,6 +14,7 @@ class CLocalCosmetics
     };
     SimulatedCosmetics::SavedState m_state;
     std::vector<SimulatedCosmetics::Definition> m_catalog;
+    std::vector<SimulatedCosmetics::Crate> m_crates;
     std::array<RuntimeSlot, SimulatedCosmetics::Slots> m_runtime;
     CBaseHandle m_owner;
     int m_class = 0;
@@ -41,15 +42,18 @@ public:
     int PlayerBody(const ModelRenderInfo_t& info) const;
 
     const auto& Catalog() const { return m_catalog; }
+    const auto& Crates() const { return m_crates; }
     const auto& Inventory() const { return m_state.inventory; }
     bool Enabled() const { return m_state.enabled; }
     bool HideOriginals() const { return m_state.hideOriginals; }
+    bool ExpandedBackpack() const { return m_state.expandBackpack; }
+    void SetExpandedBackpack(bool expand) { m_state.expandBackpack = expand; Save(); }
     void SetEnabled(bool enabled);
     void SetHideOriginals(bool hide);
     const auto& Status() const { return m_status; }
     const auto& RuntimeStatus() const { return m_runtimeStatus; }
     std::string Name(int definition) const;
-    std::uint64_t OpenCrate(int playerClass);
+    std::uint64_t OpenCrate(int playerClass, int crateDefinition = 0);
     bool Equip(std::uint64_t id, int playerClass, int slot);
     void Unequip(int playerClass, int slot);
     void Remove(std::uint64_t id);

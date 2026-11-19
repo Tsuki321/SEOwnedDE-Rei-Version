@@ -598,6 +598,10 @@ bool CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	if (pRecord->ModelIndex != pPlayer->m_nModelIndex())
 		return false;
 
+	const auto pHitboxBoneCache = pPlayer->GetHitboxBoneCache();
+	if (!pHitboxBoneCache)
+		return false;
+
 	const auto pCachedBoneData = pPlayer->GetCachedBoneData();
 
 	if (!pCachedBoneData)
@@ -626,12 +630,16 @@ bool CLagRecordMatrixHelper::Set(const LagRecord_t* pRecord)
 	entry.BoneCount = nLiveCount;
 	entry.AppliedBoneCount = nApplyCount;
 	entry.CachedBoneData = pCachedBoneData;
+	entry.HitboxBoneCache = pHitboxBoneCache;
 	memcpy(entry.BoneMatrix, pLiveBones, sizeof(matrix3x4_t) * entry.BoneCount);
 
 	memcpy(pLiveBones, pRecord->BoneData.data(), sizeof(matrix3x4_t) * nApplyCount);
 
 	pPlayer->SetAbsOrigin(pRecord->AbsOrigin);
 	pPlayer->SetAbsAngles(pRecord->AbsAngles);
+	// CBoneCache::IsValid compares curtime with its first float. Force the
+	// next TestHitboxes call to rebuild its compact cache from scoped bones.
+	*static_cast<float*>(entry.HitboxBoneCache) = -std::numeric_limits<float>::max();
 
 	++m_nActiveDepth;
 	return true;
@@ -673,6 +681,10 @@ void CLagRecordMatrixHelper::Restore()
 
 	if (!entry.Player)
 		return;
+	// The compact hitbox cache may now contain the record. Invalidate it again
+	// so the next live trace (or outer nested scope) rebuilds the correct pose.
+	if (entry.HitboxBoneCache)
+		*static_cast<float*>(entry.HitboxBoneCache) = -std::numeric_limits<float>::max();
 
 	entry.Player->SetAbsOrigin(entry.AbsOrigin);
 	entry.Player->SetAbsAngles(entry.AbsAngles);
