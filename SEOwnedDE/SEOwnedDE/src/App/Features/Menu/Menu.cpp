@@ -1430,6 +1430,7 @@ void CMenu::MainWindow()
 				SliderFloat("Smoothing", CFG::Aimbot_Hitscan_Smoothing, 0.0f, 20.0f, 0.5f, "%.1f");
 				SliderFloat("Aim Assist Strength", CFG::Aimbot_Hitscan_AimAssist_Strength, 1.0f, 50.0f, 0.5f, "%.1f");
 				CheckBox("Aim Assist Stabilize", CFG::Aimbot_Hitscan_AimAssist_Stabilization);
+				SliderFloat("Smooth Switch Delay", CFG::Aimbot_Hitscan_Smooth_Target_Switch_Delay, 0.0f, 3.0f, 0.1f, "%.1fs");
 			}
 			GroupBoxEnd();
 

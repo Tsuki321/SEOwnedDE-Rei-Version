@@ -24,7 +24,7 @@ void CApp::Start()
 		if (bUnload)
 			return;
 
-		Sleep(500);
+		Sleep(100);
 	}
 
 	if (!Memory::FindSignature("client.dll", "48 8B 0D ? ? ? ? 48 8B 10 48 8B 19 48 8B C8 FF 92"))
@@ -105,7 +105,7 @@ void CApp::Shutdown()
 
 		Hooks::WINAPI_WndProc::Release();
 
-		Sleep(250);
+		Sleep(100);
 
 		F::Materials->CleanUp();
 		F::Outlines->CleanUp();
