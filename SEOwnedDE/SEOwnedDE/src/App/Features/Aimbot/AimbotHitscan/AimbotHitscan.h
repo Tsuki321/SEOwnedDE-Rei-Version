@@ -48,6 +48,8 @@ class CAimbotHitscan
 		m_nSmoothTargetIndex = -1;
 		ResetSmoothMotion();
 		m_nLastSmoothCommandNumber = -1;
+		m_nSmoothLastTargetIdx = -1;
+		m_flSmoothSwitchReadyAt = 0.0f;
 	}
 
 public:

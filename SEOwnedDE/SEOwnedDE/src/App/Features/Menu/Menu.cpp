@@ -1143,13 +1143,17 @@ void CMenu::CosmeticsMenu()
 	{
         InputText("Crate search", "Search crates", m_strCosmeticCrateSearch);
         std::vector<std::pair<std::string, int>> matchingCrates;
+        auto crateSearch = m_strCosmeticCrateSearch;
+        std::transform(crateSearch.begin(), crateSearch.end(), crateSearch.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         for (const auto& crate : cosmetics.Crates())
         {
             auto name = cosmetics.Name(crate.definition);
-            if (!m_strCosmeticCrateSearch.empty()
-                && name.find(m_strCosmeticCrateSearch) == std::string::npos
-                && std::to_string(crate.series).find(m_strCosmeticCrateSearch) == std::string::npos) continue;
-            matchingCrates.emplace_back(std::move(name), crate.definition);
+            auto searchableName = name;
+            std::transform(searchableName.begin(), searchableName.end(), searchableName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (!crateSearch.empty()
+                && searchableName.find(crateSearch) == std::string::npos
+                && std::to_string(crate.series).find(crateSearch) == std::string::npos) continue;
+            matchingCrates.emplace_back(fit(std::move(name), 26), crate.definition);
         }
         constexpr int cratesPerPage = 8;
         const int lastPage = std::max(0, (static_cast<int>(matchingCrates.size()) - 1) / cratesPerPage);

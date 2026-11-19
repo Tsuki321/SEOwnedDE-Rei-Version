@@ -1167,6 +1167,27 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 	if (bFoundTarget)
 	{
 		const int nTargetIndex = target.Entity->entindex();
+		if (bSmoothAimActive && m_nSmoothTargetIndex > 0 && nTargetIndex != m_nSmoothTargetIndex)
+		{
+			// Preserve the x64 branch's switch delay alongside the newer smooth
+			// target lock. A held manual shot is still resolved by CAimbot::Run.
+			if (m_nSmoothLastTargetIdx != nTargetIndex)
+			{
+				m_nSmoothLastTargetIdx = nTargetIndex;
+				m_flSmoothSwitchReadyAt = I::GlobalVars->curtime
+					+ std::clamp(CFG::Aimbot_Hitscan_Smooth_Target_Switch_Delay, 0.0f, 3.0f);
+			}
+			if (I::GlobalVars->curtime < m_flSmoothSwitchReadyAt)
+			{
+				ResetSmoothMotion();
+				return;
+			}
+		}
+		else if (bSmoothAimActive)
+		{
+			m_nSmoothLastTargetIdx = -1;
+			m_flSmoothSwitchReadyAt = 0.0f;
+		}
 		if (bSmoothAimActive && nTargetIndex != m_nSmoothTargetIndex)
 		{
 			m_nSmoothTargetIndex = nTargetIndex;

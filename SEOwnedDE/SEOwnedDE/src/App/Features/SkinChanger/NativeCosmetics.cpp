@@ -145,16 +145,18 @@ void CNativeCosmetics::Run(bool enabled, const SimulatedCosmetics::Inventory& in
         return;
     }
     const int capacity = originalCapacity(native);
-    if (native != m_inventory || owner != m_owner || capacity != m_capacity)
+    const bool nativeChanged = native != m_inventory || owner != m_owner || capacity != m_capacity;
+    if (nativeChanged)
     {
         if (!m_items.empty()) Clear();
         m_inventory = native; m_owner = owner; m_capacity = capacity;
     }
-    bool changed = false;
+    bool changed = nativeChanged;
     if (!enabled)
     {
         if (!m_items.empty()) { Clear(); m_inventory = native; m_owner = owner; m_capacity = capacity; }
         m_status = "TF2 backpack expanded to 4000 slots";
+        if (changed) notify(native);
         return;
     }
     for (auto it = m_items.begin(); it != m_items.end();)
