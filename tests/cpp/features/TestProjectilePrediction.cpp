@@ -1035,7 +1035,7 @@ TEST(ProjectileFirstImpact, SweepsTargetMovementAcrossTheProjectileSegment) {
 	EXPECT_NEAR(contact, 0.45f, 1e-6f);
 }
 
-TEST(ProjectileChargeMapping, AppliesSpeedAttributesAcrossPartialAndFullCharge) {
+TEST(ProjectileChargeMapping, AppliesLaunchRangeAcrossPartialAndFullCharge) {
 	ProjectileTrajectory::ChargeProfile profile{ 2.0f, 1800.0f, 4800.0f, 1.0f, 1.0f };
 	float speed = 0.0f, gravity = 0.0f;
 	profile.Evaluate(1.0f, speed, gravity);

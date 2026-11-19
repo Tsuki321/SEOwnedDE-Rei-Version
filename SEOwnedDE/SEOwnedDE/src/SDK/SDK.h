@@ -87,7 +87,8 @@ namespace SDKUtils
 		return reinterpret_cast<int*>(dest);
 	}
 
-	inline void GetProjectileFireSetupRebuilt(C_TFPlayer *player, Vec3 offset, const Vec3 &ang_in, Vec3 &pos_out, Vec3 &ang_out, bool pipes)
+	inline bool GetProjectileFireSetupRebuilt(C_TFPlayer *player, Vec3 offset, const Vec3 &ang_in,
+		Vec3 &pos_out, Vec3 &ang_out, bool pipes, bool ignore_teammates = false)
 	{
 		static auto cl_flipviewmodels{ I::CVar ? I::CVar->FindVar("cl_flipviewmodels") : nullptr };
 
@@ -106,6 +107,22 @@ namespace SDKUtils
 		if (pipes)
 		{
 			ang_out = ang_in;
+			if (I::EngineTrace)
+			{
+				class PipeMuzzleFilter final : public CTraceFilter
+				{
+				public:
+					IHandleEntity* Ignore = nullptr;
+					bool ShouldHitEntity(IHandleEntity* entity, int) override { return entity && entity != Ignore; }
+				} filter;
+				filter.Ignore = player;
+				Ray_t ray;
+				ray.Init(shoot_pos, pos_out, { -8.0f, -8.0f, -8.0f }, { 8.0f, 8.0f, 8.0f });
+				trace_t trace{};
+				I::EngineTrace->TraceRay(ray, MASK_SOLID_BRUSHONLY, &filter, &trace);
+				if (trace.startsolid || trace.allsolid) return false;
+				pos_out = trace.endpos;
+			}
 		}
 
 		else
@@ -117,9 +134,16 @@ namespace SDKUtils
 				{
 				public:
 					IHandleEntity* Ignore = nullptr;
-					bool ShouldHitEntity(IHandleEntity* entity, int) override { return entity && entity != Ignore; }
+					int IgnoreTeam = 0;
+					bool ShouldHitEntity(IHandleEntity* entity, int) override
+					{
+						if (!entity || entity == Ignore) return false;
+						const auto base = static_cast<IClientEntity*>(entity)->As<C_BaseEntity>();
+						return !IgnoreTeam || !base || base->m_iTeamNum() != IgnoreTeam;
+					}
 				} filter;
 				filter.Ignore = player;
+				filter.IgnoreTeam = ignore_teammates ? player->m_iTeamNum() : 0;
 				Ray_t ray;
 				ray.Init(shoot_pos, end_pos);
 				trace_t trace{};
@@ -129,6 +153,7 @@ namespace SDKUtils
 
 			Math::VectorAngles(end_pos - pos_out, ang_out);
 		}
+		return true;
 	}
 
 	static float GetLerp()

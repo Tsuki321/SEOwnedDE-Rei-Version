@@ -1,14 +1,10 @@
 #include "ProjectileSim.h"
 #include <cstring>
 
-// Leaked CTFWeaponBaseGun::FirePipeBomb sets the angular impulse to
-// AngularImpulse(600, random->RandomInt(-1200, 1200), 0) - pitch is fixed at 600,
-// yaw is uniform in [-1200, 1200], roll is 0. The drag basis values used by this
-// sim were dumped from a server firing with 0 0 0 angles (i.e. zero spin), so we
-// use 0 for the yaw here to keep the sim self-consistent. The 600/0/0 form is
-// deterministic across calls; the actual game's random yaw doesn't significantly
-// affect the linear trajectory through the engine's drag model.
-static const Vec3 kPipeAngularVelocity{ 600.0f, 0.0f, 0.0f };
+// Server yaw spin varies within [-1200, 1200]. Native captures show that zero
+// yaw materially underestimates drag. A representative yaw is deterministic
+// across solver trials; it approximates the distribution, not the server RNG.
+static const Vec3 kPipeAngularVelocity{ 600.0f, 600.0f, 0.0f };
 
 void CProjectileSim::CleanUp()
 {
@@ -38,12 +34,14 @@ void CProjectileSim::DestroyBody()
 ProjectileTrajectory::ChargeProfile CProjectileSim::GetChargeProfile(C_TFWeaponBase* weapon)
 {
 	if (!weapon) return {};
-	const float multiplier = SDKUtils::AttribHookValue(1.0f, "mult_projectile_speed", weapon);
 	if (weapon->GetWeaponID() == TF_WEAPON_COMPOUND_BOW)
-		return { 1.0f, 1800.0f * multiplier, 2600.0f * multiplier, 0.5f, 0.1f };
+		return { 1.0f, 1800.0f, 2600.0f, 0.5f, 0.1f };
 	if (weapon->GetWeaponID() == TF_WEAPON_PIPEBOMBLAUNCHER)
+	{
+		const float multiplier = SDKUtils::AttribHookValue(1.0f, "mult_projectile_range", weapon);
 		return { SDKUtils::AttribHookValue(4.0f, "stickybomb_charge_rate", weapon),
 			900.0f * multiplier, 2400.0f * multiplier, 1.0f, 1.0f };
+	}
 	return {};
 }
 
@@ -53,6 +51,7 @@ void CProjectileSim::ConfigureProfile(C_TFWeaponBase* weapon, ProjectileInfo& in
 	profile = {};
 	if (IsVPhysicsProjectile(info.m_type))
 	{
+		if (weapon && SDKUtils::AttribHookValue(0.0f, "grenade_no_spin", weapon) != 0.0f) info.no_spin = true;
 		profile.HullMins = { -2.0f, -2.0f, -2.0f };
 		profile.HullMaxs = { 2.0f, 2.0f, 2.0f };
 		profile.MuzzleUp = 200.0f;
@@ -170,13 +169,15 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 
 	Vec3 pos{};
 	Vec3 ang{};
+	bool setupValid = true;
 	auto setup = [&](const Vec3 &offset, bool pipes)
 	{
 		Vec3 firingOffset = offset;
 		if (weapon->m_iItemDefinitionIndex() == Soldier_m_TheOriginal
 			|| SDKUtils::AttribHookValue(0.0f, "centerfire_projectile", weapon) == 1.0f)
 			firingOffset.y = 0.0f;
-		SDKUtils::GetProjectileFireSetupRebuilt(player, firingOffset, angles, pos, ang, pipes);
+		setupValid = SDKUtils::GetProjectileFireSetupRebuilt(player, firingOffset, angles, pos, ang, pipes,
+			!pipes && weapon->GetWeaponID() != TF_WEAPON_SYRINGEGUN_MEDIC) && setupValid;
 	};
 	auto setup_standard = [&]()
 	{
@@ -200,7 +201,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 
 			out = { TF_PROJECTILE_ROCKET, pos, ang, speed, 0.0f, true };
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_GRENADELAUNCHER:
@@ -208,12 +209,13 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			setup({ 16.0f, 8.0f, -6.0f }, true);
 
 			auto is_lochnload{ weapon->m_iItemDefinitionIndex() == Demoman_m_TheLochnLoad };
-			auto speed{ SDKUtils::AttribHookValue(1200.0, "mult_projectile_speed", weapon) };
+			auto speed{ SDKUtils::AttribHookValue(1200.0, "mult_projectile_speed", weapon)
+				* SDKUtils::AttribHookValue(1.0f, "mult_projectile_range", weapon) };
 
 			out = { TF_PROJECTILE_PIPEBOMB, pos, ang, speed, 1.0f, is_lochnload };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_PIPEBOMBLAUNCHER:
@@ -227,17 +229,18 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			out = { TF_PROJECTILE_PIPEBOMB_REMOTE, pos, ang, speed, 1.0f, false };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_CANNON:
 		{
 			setup({ 16.0f, 8.0f, -6.0f }, true);
 
-			out = { TF_PROJECTILE_CANNONBALL, pos, ang, 1454.0f, 1.0f, false };
+			out = { TF_PROJECTILE_CANNONBALL, pos, ang,
+				SDKUtils::AttribHookValue(1454.0f, "mult_projectile_range", weapon), 1.0f, false };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_FLAREGUN:
@@ -247,7 +250,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			out = { TF_PROJECTILE_FLARE, pos, ang, 2000.0f, 0.3f, true };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_FLAREGUN_REVENGE:
@@ -257,7 +260,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			out = { TF_PROJECTILE_FLARE, pos, ang, 3000.0f, 0.45f, true };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_COMPOUND_BOW:
@@ -271,7 +274,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			out = { TF_PROJECTILE_ARROW, pos, ang, speed, grav_mod, true };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_CROSSBOW:
@@ -282,7 +285,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			out = { TF_PROJECTILE_ARROW, pos, ang, 2400.0f, 0.2f, true };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_SYRINGEGUN_MEDIC:
@@ -292,7 +295,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			out = { TF_PROJECTILE_SYRINGE, pos, ang, 1000.0f, 0.3f, true };
 
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_FLAME_BALL:
@@ -300,7 +303,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			setup_standard();
 			out = { TF_PROJECTILE_FLAME_ROCKET, pos, ang, 3000.0f, 0.0f, true };
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_FLAMETHROWER:
@@ -308,7 +311,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 			setup_standard();
 			out = { TF_PROJECTILE_FLAME_ROCKET, pos, ang, 2000.0f, 0.0f, true };
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		case TF_WEAPON_RAYGUN:
@@ -320,7 +323,7 @@ bool CProjectileSim::GetInfo(C_TFPlayer *player, C_TFWeaponBase *weapon, const V
 				pos, ang, 1200.0f, 0.0f, true
 			};
 			ConfigureProfile(weapon, out);
-			return true;
+			return setupValid;
 		}
 
 		default:

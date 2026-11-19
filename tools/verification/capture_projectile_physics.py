@@ -17,6 +17,7 @@ import struct
 arguments = argparse.ArgumentParser(description=__doc__)
 arguments.add_argument('--game', type=Path, default=Path('C:/Program Files (x86)/Steam/steamapps/common/Team Fortress 2'))
 arguments.add_argument('--output', type=Path)
+arguments.add_argument('--spin-yaw', type=float, default=600.0)
 options = arguments.parse_args()
 GAME = options.game
 SDK = (Path(__file__).resolve().parents[2] / 'SEOwnedDE/SEOwnedDE/src/SDK/TF2/vphysics.h').read_text(encoding='utf-8')
@@ -141,7 +142,7 @@ def sample(env, shape, params, count=60):
     drag = C.c_float(params.drag)
     call(body, 'IPhysicsObject', 'SetDragCoefficient', None, (C.c_void_p, C.byref(drag)), (C.c_void_p, C.byref(drag)))
     call(body, 'IPhysicsObject', 'SetVelocityInstantaneous', None,
-         (C.c_void_p, C.byref(Vector(1200, 0, 200))), (C.c_void_p, C.byref(Vector(600, 0, 0))))
+         (C.c_void_p, C.byref(Vector(1200, 0, 200))), (C.c_void_p, C.byref(Vector(600, options.spin_yaw, 0))))
     call(body, 'IPhysicsObject', 'Wake', None)
     axis_drag = []
     for axis in range(3):
@@ -159,7 +160,7 @@ def sample(env, shape, params, count=60):
 
 results = {'vphysics_sha256': hashlib.sha256((GAME / 'bin/x64/vphysics.dll').read_bytes()).hexdigest(),
            'conditions': {'tick_interval': 1 / 66, 'gravity': 800, 'density': 2,
-                          'origin': [0, 0, 100], 'velocity': [1200, 0, 200], 'spin': [600, 0, 0],
+                          'origin': [0, 0, 100], 'velocity': [1200, 0, 200], 'spin': [600, options.spin_yaw, 0],
                           'empty_environment_primed': True, 'shared_environment_across_models': True}, 'models': {}}
 shared_environment = environment()
 for model in ['models/weapons/w_models/w_grenade_grenadelauncher.phy',

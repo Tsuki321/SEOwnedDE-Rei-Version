@@ -82,7 +82,7 @@ A projectile can enter the target bounds before the nominal endpoint and subsequ
 
 Path scanning accepts an approximately matching tick, then runs local refinement. It does not preserve alternative meeting intervals or arc choices when the selected result fails trajectory validation. The binary-search helper is not used by the production path, and an option selecting a high arc does not itself provide a low/high candidate fallback.
 
-Charge planning also duplicates speed/gravity formulas separately from `ProjectileSim::GetInfo`. Both sticky launch extraction and candidate planning used fixed 900-2400 speed endpoints without applying `mult_projectile_speed`. On weapons with such attributes, the predicted launch can differ from the actual weapon.
+Charge planning also duplicates speed/gravity formulas separately from `ProjectileSim::GetInfo`. Both sticky launch extraction and candidate planning used fixed 900-2400 speed endpoints without applying the pipe firing path's `mult_projectile_range` hook. On weapons with such attributes, the predicted launch can differ from the actual weapon. Valve's published sticky speed getter remaps charge directly; the range hook is applied later in the shared pipe firing path.
 
 **Recommended change:** centralize charge-to-launch conversion in the projectile profile, including attributes. Return candidate intervals and arc choices under a bounded work budget. Replace loosely related floats and booleans with a result containing launch state, flight time, remaining charge wait, target time, spatial error, timing error, and a failure reason.
 
