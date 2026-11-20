@@ -1473,7 +1473,7 @@ void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWe
 					// A record's tick is only correct for a shot that is actually
 					// pointing at that record. Verify rather than assume: Aim()
 					// above snaps exactly onto target.AngleTo for Plain/Silent,
-					// only walks toward it for Smooth/Aim Assist, and does not run
+					// only walks toward it for Smooth, and does not run
 					// at all when the aim key is up - and Aimbot_Key is unbound by
 					// default, so the common case is a hand-aimed shot that the
 					// aimbot merely happened to scan a target for.
