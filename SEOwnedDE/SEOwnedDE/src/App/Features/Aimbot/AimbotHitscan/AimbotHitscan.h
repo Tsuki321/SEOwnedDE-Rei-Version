@@ -1,6 +1,7 @@
 #pragma once
 #include "../AimbotCommon/AimbotCommon.h"
 #include "../../LagRecords/LagRecords.h"
+#include "AimAssistController.h"
 
 class CAimbotHitscan
 {
@@ -10,10 +11,17 @@ class CAimbotHitscan
 		float SimulationTime = -1.0f;
 		const LagRecord_t* LagRecord = nullptr;
 		bool WasMultiPointed = false;
+		bool AssistRayInside = false;
 	};
 
 	std::vector<HitscanTarget_t> m_vecTargets = {};
 	float m_flDelayFireEndTime = 0.0f;
+	std::vector<HitscanTarget_t> m_vecAssistTargets = {};
+	std::vector<HitscanAssist::Candidate> m_vecAssistCandidates = {};
+	HitscanAssist::TargetLock m_AssistLock = {};
+	HitscanAssist::Motion m_AssistMotion = {};
+	int m_nAssistHitbox = -1;
+	int m_nAssistMotionTarget = -1;
 
 	// Smooth aim keeps the same entity while it remains valid and filters the
 	// requested angular step so record/animation updates cannot jerk the view.
@@ -42,6 +50,14 @@ class CAimbotHitscan
 	void Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, const Vec3& vAngles);
 	bool ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon, const HitscanTarget_t& target);
 	void HandleFire(CUserCmd* pCmd, C_TFWeaponBase* pWeapon);
+	void RunAimAssist(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon);
+	void ResetAimAssist()
+	{
+		m_AssistLock.Reset();
+		m_AssistMotion.Reset();
+		m_nAssistHitbox = -1;
+		m_nAssistMotionTarget = -1;
+	}
 	void ResetSmoothMotion() { m_vSmoothAimStep = {}; }
 	void ResetSmoothState()
 	{
@@ -76,6 +92,7 @@ public:
 		m_nLastFiredTargetIndex = -1;
 		m_flTargetSwitchEndTime = 0.0f;
 		ResetSmoothState();
+		ResetAimAssist();
 	}
 };
 

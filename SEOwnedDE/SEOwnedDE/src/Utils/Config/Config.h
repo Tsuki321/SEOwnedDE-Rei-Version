@@ -142,6 +142,23 @@ namespace Config
 			return;
 		}
 
+		if (j.is_object())
+		{
+			// Assist used to be aim mode 3. Preserve its gentle keyed behavior
+			// through Smooth while enabling the independent assist toggle.
+			const auto mode = j.find("Aimbot_Hitscan_Aim_Type");
+			int aimType = 1;
+			if (mode != j.end() && ReadNumber(*mode, aimType))
+			{
+				if (aimType == 3)
+					*mode = 2;
+				else if (aimType < 0 || aimType > 2)
+					*mode = 1;
+			}
+			if (!j.contains("Aimbot_Hitscan_AimAssist_Active"))
+				j["Aimbot_Hitscan_AimAssist_Active"] = true;
+		}
+
 		for (const auto &var : vars)
 		{
 			if (var.m_no_save)

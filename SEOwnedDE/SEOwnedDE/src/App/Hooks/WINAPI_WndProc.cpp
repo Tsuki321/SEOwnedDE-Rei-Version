@@ -4,6 +4,9 @@
 
 LRESULT __stdcall Hooks::WINAPI_WndProc::Func(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	if (uMsg == WM_MOUSEWHEEL && F::Menu->OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)))
+		return 0;
+
 	if (F::Menu->IsOpen() && H::Input->IsGameFocused())
 	{
 		if (F::Menu->m_bWantTextInput || F::Menu->m_bInKeybind)

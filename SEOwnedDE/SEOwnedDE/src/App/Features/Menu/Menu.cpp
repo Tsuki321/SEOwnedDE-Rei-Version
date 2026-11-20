@@ -65,6 +65,8 @@ bool CMenu::IsHovered(int x, int y, int w, int h, void *pVar, bool bStrict)
 
 	if ((pVar == nullptr && m_pActiveControl) || (pVar != nullptr && !CanActivateControl(pVar)))
 		return false;
+	if (m_ContentClip && !MenuLayout::Contains(m_ContentBounds, H::Input->GetMouseX(), H::Input->GetMouseY()))
+		return false;
 
 	int mx = H::Input->GetMouseX();
 	int my = H::Input->GetMouseY();
@@ -92,6 +94,8 @@ bool CMenu::IsHovered(int x, int y, int w, int h, void *pVar, bool bStrict)
 
 bool CMenu::IsHoveredSimple(int x, int y, int w, int h)
 {
+	if (m_ContentClip && !MenuLayout::Contains(m_ContentBounds, H::Input->GetMouseX(), H::Input->GetMouseY()))
+		return false;
 	int mx = H::Input->GetMouseX();
 	int my = H::Input->GetMouseY();
 
@@ -103,9 +107,82 @@ bool CMenu::IsHoveredSimple(int x, int y, int w, int h)
 	return bLeft && bRight && bTop && bBottom;
 }
 
+void CMenu::AdvanceCursor(int height)
+{
+	m_nCursorY += height;
+	m_nMeasuredHeight = std::max(m_nMeasuredHeight, m_nCursorY - CFG::Menu_Pos_Y
+		+ (m_ContentClip ? m_nScrollOffset : 0) + CFG::Menu_Spacing_Y);
+}
+
+bool CMenu::OnMouseWheel(int delta)
+{
+	if (!m_bOpen || !H::Input->IsGameFocused() || m_pActiveControl
+		|| !MenuLayout::Contains(m_ContentBounds, H::Input->GetMouseX(), H::Input->GetMouseY()))
+		return false;
+	m_nPendingWheelDelta = std::clamp(m_nPendingWheelDelta + delta, -WHEEL_DELTA * 32, WHEEL_DELTA * 32);
+	return true;
+}
+
+void CMenu::BeginContent(int page)
+{
+	if (m_nContentPage != page)
+	{
+		m_nContentPage = page;
+		m_nScrollOffset = 0;
+		m_nPendingWheelDelta = 0;
+		m_pActiveControl = nullptr;
+	}
+	const int x = CFG::Menu_Pos_X + CFG::Menu_Tab_Button_Width + CFG::Menu_Spacing_X * 2 + 1;
+	m_ContentBounds = { x, m_nCursorY, std::max(1, CFG::Menu_Pos_X + CFG::Menu_Width - x - 12),
+		std::max(1, CFG::Menu_Pos_Y + m_nWindowHeight - m_nCursorY - CFG::Menu_Spacing_Y) };
+	const int contentHeight = m_nContentHeight - (m_ContentBounds.y - CFG::Menu_Pos_Y) - CFG::Menu_Spacing_Y;
+	const int wheelSteps = m_nPendingWheelDelta / WHEEL_DELTA;
+	m_nPendingWheelDelta %= WHEEL_DELTA;
+	m_nScrollOffset = MenuLayout::ClampScroll(m_nScrollOffset
+		- wheelSteps * (CFG::Menu_CheckBox_Height + CFG::Menu_Spacing_Y) * 3,
+		contentHeight, m_ContentBounds.h);
+	m_ContentClip.emplace(I::MatSystemSurface, m_ContentBounds);
+	m_nCursorY -= m_nScrollOffset;
+}
+
+void CMenu::EndContent()
+{
+	if (!m_ContentClip)
+		return;
+	AdvanceCursor(0);
+	m_nContentHeight = m_nMeasuredHeight;
+	m_ContentClip.reset();
+	const int contentHeight = m_nContentHeight - (m_ContentBounds.y - CFG::Menu_Pos_Y) - CFG::Menu_Spacing_Y;
+	const int limit = MenuLayout::ScrollLimit(contentHeight, m_ContentBounds.h);
+	m_nScrollOffset = MenuLayout::ClampScroll(m_nScrollOffset, contentHeight, m_ContentBounds.h);
+	if (limit == 0)
+		return;
+
+	const MenuLayout::Rect track{ m_ContentBounds.x + m_ContentBounds.w + 3, m_ContentBounds.y, 6, m_ContentBounds.h };
+	const int thumbHeight = std::clamp(m_ContentBounds.h * m_ContentBounds.h / std::max(1, contentHeight),
+		std::min(24, track.h), track.h);
+	const int travel = track.h - thumbHeight;
+	if (IsHovered(track.x - 2, track.y, track.w + 4, track.h, &m_nScrollOffset)
+		&& H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed)
+	{
+		SetControlActive(&m_nScrollOffset, true);
+		m_bClickConsumed = true;
+	}
+	if (IsControlActive(&m_nScrollOffset))
+	{
+		if (H::Input->IsDown(VK_LBUTTON) && travel > 0)
+			m_nScrollOffset = std::clamp((H::Input->GetMouseY() - track.y - thumbHeight / 2) * limit / travel, 0, limit);
+		else
+			SetControlActive(&m_nScrollOffset, false);
+	}
+	H::Draw->Rect(track.x, track.y, track.w, track.h, CFG::Menu_Background);
+	H::Draw->Rect(track.x, track.y + (travel > 0 ? m_nScrollOffset * travel / limit : 0),
+		track.w, thumbHeight, CFG::Menu_Accent_Primary);
+}
+
 void CMenu::GroupBoxStart(const char *szLabel, int nWidth)
 {
-	m_nCursorY += CFG::Menu_Spacing_Y * 2; //hmm
+	AdvanceCursor(CFG::Menu_Spacing_Y * 2); //hmm
 
 	m_nLastGroupBoxY = m_nCursorY;
 	m_nLastGroupBoxW = nWidth;
@@ -132,13 +209,13 @@ void CMenu::GroupBoxStart(const char *szLabel, int nWidth)
 	);
 
 	m_nCursorX += CFG::Menu_Spacing_X * 2;
-	m_nCursorY += CFG::Menu_Spacing_Y * 2;
+	AdvanceCursor(CFG::Menu_Spacing_Y * 2);
 }
 
 void CMenu::GroupBoxEnd()
 {
 	m_nCursorX -= (CFG::Menu_Spacing_X * 2);
-	m_nCursorY += 2;
+	AdvanceCursor(2);
 
 	Color_t clr = CFG::Menu_Accent_Primary;
 
@@ -146,7 +223,7 @@ void CMenu::GroupBoxEnd()
 	H::Draw->Line(m_nCursorX + m_nLastGroupBoxW, m_nLastGroupBoxY, m_nCursorX + m_nLastGroupBoxW, m_nCursorY, clr);
 	H::Draw->Line(m_nCursorX, m_nCursorY, m_nCursorX + m_nLastGroupBoxW, m_nCursorY, clr);
 
-	m_nCursorY += CFG::Menu_Spacing_Y;
+	AdvanceCursor(CFG::Menu_Spacing_Y);
 }
 
 void CMenu::Label(const char *szText)
@@ -160,7 +237,7 @@ void CMenu::Label(const char *szText)
 		"%s", szText
 	);
 
-	m_nCursorY += H::Fonts->Get(EFonts::Menu).m_nTall + CFG::Menu_Spacing_Y;
+	AdvanceCursor(H::Fonts->Get(EFonts::Menu).m_nTall + CFG::Menu_Spacing_Y);
 }
 
 bool CMenu::CheckBox(const char *szLabel, bool &bVar)
@@ -203,7 +280,7 @@ bool CMenu::CheckBox(const char *szLabel, bool &bVar)
 		"%s", szLabel
 	);
 
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + CFG::Menu_Spacing_Y);
 
 	return bCallback;
 }
@@ -301,7 +378,7 @@ bool CMenu::SliderFloat(const char *szLabel, float &flVar, float flMin, float fl
 		szFormat, flVar
 	);
 
-	m_nCursorY += h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y + 2; //+ 2 for the little white thingy
+	AdvanceCursor(h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y + 2); //+ 2 for the little white thingy
 
 	return bCallback;
 }
@@ -398,7 +475,7 @@ bool CMenu::SliderInt(const char *szLabel, int &nVar, int nMin, int nMax, int nS
 		"%d", nVar
 	);
 
-	m_nCursorY += h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y + 2;
+	AdvanceCursor(h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y + 2);
 
 	return bCallback;
 }
@@ -506,7 +583,7 @@ bool CMenu::InputInt(const char *szLabel, int &nVar, int nMin, int nMax)
 		"%s", displayValue.c_str()
 	);
 
-	m_nCursorY += h + nTextH + (CFG::Menu_Spacing_Y * 2);
+	AdvanceCursor(h + nTextH + (CFG::Menu_Spacing_Y * 2));
 	return bCallback;
 }
 
@@ -629,7 +706,7 @@ bool CMenu::InputKey(const char *szLabel, int &nKeyOut)
 		POS_CENTERY,
 		"%s", szLabel);
 
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + CFG::Menu_Spacing_Y);
 
 	return bCallback;
 }
@@ -728,7 +805,7 @@ bool CMenu::InputText(const char *szLabel, const char *szLabel2, std::string &st
 		);
 	}
 
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + CFG::Menu_Spacing_Y);
 
 	m_nLastButtonW = w;
 
@@ -776,7 +853,7 @@ bool CMenu::Button(const char *szLabel, bool bActive, int nCustomWidth)
 		POS_CENTERXY, "%s", szLabel
 	);
 
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + CFG::Menu_Spacing_Y);
 	m_nLastButtonW = w;
 
 	return bCallback;
@@ -801,7 +878,7 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 
 	H::Draw->OutlinedRect(x, y, w, h, CFG::Menu_Accent_Primary);
 
-	H::Draw->StartClipping(x, y, w, h);
+	MenuLayout::ScopedClip playerClip(I::MatSystemSurface, MenuLayout::Rect{ x, y, w, h });
 
 	if (center_txt)
 	{
@@ -823,9 +900,7 @@ bool CMenu::playerListButton(const wchar_t *label, int nCustomWidth, Color_t clr
 		);
 	}
 
-	H::Draw->EndClipping();
-
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + CFG::Menu_Spacing_Y);
 	m_nLastButtonW = w;
 
 	return bCallback;
@@ -891,9 +966,13 @@ bool CMenu::SelectSingleOptions(const char* szLabel, int& nVar, std::span<const 
 		"%s", szLabel
 	);
 
+	const int popupHeight = h * static_cast<int>(vecSelects.size());
+	const int popupY = MenuLayout::PopupTop(y + nTextH + CFG::Menu_Spacing_Y, popupHeight,
+		m_ContentClip ? m_ContentBounds : m_WindowBounds);
+
 	if (IsControlActive(&nVar))
 	{
-		bool bSelectRegionHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size()), &nVar);
+		bool bSelectRegionHovered = IsHovered(x, popupY, w, popupHeight, &nVar);
 
 		if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bSelectRegionHovered) {
 			m_bClickConsumed = true;
@@ -903,18 +982,13 @@ bool CMenu::SelectSingleOptions(const char* szLabel, int& nVar, std::span<const 
 
 	if (IsControlActive(&nVar))
 	{
-		H::LateRender->OutlinedRect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size()), clr);
+		H::LateRender->OutlinedRect(x, popupY, w, popupHeight, clr);
 
 		int real_n{ 0 };
 
 		for (const auto& Select : vecSelects)
 		{
-			if (Select.second == nVar)
-			{
-				continue;
-			}
-
-			int nSelectY = (y + h + (nTextH + CFG::Menu_Spacing_Y)) + (h * real_n);
+			int nSelectY = popupY + h * real_n;
 			bool bSelectHovered = IsHovered(x, nSelectY, w, h, &nVar);
 
 			H::LateRender->Rect(x, nSelectY, w, h, clr_dim);
@@ -922,13 +996,14 @@ bool CMenu::SelectSingleOptions(const char* szLabel, int& nVar, std::span<const 
 			H::LateRender->String(
 				H::Fonts->Get(EFonts::Menu),
 				x + (w / 2), nSelectY,
-				bSelectHovered ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+				(bSelectHovered || Select.second == nVar) ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
 				POS_CENTERX,
 				Select.first, {}
 			);
 
 			if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && bSelectHovered) {
 				nVar = Select.second;
+				bCallback = true;
 				SetControlActive(&nVar, false);
 				m_bClickConsumed = true;
 				break;
@@ -938,7 +1013,7 @@ bool CMenu::SelectSingleOptions(const char* szLabel, int& nVar, std::span<const 
 		}
 	}
 
-	m_nCursorY += h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y);
 
 	return bCallback;
 }
@@ -992,22 +1067,25 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 		}
 	}
 
-	I::MatSystemSurface->DisableClipping(false);
-	I::MatSystemSurface->SetClippingRect(x, y + (nTextH + CFG::Menu_Spacing_Y), x + (w - CFG::Menu_Spacing_X), y + (nTextH + CFG::Menu_Spacing_Y) + h);
+	{
+		MenuLayout::ScopedClip selectedClip(I::MatSystemSurface,
+			MenuLayout::Rect{ x, y + nTextH + CFG::Menu_Spacing_Y, w - CFG::Menu_Spacing_X, h });
+		H::Draw->String(
+			H::Fonts->Get(EFonts::Menu),
+			x + CFG::Menu_Spacing_X, y + (nTextH + CFG::Menu_Spacing_Y) + (h / 2) - 1,
+			bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
+			POS_CENTERY,
+			"%s", strSelected.empty() ? "None" : strSelected.c_str()
+		);
+	}
 
-	H::Draw->String(
-		H::Fonts->Get(EFonts::Menu),
-		x + CFG::Menu_Spacing_X, y + (nTextH + CFG::Menu_Spacing_Y) + (h / 2) - 1,
-		bActive ? CFG::Menu_Text_Active : CFG::Menu_Text_Inactive,
-		POS_CENTERY,
-		"%s", strSelected.empty() ? "None" : strSelected.c_str()
-	);
-
-	I::MatSystemSurface->DisableClipping(true);
+	const int popupHeight = h * static_cast<int>(vecSelects.size() + 1);
+	const int popupY = MenuLayout::PopupTop(y + nTextH + CFG::Menu_Spacing_Y, popupHeight,
+		m_ContentClip ? m_ContentBounds : m_WindowBounds);
 
 	if (IsControlActive(&vecSelects))
 	{
-		bool bSelectRegionHovered = IsHovered(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size() + 1), &vecSelects);
+		bool bSelectRegionHovered = IsHovered(x, popupY, w, popupHeight, &vecSelects);
 
 		if (H::Input->IsPressed(VK_LBUTTON) && !m_bClickConsumed && !bSelectRegionHovered) {
 			m_bClickConsumed = true;
@@ -1017,13 +1095,17 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 
 	if (IsControlActive(&vecSelects))
 	{
-		H::LateRender->OutlinedRect(x, y + (nTextH + CFG::Menu_Spacing_Y), w, h * static_cast<int>(vecSelects.size() + 1), clr);
+		H::LateRender->OutlinedRect(x, popupY, w, popupHeight, clr);
+		H::LateRender->Rect(x, popupY, w, h, clr_dim);
+		H::LateRender->String(H::Fonts->Get(EFonts::Menu), x + CFG::Menu_Spacing_X, popupY + h / 2 - 1,
+			CFG::Menu_Text_Active, POS_CENTERY, strSelected.empty() ? "None" : strSelected.c_str(),
+			{ x, popupY, w - CFG::Menu_Spacing_X, h });
 
 		for (int n = 0; n < static_cast<int>(vecSelects.size()); n++)
 		{
 			const auto &Select = vecSelects[n];
 
-			int nSelectY = (y + (nTextH + CFG::Menu_Spacing_Y) + h) + (h * n);
+			int nSelectY = popupY + h * (n + 1);
 			bool bSelectHovered = IsHovered(x, nSelectY, w, h, &vecSelects);
 
 			H::LateRender->Rect(x, nSelectY, w, h, clr_dim);
@@ -1057,7 +1139,7 @@ bool CMenu::SelectMulti(const char *szLabel, std::vector<std::pair<const char *,
 		}
 	}
 
-	m_nCursorY += h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + nTextH + CFG::Menu_Spacing_Y + CFG::Menu_Spacing_Y);
 
 	return bCallback;
 }
@@ -1099,9 +1181,10 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 
 	if (IsControlActive(&colVar))
 	{
-		int y = m_nCursorY + h + CFG::Menu_Spacing_Y;
 		int w = 200;
 		int h = 200;
+		const int y = MenuLayout::PopupTop(m_nCursorY + CFG::Menu_ColorPicker_Preview_Height + CFG::Menu_Spacing_Y,
+			h, m_ContentClip ? m_ContentBounds : m_WindowBounds);
 
 		bool bHovered = IsHovered(x, y, w, h, &colVar);
 
@@ -1120,7 +1203,7 @@ bool CMenu::ColorPicker(const char *szLabel, Color_t &colVar)
 		H::LateRender->OutlinedRect(x, y, w, h, CFG::Menu_Accent_Primary);
 	}
 
-	m_nCursorY += h + CFG::Menu_Spacing_Y;
+	AdvanceCursor(h + CFG::Menu_Spacing_Y);
 
 	return bCallback;
 }
@@ -1262,6 +1345,8 @@ void CMenu::CosmeticsMenu()
 
 void CMenu::MainWindow()
 {
+	m_nWindowHeight = MenuLayout::WindowHeight(CFG::Menu_Height, m_nContentHeight, H::Draw->GetScreenH(), 8);
+	m_nMeasuredHeight = 0;
 	Drag(
 		CFG::Menu_Pos_X,
 		CFG::Menu_Pos_Y,
@@ -1269,19 +1354,24 @@ void CMenu::MainWindow()
 		CFG::Menu_Drag_Bar_Height,
 		0
 	);
+	CFG::Menu_Pos_X = std::clamp(CFG::Menu_Pos_X, 0, std::max(0, H::Draw->GetScreenW() - CFG::Menu_Width));
+	CFG::Menu_Pos_Y = std::clamp(CFG::Menu_Pos_Y, 0, std::max(0, H::Draw->GetScreenH() - m_nWindowHeight));
+	m_WindowBounds = { CFG::Menu_Pos_X, CFG::Menu_Pos_Y, CFG::Menu_Width, m_nWindowHeight };
+	MenuLayout::ScopedClip windowClip(I::MatSystemSurface, m_WindowBounds);
+	H::LateRender->SetClip({ m_WindowBounds.x, m_WindowBounds.y, m_WindowBounds.w, m_WindowBounds.h });
 
 	m_bMenuWindowHovered = IsHoveredSimple(
 		CFG::Menu_Pos_X,
 		CFG::Menu_Pos_Y,
 		CFG::Menu_Width,
-		CFG::Menu_Height
+		m_nWindowHeight
 	);
 
 	H::Draw->Rect(
 		CFG::Menu_Pos_X,
 		CFG::Menu_Pos_Y,
 		CFG::Menu_Width,
-		CFG::Menu_Height,
+		m_nWindowHeight,
 		CFG::Menu_Background
 	);
 
@@ -1289,7 +1379,7 @@ void CMenu::MainWindow()
 		CFG::Menu_Pos_X,
 		CFG::Menu_Pos_Y,
 		CFG::Menu_Width,
-		CFG::Menu_Height,
+		m_nWindowHeight,
 		CFG::Menu_Accent_Primary
 	);
 
@@ -1329,7 +1419,7 @@ void CMenu::MainWindow()
 		CFG::Menu_Pos_X + m_nLastButtonW + (CFG::Menu_Spacing_X * 2) - 1,
 		CFG::Menu_Pos_Y + CFG::Menu_Drag_Bar_Height,
 		CFG::Menu_Pos_X + m_nLastButtonW + (CFG::Menu_Spacing_X * 2) - 1,
-		CFG::Menu_Pos_Y + CFG::Menu_Height - 1,
+		CFG::Menu_Pos_Y + m_nWindowHeight - 1,
 		CFG::Menu_Accent_Primary
 	);
 
@@ -1362,8 +1452,9 @@ void CMenu::MainWindow()
 		);
 
 		m_nCursorX = anchor_x + CFG::Menu_Spacing_X;
-		m_nCursorY += CFG::Menu_Spacing_Y;
+		AdvanceCursor(CFG::Menu_Spacing_Y);
 
+		BeginContent(100 + static_cast<int>(AimTab));
 		if (AimTab == EAimTabs::AIMBOT)
 		{
 			anchor_y = m_nCursorY;
@@ -1422,6 +1513,13 @@ void CMenu::MainWindow()
 			GroupBoxStart("Hitscan", 150);
 			{
 				CheckBox("Active", CFG::Aimbot_Hitscan_Active);
+				CheckBox("Aim Assist", CFG::Aimbot_Hitscan_AimAssist_Active);
+				if (CFG::Aimbot_Hitscan_AimAssist_Active)
+				{
+					SliderFloat("Assist Damping", CFG::Aimbot_Hitscan_AimAssist_Strength, 1.0f, 40.0f, 0.5f, "%.1f");
+					Label("Higher = gentler");
+					CheckBox("Stabilize Assist", CFG::Aimbot_Hitscan_AimAssist_Stabilization);
+				}
 				CheckBox("Target Lag Records", CFG::Aimbot_Hitscan_Target_LagRecords);
 				CheckBox("Manual Backtrack", CFG::Aimbot_Hitscan_Manual_Backtrack);
 				CheckBox("Target Stickies", CFG::Aimbot_Hitscan_Target_Stickies);
@@ -1439,10 +1537,9 @@ void CMenu::MainWindow()
 				}
 
 				SelectSingle("Aim Type", CFG::Aimbot_Hitscan_Aim_Type, {
-					{ "Normal", 0 },
+					{ "Plain", 0 },
 					{ "Silent", 1 },
-					{ "Smooth", 2 },
-					{ "Aim Assist", 3 }
+					{ "Smooth", 2 }
 				});
 
 				SelectSingle("Hitbox", CFG::Aimbot_Hitscan_Hitbox, {
@@ -1466,8 +1563,6 @@ void CMenu::MainWindow()
 
 				SliderFloat("FOV", CFG::Aimbot_Hitscan_FOV, 1.0f, 180.0f, 1.0f, "%.0f");
 				SliderFloat("Smoothing", CFG::Aimbot_Hitscan_Smoothing, 0.0f, 20.0f, 0.5f, "%.1f");
-				SliderFloat("Aim Assist Strength", CFG::Aimbot_Hitscan_AimAssist_Strength, 1.0f, 50.0f, 0.5f, "%.1f");
-				CheckBox("Aim Assist Stabilize", CFG::Aimbot_Hitscan_AimAssist_Stabilization);
 				SliderFloat("Smooth Switch Delay", CFG::Aimbot_Hitscan_Smooth_Target_Switch_Delay, 0.0f, 3.0f, 0.1f, "%.1fs");
 			}
 			GroupBoxEnd();
@@ -1649,8 +1744,9 @@ void CMenu::MainWindow()
 				CheckBox("Active", CFG::Triggerbot_AutoShoot_Active);
 				CheckBox("Wait For Headshot", CFG::Triggerbot_AutoShoot_Wait_For_Headshot);
 				SliderFloat("Head Scale", CFG::Triggerbot_AutoShoot_Head_Scale, 0.1f, 1.0f, 0.05f, "%.2f");
-				SliderFloat("Body Scale", CFG::Triggerbot_AutoShoot_Body_Scale, 0.5f, 1.2f, 0.05f, "%.2f");
-				SliderFloat("Other Scale", CFG::Triggerbot_AutoShoot_Other_Scale, 0.3f, 1.2f, 0.05f, "%.2f");
+				SliderFloat("Body Scale", CFG::Triggerbot_AutoShoot_Body_Scale, 0.5f, 1.0f, 0.05f, "%.2f");
+				SliderFloat("Other Scale", CFG::Triggerbot_AutoShoot_Other_Scale, 0.3f, 1.0f, 0.05f, "%.2f");
+				Label("Lower = stricter");
 
 				multiselect("Ignore", AutoShootIgnores,
 				{
@@ -1720,8 +1816,9 @@ void CMenu::MainWindow()
 		);
 
 		m_nCursorX = anchor_x + CFG::Menu_Spacing_X;
-		m_nCursorY += CFG::Menu_Spacing_Y;
+		AdvanceCursor(CFG::Menu_Spacing_Y);
 
+		BeginContent(200 + static_cast<int>(VisualsTab));
 		if (VisualsTab == EVisualsTabs::ESP)
 		{
 			anchor_y = m_nCursorY;
@@ -2390,6 +2487,7 @@ void CMenu::MainWindow()
 	
 	if (MainTab == EMainTabs::MISC)
 	{
+		BeginContent(300);
 		m_nCursorX += CFG::Menu_Spacing_X;
 
 		int anchor_x = m_nCursorX;
@@ -2566,6 +2664,7 @@ void CMenu::MainWindow()
 		m_nCursorY = navY;
 		if (Button("Cosmetics", m_nSkinPage == 1, 145)) m_nSkinPage = 1;
 		m_nCursorX = navX - CFG::Menu_Spacing_X;
+		BeginContent(400 + m_nSkinPage);
 		if (m_nSkinPage == 1) CosmeticsMenu();
 	}
 
@@ -2702,6 +2801,7 @@ void CMenu::MainWindow()
 
 	if (MainTab == EMainTabs::PLAYERS)
 	{
+		BeginContent(500);
 		m_nCursorX += CFG::Menu_Spacing_X;
 
 		if (I::EngineClient->IsConnected())
@@ -2774,13 +2874,14 @@ void CMenu::MainWindow()
 				m_nCursorX = bx;
 				m_nCursorY = by;
 
-				m_nCursorY += H::Fonts->Get(EFonts::Menu).m_nTall + (CFG::Menu_Spacing_Y + 1);
+				AdvanceCursor(H::Fonts->Get(EFonts::Menu).m_nTall + (CFG::Menu_Spacing_Y + 1));
 			}
 		}
 	}
 
 	if (MainTab == EMainTabs::CONFIGS)
 	{
+		BeginContent(600);
 		static std::string strSelected = {};
 		static std::vector<std::string> vecConfigNames = {};
 		static double flNextConfigRefresh = 0.0;
@@ -2861,7 +2962,7 @@ void CMenu::MainWindow()
 			{
 				GroupBoxStart("Configs", 150);
 				{
-					m_nCursorY += CFG::Menu_Spacing_Y;
+					AdvanceCursor(CFG::Menu_Spacing_Y);
 
 					for (const auto& configName : vecConfigNames)
 					{
@@ -2877,7 +2978,7 @@ void CMenu::MainWindow()
 		{
 			GroupBoxStart(strSelected.c_str(), 150);
 			{
-				m_nCursorY += CFG::Menu_Spacing_Y;
+				AdvanceCursor(CFG::Menu_Spacing_Y);
 
 				int anchor_y = m_nCursorY;
 
@@ -2911,6 +3012,7 @@ void CMenu::MainWindow()
 			GroupBoxEnd();
 		}
 	}
+	EndContent();
 }
 
 void CMenu::Snow()
@@ -3106,7 +3208,8 @@ void CMenu::Run()
 					}
 				}
 
-				H::Draw->StartClipping(CFG::Menu_Pos_X, 0, CFG::Menu_Width, H::Draw->GetScreenH());
+				MenuLayout::ScopedClip catClip(I::MatSystemSurface,
+					MenuLayout::Rect{ CFG::Menu_Pos_X, 0, CFG::Menu_Width, H::Draw->GetScreenH() });
 
 				int offset{ 0 };
 
@@ -3126,7 +3229,6 @@ void CMenu::Run()
 					POS_DEFAULT
 				);
 
-				H::Draw->EndClipping();
 			}
 		}
 

@@ -24,7 +24,9 @@ namespace CFG
 	// and stopped records being captured at all.
 	CFGVAR(Aimbot_Hitscan_Manual_Backtrack, true);
 	CFGVAR(Aimbot_Hitscan_Target_Stickies, true);
-	CFGVAR(Aimbot_Hitscan_Aim_Type, 1); //0 Normal 1 Silent 2 Smooth 3 Aim Assist
+	CFGVAR(Aimbot_Hitscan_Aim_Type, 1); //0 Plain 1 Silent 2 Smooth
+	CFGVAR(Aimbot_Hitscan_AimAssist_Active, true);
+	// Higher strength values apply a smaller correction, matching old configs.
 	CFGVAR(Aimbot_Hitscan_AimAssist_Strength, 15.0f);
 	CFGVAR(Aimbot_Hitscan_AimAssist_Stabilization, true);
 	CFGVAR(Aimbot_Hitscan_Sort, 0); //0 FOV 1 Distance

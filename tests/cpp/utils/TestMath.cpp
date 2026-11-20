@@ -675,6 +675,151 @@ TEST(MathRayToOBB, ParallelToFaceMiss) {
     EXPECT_FALSE(Math::RayToOBB(origin, direction, position, min, max, orientation));
 }
 
+TEST(MathRayToHitbox, ShrinksAsymmetricBoundsAroundTheirOwnCenter) {
+    const matrix3x4_t bone = {
+        {1.0f, 0.0f, 0.0f, 10.0f},
+        {0.0f, 1.0f, 0.0f, 20.0f},
+        {0.0f, 0.0f, 1.0f, 30.0f}
+    };
+    const Vec3 mins(2.0f, 4.0f, 1.0f);
+    const Vec3 maxs(6.0f, 8.0f, 3.0f);
+    const Vec3 forward(1.0f, 0.0f, 0.0f);
+
+    // Local center (4,6,2) becomes world (14,26,32). The old test added
+    // the raw, asymmetric bounds to that center a second time.
+    EXPECT_TRUE(Math::RayToHitbox(Vec3(0.0f, 26.0f, 32.0f), forward, mins, maxs, bone, 0.5f));
+    EXPECT_TRUE(Math::RayToHitbox(Vec3(0.0f, 24.5f, 32.0f), forward, mins, maxs, bone, 1.0f));
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(0.0f, 24.5f, 32.0f), forward, mins, maxs, bone, 0.5f));
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(0.0f, 30.0f, 34.0f), forward, mins, maxs, bone, 1.0f));
+}
+
+TEST(MathRayToHitbox, UsesBoneMatrixColumnsForRotatedLongHitbox) {
+    constexpr float cosine = 0.8660254f;
+    constexpr float sine = 0.5f;
+    const matrix3x4_t bone = {
+        {cosine, -sine, 0.0f, 10.0f},
+        {sine, cosine, 0.0f, 20.0f},
+        {0.0f, 0.0f, 1.0f, 30.0f}
+    };
+    const Vec3 mins(-4.0f, -0.5f, -0.5f);
+    const Vec3 maxs(4.0f, 0.5f, 0.5f);
+    const Vec3 up(0.0f, 0.0f, 1.0f);
+
+    EXPECT_TRUE(Math::RayToHitbox(Vec3(10.0f + 3.0f * cosine, 21.5f, 0.0f), up, mins, maxs, bone));
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(10.0f + 3.0f * cosine, 18.5f, 0.0f), up, mins, maxs, bone));
+}
+
+TEST(MathRayToHitbox, PreservesModelScaleAndTranslation) {
+    const matrix3x4_t bone = {
+        {2.0f, 0.0f, 0.0f, 100.0f},
+        {0.0f, 3.0f, 0.0f, 200.0f},
+        {0.0f, 0.0f, 4.0f, 300.0f}
+    };
+    const Vec3 mins(1.0f, -1.0f, -1.0f);
+    const Vec3 maxs(3.0f, 1.0f, 1.0f);
+    const Vec3 up(0.0f, 0.0f, 1.0f);
+
+    EXPECT_TRUE(Math::RayToHitbox(Vec3(105.0f, 202.5f, 0.0f), up, mins, maxs, bone));
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(106.5f, 200.0f, 0.0f), up, mins, maxs, bone));
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(105.0f, 202.5f, 0.0f), up, mins, maxs, bone, 0.5f));
+}
+
+TEST(MathRayToHitbox, NeverExpandsNativeBoundsForLegacyScaleAboveOne) {
+    const matrix3x4_t bone = {
+        {1.0f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f}
+    };
+    const Vec3 mins(-1.0f, -1.0f, -1.0f);
+    const Vec3 maxs(1.0f, 1.0f, 1.0f);
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(-2.0f, 1.25f, 0.0f), Vec3(1.0f, 0.0f, 0.0f), mins, maxs, bone, 1.2f));
+    EXPECT_TRUE(Math::RayToHitbox(Vec3(-2.0f, 0.75f, 0.0f), Vec3(1.0f, 0.0f, 0.0f), mins, maxs, bone, 1.2f));
+}
+
+TEST(MathRayToHitbox, RejectsGrazingFaceAndCornerButAcceptsInterior) {
+    const matrix3x4_t bone = {
+        {1.0f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f}
+    };
+    const Vec3 mins(-1.0f, -1.0f, -1.0f);
+    const Vec3 maxs(1.0f, 1.0f, 1.0f);
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(-2.0f, 1.0f, 0.0f), Vec3(1.0f, 0.0f, 0.0f), mins, maxs, bone));
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(-2.0f, 0.0f, 0.0f), Vec3(1.0f, 1.0f, 0.0f), mins, maxs, bone));
+    EXPECT_TRUE(Math::RayToHitbox(Vec3(-2.0f, 0.99f, 0.0f), Vec3(1.0f, 0.0f, 0.0f), mins, maxs, bone));
+    EXPECT_TRUE(Math::RayToHitbox(Vec3(0.0f, 0.0f, 0.0f), Vec3(1.0f, 0.0f, 0.0f), mins, maxs, bone));
+    EXPECT_FALSE(Math::RayToHitbox(Vec3(1.0f, 0.0f, 0.0f), Vec3(1.0f, 0.0f, 0.0f), mins, maxs, bone));
+}
+
+TEST(MathRayToHitbox, RespectsFiniteWorldDistanceForNonUnitRay) {
+    const matrix3x4_t bone = {
+        {1.0f, 0.0f, 0.0f, 10.0f},
+        {0.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f}
+    };
+    const Vec3 mins(-1.0f, -1.0f, -1.0f);
+    const Vec3 maxs(1.0f, 1.0f, 1.0f);
+    const Vec3 origin(0.0f, 0.0f, 0.0f);
+    const Vec3 direction(5.0f, 0.0f, 0.0f);
+    EXPECT_FALSE(Math::RayToHitbox(origin, direction, mins, maxs, bone, 1.0f, 8.0f));
+    EXPECT_FALSE(Math::RayToHitbox(origin, direction, mins, maxs, bone, 1.0f, 9.0f));
+    EXPECT_TRUE(Math::RayToHitbox(origin, direction, mins, maxs, bone, 1.0f, 9.01f));
+    EXPECT_FALSE(Math::RayToHitbox(origin, direction * -1.0f, mins, maxs, bone));
+}
+
+TEST(MathRayToHitbox, FailsClosedForMissingOrInvalidGeometry) {
+    const matrix3x4_t bone = {
+        {1.0f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f}
+    };
+    const matrix3x4_t missing = {};
+    const Vec3 mins(-1.0f, -1.0f, -1.0f);
+    const Vec3 maxs(1.0f, 1.0f, 1.0f);
+    const Vec3 origin(-2.0f, 0.0f, 0.0f);
+    const Vec3 forward(1.0f, 0.0f, 0.0f);
+    const float nan = std::nanf("");
+    EXPECT_FALSE(Math::RayToHitbox(origin, forward, mins, maxs, missing));
+    EXPECT_FALSE(Math::RayToHitbox(origin, Vec3(), mins, maxs, bone));
+    EXPECT_FALSE(Math::RayToHitbox(origin, Vec3(nan, 0.0f, 0.0f), mins, maxs, bone));
+    EXPECT_FALSE(Math::RayToHitbox(origin, forward, maxs, mins, bone));
+    EXPECT_FALSE(Math::RayToHitbox(origin, forward, Vec3(), Vec3(), bone));
+    EXPECT_FALSE(Math::RayToHitbox(origin, forward, mins, maxs, bone, 0.0f));
+    EXPECT_FALSE(Math::RayToHitbox(origin, forward, mins, maxs, bone, -0.5f));
+    EXPECT_FALSE(Math::RayToHitbox(origin, forward, mins, maxs, bone, nan));
+    EXPECT_FALSE(Math::RayToHitbox(origin, forward, mins, maxs, bone, 1.0f, nan));
+}
+
+TEST(MathRayToHitbox, MatchesLocalInteriorAcrossRotationsAndModelScales) {
+    const matrix3x4_t transforms[] = {
+        {{1.0f, 0.0f, 0.0f, 10.0f}, {0.0f, 1.0f, 0.0f, 20.0f}, {0.0f, 0.0f, 1.0f, 30.0f}},
+        {{1.7320508f, -1.5f, 0.0f, 100.0f}, {1.0f, 2.5980762f, 0.0f, -50.0f}, {0.0f, 0.0f, 0.5f, 40.0f}},
+        {{0.36f, -0.8f, 0.48f, -10.0f}, {0.48f, 0.6f, 0.64f, 50.0f}, {-0.8f, 0.0f, 0.6f, -30.0f}}
+    };
+    const Vec3 mins(-4.0f, 2.0f, -1.0f);
+    const Vec3 maxs(2.0f, 6.0f, 3.0f);
+    const Vec3 center = (mins + maxs) * 0.5f;
+    const float xs[] = {-7.0f, -3.0f, -1.0f, 1.0f, 5.0f};
+    const float ys[] = {-1.0f, 2.5f, 4.0f, 5.5f, 9.0f};
+
+    for (const auto& bone : transforms) {
+        for (const float scale : {0.5f, 1.0f, 1.2f}) {
+            const Vec3 half = (maxs - mins) * (0.5f * std::min(scale, 1.0f));
+            for (const float x : xs) {
+                for (const float y : ys) {
+                    Vec3 origin;
+                    Math::VectorTransform(Vec3(x, y, -20.0f), bone, origin);
+                    const Vec3 forward(bone[0][2], bone[1][2], bone[2][2]);
+                    const bool expected = std::fabs(x - center.x) < half.x
+                        && std::fabs(y - center.y) < half.y;
+                    EXPECT_EQ(Math::RayToHitbox(origin, forward, mins, maxs, bone, scale, 200.0f), expected)
+                        << "local ray x=" << x << " y=" << y << " scale=" << scale;
+                }
+            }
+        }
+    }
+}
+
 // -----------------------------------------------------------------------------
 // VectorRotate
 // -----------------------------------------------------------------------------

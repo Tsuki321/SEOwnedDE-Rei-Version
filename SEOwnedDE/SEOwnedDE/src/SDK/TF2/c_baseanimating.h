@@ -119,32 +119,36 @@ public:
 		return vOut;
 	}
 
-	void GetHitboxInfo(int nHitbox, Vec3 *pCenter, Vec3 *pMins, Vec3 *pMaxs, matrix3x4_t *pMatrix)
+	bool GetHitboxInfo(int nHitbox, Vec3 *pCenter, Vec3 *pMins, Vec3 *pMaxs, matrix3x4_t *pMatrix)
 	{
 		auto pModel = GetModel();
 
 		if (!pModel)
-			return;
+			return false;
 
 		auto pHDR = I::ModelInfoClient->GetStudiomodel(pModel);
 
 		if (!pHDR)
-			return;
+			return false;
 
-		auto pSet = pHDR->pHitboxSet(m_nHitboxSet());
+		const int nSet = m_nHitboxSet();
+		if (nSet < 0 || nSet >= pHDR->numhitboxsets)
+			return false;
 
-		if (!pSet)
-			return;
+		auto pSet = pHDR->pHitboxSet(nSet);
+
+		if (!pSet || nHitbox < 0 || nHitbox >= pSet->numhitboxes)
+			return false;
 
 		auto pBox = pSet->pHitbox(nHitbox);
 
-		if (!pBox)
-			return;
+		if (!pBox || pBox->bone < 0 || pBox->bone >= pHDR->numbones || pBox->bone >= MAXSTUDIOBONES)
+			return false;
 
-		matrix3x4_t BoneMatrix[128] = {};
+		matrix3x4_t BoneMatrix[MAXSTUDIOBONES] = {};
 
-		if (!SetupBones(BoneMatrix, 128, BONE_USED_BY_ANYTHING, I::GlobalVars->curtime))
-			return;
+		if (!SetupBones(BoneMatrix, MAXSTUDIOBONES, BONE_USED_BY_HITBOX, I::GlobalVars->curtime))
+			return false;
 
 		if (pMins)
 			*pMins = pBox->bbmin;
@@ -157,6 +161,8 @@ public:
 
 		if (pMatrix)
 			memcpy(*pMatrix, BoneMatrix[pBox->bone], sizeof(matrix3x4_t));
+
+		return true;
 	}
 
 	std::array<float, 24> &m_flPoseParameter() {

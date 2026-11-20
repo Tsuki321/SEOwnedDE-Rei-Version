@@ -102,6 +102,50 @@ TEST(TriggerbotContracts, AutoShootCannotBypassAimbotFireDelay) {
     EXPECT_LT(delayGuard, trace);
 }
 
+TEST(TriggerbotContracts, AutoShootTestsCommandAndRecoilAgainstNativeHitboxBeforeFiring) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
+    const auto shotRay = src.find("pCmd->viewangles + pLocal->m_vecPunchAngle()");
+    const auto trace = src.find("H::AimUtils->Trace(", shotRay);
+    const auto preciseHit = src.find("if (!IsHitboxUnderCrosshair(", trace);
+    const auto fire = src.find("pCmd->buttons |= IN_ATTACK", preciseHit);
+    ASSERT_NE(shotRay, std::string::npos);
+    ASSERT_NE(trace, std::string::npos);
+    ASSERT_NE(preciseHit, std::string::npos);
+    ASSERT_NE(fire, std::string::npos);
+    EXPECT_LT(shotRay, trace);
+    EXPECT_LT(trace, preciseHit);
+    EXPECT_LT(preciseHit, fire);
+    EXPECT_NE(src.find("trace.startsolid"), std::string::npos);
+    EXPECT_NE(src.find("m_flRange"), std::string::npos);
+    EXPECT_NE(src.find("Math::RayToHitbox("), std::string::npos);
+    EXPECT_EQ(src.find("flScale < 1.0f &&"), std::string::npos);
+    EXPECT_EQ(src.find("I::EngineClient->GetViewAngles()"), std::string::npos);
+}
+
+TEST(TriggerbotContracts, AutoShootRequiresHeadHitWhenWaitingForHeadshot) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
+    const auto exactHit = src.find("if (!IsHitboxUnderCrosshair(");
+    const auto headOnly = src.find("nHitboxGroup != HITGROUP_HEAD", exactHit);
+    const auto fire = src.find("pCmd->buttons |= IN_ATTACK", headOnly);
+    ASSERT_NE(headOnly, std::string::npos);
+    ASSERT_NE(fire, std::string::npos);
+    EXPECT_LT(headOnly, fire);
+    EXPECT_NE(src.find("const int nHitboxGroup = trace.hitgroup;"), std::string::npos);
+}
+
+TEST(TriggerbotContracts, AutoShootFailsClosedWhenHitboxLookupFails) {
+    const auto root = testhelpers::FindRepoRoot();
+    const auto src = testhelpers::ReadTextFile(root / kAutoShootSource);
+    const auto lookup = src.find("if (!pPlayer->GetHitboxInfo(");
+    const auto hitTest = src.find("return Math::RayToHitbox(", lookup);
+    ASSERT_NE(lookup, std::string::npos);
+    ASSERT_NE(hitTest, std::string::npos);
+    EXPECT_LT(lookup, hitTest);
+    EXPECT_NE(src.find("return false;", lookup), std::string::npos);
+}
+
 TEST(TriggerbotContracts, AutoBackstabUsesAuthoritativeHullAndRecordWindow) {
     const auto root = testhelpers::FindRepoRoot();
     const auto src = testhelpers::ReadTextFile(root / kAutoBackstabSource);

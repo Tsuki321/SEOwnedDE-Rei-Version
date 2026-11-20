@@ -39,3 +39,9 @@ TEST(CFGContracts, ProjectileRocketSplashDefaultsToDirectHit) {
     EXPECT_NE(text.find("CFGVAR(Aimbot_Projectile_Rocket_Splash, 0)"), std::string::npos);
     EXPECT_EQ(text.find("CFGVAR(Aimbot_Projectile_Rocket_Splash, 2)"), std::string::npos);
 }
+
+TEST(CFGContracts, HitscanAssistIsEnabledIndependentlyByDefault) {
+    const auto text = testhelpers::ReadTextFile(testhelpers::FindRepoRoot() / kCfgHeader);
+    EXPECT_NE(text.find("CFGVAR(Aimbot_Hitscan_AimAssist_Active, true)"), std::string::npos);
+    EXPECT_NE(text.find("CFGVAR(Aimbot_Hitscan_AimAssist_Stabilization, true)"), std::string::npos);
+}

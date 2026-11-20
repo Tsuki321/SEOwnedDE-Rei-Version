@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "Utils/Config/Config.h"
+#include "App/Features/CFG.h"
 
 #include <filesystem>
 #include <fstream>
@@ -373,4 +374,62 @@ TEST_F(ConfigTest, EmptyVarsListSavesEmptyJson) {
 
     // Restore vars
     Config::vars = savedVars;
+}
+
+class HitscanConfigMigrationTest : public ConfigTest {
+protected:
+    int previousAimType = 0;
+    bool previousAssist = false;
+
+    void SetUp() override {
+        ConfigTest::SetUp();
+        previousAimType = CFG::Aimbot_Hitscan_Aim_Type;
+        previousAssist = CFG::Aimbot_Hitscan_AimAssist_Active;
+    }
+    void TearDown() override {
+        CFG::Aimbot_Hitscan_Aim_Type = previousAimType;
+        CFG::Aimbot_Hitscan_AimAssist_Active = previousAssist;
+        ConfigTest::TearDown();
+    }
+    void LoadJson(const nlohmann::json& settings) {
+        {
+            std::ofstream file(m_tempPath);
+            file << settings;
+        }
+        Config::Load(m_tempPath);
+    }
+};
+
+TEST_F(HitscanConfigMigrationTest, LegacyAssistModeBecomesSmoothWithIndependentAssist) {
+    CFG::Aimbot_Hitscan_AimAssist_Active = false;
+    LoadJson({ { "Aimbot_Hitscan_Aim_Type", 3 } });
+    EXPECT_EQ(CFG::Aimbot_Hitscan_Aim_Type, 2);
+    EXPECT_TRUE(CFG::Aimbot_Hitscan_AimAssist_Active);
+}
+
+TEST_F(HitscanConfigMigrationTest, LegacyPlainAndSilentModesReceiveDefaultAssist) {
+    for (const int mode : { 0, 1 }) {
+        CFG::Aimbot_Hitscan_AimAssist_Active = false;
+        LoadJson({ { "Aimbot_Hitscan_Aim_Type", mode } });
+        EXPECT_EQ(CFG::Aimbot_Hitscan_Aim_Type, mode);
+        EXPECT_TRUE(CFG::Aimbot_Hitscan_AimAssist_Active);
+    }
+}
+
+TEST_F(HitscanConfigMigrationTest, ExplicitDisabledAssistSurvivesMigrationAndSaving) {
+    CFG::Aimbot_Hitscan_AimAssist_Active = true;
+    LoadJson({ { "Aimbot_Hitscan_Aim_Type", 3 }, { "Aimbot_Hitscan_AimAssist_Active", false } });
+    EXPECT_EQ(CFG::Aimbot_Hitscan_Aim_Type, 2);
+    EXPECT_FALSE(CFG::Aimbot_Hitscan_AimAssist_Active);
+    Config::Save(m_tempPath);
+    std::ifstream file(m_tempPath);
+    const auto saved = nlohmann::json::parse(file);
+    EXPECT_FALSE(saved.at("Aimbot_Hitscan_AimAssist_Active").get<bool>());
+    EXPECT_EQ(saved.at("Aimbot_Hitscan_Aim_Type").get<int>(), 2);
+}
+
+TEST_F(HitscanConfigMigrationTest, UnsupportedAimModeFallsBackToSilent) {
+    LoadJson({ { "Aimbot_Hitscan_Aim_Type", 99 }, { "Aimbot_Hitscan_AimAssist_Active", false } });
+    EXPECT_EQ(CFG::Aimbot_Hitscan_Aim_Type, 1);
+    EXPECT_FALSE(CFG::Aimbot_Hitscan_AimAssist_Active);
 }

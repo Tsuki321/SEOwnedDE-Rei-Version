@@ -2,7 +2,9 @@
 
 #include "../../../SDK/SDK.h"
 #include "../SkinChanger/SkinChanger.h"
+#include "MenuLayout.h"
 #include <initializer_list>
+#include <optional>
 #include <span>
 
 class CMenu
@@ -11,6 +13,11 @@ private:
 	bool m_bOpen = false;
 	bool m_bMenuWindowHovered = false;
 	int m_nCursorX = 0, m_nCursorY = 0;
+	int m_nWindowHeight = 420;
+	int m_nContentHeight = 420, m_nMeasuredHeight = 0;
+	int m_nScrollOffset = 0, m_nPendingWheelDelta = 0, m_nContentPage = -1;
+	MenuLayout::Rect m_WindowBounds = {}, m_ContentBounds = {};
+	std::optional<MenuLayout::ScopedClip<IMatSystemSurface>> m_ContentClip;
 
 	int m_nLastGroupBoxY = 0, m_nLastGroupBoxW = 0;
 	int m_nLastButtonW = 0;
@@ -49,6 +56,9 @@ private:
 
 private:
 	void Drag(int &x, int &y, int w, int h, int offset_y);
+	void AdvanceCursor(int height);
+	void BeginContent(int page);
+	void EndContent();
 	bool IsHovered(int x, int y, int w, int h, void *pVar, bool bStrict = false);
 	bool IsHoveredSimple(int x, int y, int w, int h);
 
@@ -71,6 +81,7 @@ private:
 public:
 	inline bool IsOpen() { return m_bOpen; }
 	inline bool IsMenuWindowHovered() { return m_bMenuWindowHovered; }
+	bool OnMouseWheel(int delta);
 
 	bool m_bWantTextInput = false;
 	bool m_bInKeybind = false;

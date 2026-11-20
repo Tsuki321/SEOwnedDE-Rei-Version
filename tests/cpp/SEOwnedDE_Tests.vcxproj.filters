@@ -171,6 +171,9 @@
     <ClCompile Include="utils\TestMath.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="utils\TestNativeHitscanGeometry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="utils\TestColor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

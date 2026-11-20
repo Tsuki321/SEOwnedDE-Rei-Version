@@ -356,6 +356,7 @@
     <ClCompile Include="features\TestWorldModulation.cpp" />
     <ClCompile Include="utils\TestVector.cpp" />
     <ClCompile Include="utils\TestMath.cpp" />
+    <ClCompile Include="utils\TestNativeHitscanGeometry.cpp" />
     <ClCompile Include="utils\TestColor.cpp" />
     <ClCompile Include="utils\TestHash.cpp" />
     <ClCompile Include="utils\TestConfig.cpp" />

@@ -85,6 +85,45 @@ TEST(MenuContracts, ProjectilePredictionMethodShowsRelevantTuningControlsOnly) {
     EXPECT_EQ(mainSource.find("Aimbot_Projectile_Aim_Prediction_Method == 5"), std::string::npos);
 }
 
+TEST(MenuContracts, HitscanAssistHasAnIndependentToggleAndOnlyThreeAimModes) {
+    const auto source = testhelpers::ReadTextFile(testhelpers::FindRepoRoot() / kMainSource);
+    EXPECT_NE(source.find("CheckBox(\"Aim Assist\", CFG::Aimbot_Hitscan_AimAssist_Active)"), std::string::npos);
+    EXPECT_EQ(source.find("{ \"Aim Assist\", 3 }"), std::string::npos);
+    const auto hitscan = source.find("GroupBoxStart(\"Hitscan\"");
+    ASSERT_NE(hitscan, std::string::npos);
+    const auto mode = source.find("SelectSingle(\"Aim Type\", CFG::Aimbot_Hitscan_Aim_Type", hitscan);
+    ASSERT_NE(mode, std::string::npos);
+    const auto choices = source.substr(mode, source.find("});", mode) - mode);
+    EXPECT_NE(choices.find("{ \"Plain\", 0 }"), std::string::npos);
+    EXPECT_NE(choices.find("{ \"Silent\", 1 }"), std::string::npos);
+    EXPECT_NE(choices.find("{ \"Smooth\", 2 }"), std::string::npos);
+}
+
+TEST(MenuLayout, TallPagesGrowTheWindowButRemainOnSmallScreens) {
+    EXPECT_EQ(MenuLayout::WindowHeight(420, 760, 1080, 8), 760);
+    EXPECT_EQ(MenuLayout::WindowHeight(420, 760, 600, 8), 584);
+    EXPECT_EQ(MenuLayout::WindowHeight(420, 120, 1080, 8), 420);
+    EXPECT_EQ(MenuLayout::WindowHeight(420, 760, 12, 8), 1);
+}
+
+TEST(MenuLayout, ScrollingReachesTheLastRowAndClampsWhenThePageShrinks) {
+    EXPECT_EQ(MenuLayout::ClampScroll(1000, 900, 500), 400);
+    EXPECT_EQ(900 - MenuLayout::ClampScroll(1000, 900, 500), 500);
+    EXPECT_EQ(MenuLayout::ClampScroll(-20, 900, 500), 0);
+    EXPECT_EQ(MenuLayout::ClampScroll(400, 250, 500), 0);
+    EXPECT_EQ(MenuLayout::ScrollLimit(900, 0), 900);
+}
+
+TEST(MenuLayout, PopupsMoveUpToKeepAllRowsInsideTheViewport) {
+    const MenuLayout::Rect viewport{ 200, 100, 500, 420 };
+    EXPECT_EQ(MenuLayout::PopupTop(480, 120, viewport), 400);
+    EXPECT_EQ(MenuLayout::PopupTop(60, 120, viewport), 100);
+    EXPECT_EQ(MenuLayout::PopupTop(200, 120, viewport), 200);
+    EXPECT_FALSE(MenuLayout::Contains(viewport, 250, 99));
+    EXPECT_FALSE(MenuLayout::Contains(viewport, 700, 200));
+    EXPECT_TRUE(MenuLayout::Contains(viewport, 200, 100));
+}
+
 namespace {
 // Headless implementation of only the SDK surface slots used by text drawing.
 // The slot indices include IAppSystem and ISurface's Shutdown override.
@@ -97,6 +136,8 @@ struct TextSurface {
     std::vector<std::wstring> text;
     std::vector<bool> clipping;
     std::array<int, 4> clip{};
+    bool clippingDisabled = true;
+    std::vector<std::array<int, 4>> printedClips;
 
     static void __fastcall SetFont(Instance*, HFont) {}
     static void __fastcall SetColor(Instance*, int, int, int, int) {}
@@ -104,9 +145,16 @@ struct TextSurface {
     static void __fastcall SetPosition(Instance*, int, int) {}
     static void __fastcall Print(Instance* self, const wchar_t* text, int size, FontDrawType_t) {
         self->owner->text.emplace_back(text, size);
+        self->owner->printedClips.push_back(self->owner->clip);
     }
     static void __fastcall DisableClipping(Instance* self, bool disabled) {
         self->owner->clipping.push_back(disabled);
+        self->owner->clippingDisabled = disabled;
+    }
+    static void __fastcall GetClip(Instance* self, int& x, int& y, int& right, int& bottom, bool& disabled) {
+        const auto& clip = self->owner->clip;
+        x = clip[0]; y = clip[1]; right = clip[2]; bottom = clip[3];
+        disabled = self->owner->clippingDisabled;
     }
     static void __fastcall SetClip(Instance* self, int x, int y, int right, int bottom) {
         self->owner->clip = { x, y, right, bottom };
@@ -119,6 +167,7 @@ struct TextSurface {
         functions[20] = reinterpret_cast<uintptr_t>(&SetPosition);
         functions[22] = reinterpret_cast<uintptr_t>(&Print);
         functions[156] = reinterpret_cast<uintptr_t>(&DisableClipping);
+        functions[157] = reinterpret_cast<uintptr_t>(&GetClip);
         functions[158] = reinterpret_cast<uintptr_t>(&SetClip);
     }
     IMatSystemSurface* Get() { return reinterpret_cast<IMatSystemSurface*>(&instance); }
@@ -156,7 +205,25 @@ TEST_F(DeferredTextTest, ClipAtScreenEdgeIsEnabledAndThenReleased) {
     ASSERT_EQ(surface.clipping.size(), 2u);
     EXPECT_FALSE(surface.clipping[0]);
     EXPECT_TRUE(surface.clipping[1]);
-    EXPECT_EQ(surface.clip, (std::array<int, 4>{ 0, 12, 100, 32 }));
+    ASSERT_EQ(surface.printedClips.size(), 1u);
+    EXPECT_EQ(surface.printedClips[0], (std::array<int, 4>{ 0, 12, 100, 32 }));
+    EXPECT_EQ(surface.clip, (std::array<int, 4>{ 0, 0, 0, 0 }));
+    EXPECT_TRUE(surface.clippingDisabled);
+}
+
+TEST_F(DeferredTextTest, NestedTextAndWindowClipsRestoreTheExistingGameClip) {
+    surface.clip = { 0, 0, 80, 80 };
+    surface.clippingDisabled = false;
+    CLateRenderer renderer;
+    renderer.SetClip({ 20, 20, 100, 100 });
+    renderer.String(font, 20, 30, Colors::WHITE, POS_DEFAULT, "bounded", { 10, 30, 100, 20 });
+    renderer.String(font, 20, 60, Colors::WHITE, POS_DEFAULT, "next", {});
+    renderer.DrawAll();
+    ASSERT_EQ(surface.printedClips.size(), 2u);
+    EXPECT_EQ(surface.printedClips[0], (std::array<int, 4>{ 20, 30, 80, 50 }));
+    EXPECT_EQ(surface.printedClips[1], (std::array<int, 4>{ 20, 20, 80, 80 }));
+    EXPECT_EQ(surface.clip, (std::array<int, 4>{ 0, 0, 80, 80 }));
+    EXPECT_FALSE(surface.clippingDisabled);
 }
 
 TEST_F(DeferredTextTest, NullAndClearedStringsAreNotDrawn) {

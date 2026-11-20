@@ -134,6 +134,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\App\Features\Aimbot\AimbotHitscan\AimbotHitscan.h" />
+    <ClInclude Include="src\App\Features\Aimbot\AimbotHitscan\AimAssistController.h" />
     <ClInclude Include="src\App\Features\Aimbot\AimbotMelee\AimbotMelee.h" />
     <ClInclude Include="src\App\Features\Aimbot\AimbotProjectile\AimbotProjectile.h" />
     <ClInclude Include="src\App\Features\Aimbot\AimbotProjectile\AimbotProjectilePrediction.h" />
@@ -146,6 +147,7 @@
     <ClInclude Include="src\App\Features\Materials\Materials.h" />
     <ClInclude Include="src\App\Features\Menu\LateRenderer\LateRenderer.h" />
     <ClInclude Include="src\App\Features\Menu\Menu.h" />
+    <ClInclude Include="src\App\Features\Menu\MenuLayout.h" />
     <ClInclude Include="src\App\Features\Misc\Misc.h" />
     <ClInclude Include="src\App\Features\MiscVisuals\MiscVisuals.h" />
     <ClInclude Include="src\App\Features\MovementSimulation\MovementSimulation.h" />

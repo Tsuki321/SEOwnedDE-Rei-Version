@@ -1,4 +1,5 @@
 #include "LateRenderer.h"
+#include <optional>
 
 void CLateRenderer::String(const CFont &font, int x, int y, Color_t col, short align, const char *str, const ClipRegion_t &clip)
 {
@@ -24,6 +25,7 @@ void CLateRenderer::Texture(int id, int x, int y, int w, int h)
 
 void CLateRenderer::Clear()
 {
+	m_ClipBounds = {};
 	m_vecStrings.clear();
 	m_vecOutlinedRects.clear();
 	m_vecRects.clear();
@@ -32,6 +34,9 @@ void CLateRenderer::Clear()
 
 void CLateRenderer::DrawAll()
 {
+	std::optional<MenuLayout::ScopedClip<IMatSystemSurface>> windowClip;
+	if (m_ClipBounds.w > 0 && m_ClipBounds.h > 0)
+		windowClip.emplace(I::MatSystemSurface, MenuLayout::Rect{ m_ClipBounds.x, m_ClipBounds.y, m_ClipBounds.w, m_ClipBounds.h });
 	for (const auto &Texture : m_vecTextures) {
 		I::MatSystemSurface->DrawSetColor(255, 255, 255, 255);
 		I::MatSystemSurface->DrawSetTexture(Texture.m_nID);
@@ -46,14 +51,12 @@ void CLateRenderer::DrawAll()
 
 	for (const auto &String : m_vecStrings)
 	{
+		std::optional<MenuLayout::ScopedClip<IMatSystemSurface>> textClip;
 		if (String.m_Clip.w > 0 && String.m_Clip.h > 0) {
-			I::MatSystemSurface->DisableClipping(false);
-			I::MatSystemSurface->SetClippingRect(String.m_Clip.x, String.m_Clip.y, String.m_Clip.x + String.m_Clip.w, String.m_Clip.y + String.m_Clip.h);
+			textClip.emplace(I::MatSystemSurface, MenuLayout::Rect{ String.m_Clip.x, String.m_Clip.y, String.m_Clip.w, String.m_Clip.h });
 		}
 
 		H::Draw->String(String.m_dwFont, String.m_nX, String.m_nY, String.m_Color, String.m_nAlign, "%s", String.m_String.c_str());
 
-		if (String.m_Clip.w > 0 && String.m_Clip.h > 0)
-			I::MatSystemSurface->DisableClipping(true);
 	}
 }

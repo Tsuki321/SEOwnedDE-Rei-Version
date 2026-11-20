@@ -15,14 +15,16 @@ namespace
 		if (!pModel)
 			return nullptr;
 
-		const auto pHDR = I::ModelInfoClient->GetStudiomodel(pModel);
-		return pHDR ? pHDR->pHitboxSet(pAnimating->m_nHitboxSet()) : nullptr;
+		const auto pHDR = I::ModelInfoClient ? I::ModelInfoClient->GetStudiomodel(pModel) : nullptr;
+		const int nSet = pAnimating->m_nHitboxSet();
+		return pHDR && nSet >= 0 && nSet < pHDR->numhitboxsets ? pHDR->pHitboxSet(nSet) : nullptr;
 	}
 
 	bool SetupHitboxScan(C_BaseAnimating* pAnimating, mstudiohitboxset_t*& pSet, matrix3x4_t (&boneMatrix)[128])
 	{
 		pSet = GetHitboxSet(pAnimating);
-		return pSet && pAnimating->SetupBones(boneMatrix, 128, BONE_USED_BY_HITBOX, I::GlobalVars->curtime);
+		return pSet && pSet->numhitboxes > 0 && pSet->numhitboxes <= 128
+			&& pAnimating->SetupBones(boneMatrix, 128, BONE_USED_BY_HITBOX, I::GlobalVars->curtime);
 	}
 
 	bool HistoricalPoseMayIntersectRay(mstudiohitboxset_t* pSet, const LagRecord_t* pRecord,
@@ -50,9 +52,15 @@ namespace
 
 			const Vec3 vClosestPoint = vTraceStart + (vForward * flAlongRay);
 			const Vec3 vHalfExtents = (pBox->bbmax - pBox->bbmin) * 0.5f;
-			const float flRadius = vHalfExtents.Length() + 8.0f;
+			const auto& matrix = pRecord->BoneData[pBox->bone];
+			Vec3 vWorldHalfExtents = {};
+			for (int axis = 0; axis < 3; ++axis)
+				vWorldHalfExtents[axis] = std::fabs(matrix[axis][0]) * vHalfExtents.x
+					+ std::fabs(matrix[axis][1]) * vHalfExtents.y
+					+ std::fabs(matrix[axis][2]) * vHalfExtents.z;
+			const float flRadius = vWorldHalfExtents.Length() + 8.0f;
 
-			// The padded half-diagonal sphere encloses the rotated hitbox, so this
+			// The padded world-bounds sphere encloses rotated/scaled hitboxes, so this
 			// cheaply rejects impossible records before the authoritative trace.
 			if (vClosestPoint.DistToSqr(vCenter) <= flRadius * flRadius)
 				return true;
@@ -99,19 +107,21 @@ bool CAimbotHitscan::ScanHead(C_TFPlayer* pLocal, HitscanTarget_t& target, const
 
 	const Vec3 vMins = pBox->bbmin;
 	const Vec3 vMaxs = pBox->bbmax;
+	const Vec3 vCenter = (vMins + vMaxs) * 0.5f;
+	const Vec3 vInsetHalf = (vMaxs - vMins) * 0.35f;
 
 	const std::array vPoints = {
 		// Center
-		Vec3((vMins.x + vMaxs.x) * 0.5f, (vMins.y + vMaxs.y) * 0.5f, (vMins.z + vMaxs.z) * 0.5f),
+		vCenter,
 		// Front, back
-		Vec3((vMins.x + vMaxs.x) * 0.5f, vMins.y * 0.7f, (vMins.z + vMaxs.z) * 0.5f),
-		Vec3((vMins.x + vMaxs.x) * 0.5f, vMaxs.y * 0.7f, (vMins.z + vMaxs.z) * 0.5f),
+		vCenter - Vec3(0.0f, vInsetHalf.y, 0.0f),
+		vCenter + Vec3(0.0f, vInsetHalf.y, 0.0f),
 		// Top, bottom
-		Vec3((vMins.x + vMaxs.x) * 0.5f, (vMins.y + vMaxs.y) * 0.5f, vMaxs.z * 0.7f),
-		Vec3((vMins.x + vMaxs.x) * 0.5f, (vMins.y + vMaxs.y) * 0.5f, vMins.z * 0.7f),
+		vCenter + Vec3(0.0f, 0.0f, vInsetHalf.z),
+		vCenter - Vec3(0.0f, 0.0f, vInsetHalf.z),
 		// Left, right
-		Vec3(vMins.x * 0.7f, (vMins.y + vMaxs.y) * 0.5f, (vMins.z + vMaxs.z) * 0.5f),
-		Vec3(vMaxs.x * 0.7f, (vMins.y + vMaxs.y) * 0.5f, (vMins.z + vMaxs.z) * 0.5f),
+		vCenter - Vec3(vInsetHalf.x, 0.0f, 0.0f),
+		vCenter + Vec3(vInsetHalf.x, 0.0f, 0.0f),
 	};
 
 	const Vec3 vLocalPos = pLocal->GetShootPos();
@@ -313,14 +323,16 @@ bool CAimbotHitscan::ScanBuilding(C_TFPlayer* pLocal, HitscanTarget_t& target, c
 	{
 		const Vec3 vMins = pObject->m_vecMins();
 		const Vec3 vMaxs = pObject->m_vecMaxs();
+		const Vec3 vCenter = (vMins + vMaxs) * 0.5f;
+		const Vec3 vInsetHalf = (vMaxs - vMins) * 0.45f;
 
 		const std::array vPoints = {
-			Vec3(vMins.x * 0.9f, ((vMins.y + vMaxs.y) * 0.5f), ((vMins.z + vMaxs.z) * 0.5f)),
-			Vec3(vMaxs.x * 0.9f, ((vMins.y + vMaxs.y) * 0.5f), ((vMins.z + vMaxs.z) * 0.5f)),
-			Vec3(((vMins.x + vMaxs.x) * 0.5f), vMins.y * 0.9f, ((vMins.z + vMaxs.z) * 0.5f)),
-			Vec3(((vMins.x + vMaxs.x) * 0.5f), vMaxs.y * 0.9f, ((vMins.z + vMaxs.z) * 0.5f)),
-			Vec3(((vMins.x + vMaxs.x) * 0.5f), ((vMins.y + vMaxs.y) * 0.5f), vMins.z * 0.9f),
-			Vec3(((vMins.x + vMaxs.x) * 0.5f), ((vMins.y + vMaxs.y) * 0.5f), vMaxs.z * 0.9f)
+			vCenter - Vec3(vInsetHalf.x, 0.0f, 0.0f),
+			vCenter + Vec3(vInsetHalf.x, 0.0f, 0.0f),
+			vCenter - Vec3(0.0f, vInsetHalf.y, 0.0f),
+			vCenter + Vec3(0.0f, vInsetHalf.y, 0.0f),
+			vCenter - Vec3(0.0f, 0.0f, vInsetHalf.z),
+			vCenter + Vec3(0.0f, 0.0f, vInsetHalf.z)
 		};
 
 		const matrix3x4_t& transform = pObject->RenderableToWorldTransform();
@@ -767,7 +779,7 @@ bool CAimbotHitscan::ShouldAim(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWea
 	if (CFG::Aimbot_Hitscan_Aim_Type == 1 && (!IsFiring(pCmd, pWeapon) || !pWeapon->HasPrimaryAmmoForShot()))
 		return false;
 
-	if (CFG::Aimbot_Hitscan_Aim_Type == 2 || CFG::Aimbot_Hitscan_Aim_Type == 3)
+	if (CFG::Aimbot_Hitscan_Aim_Type == 2)
 	{
 		const int nWeaponID = pWeapon->GetWeaponID();
 		if (nWeaponID == TF_WEAPON_SNIPERRIFLE || nWeaponID == TF_WEAPON_SNIPERRIFLE_CLASSIC || nWeaponID == TF_WEAPON_SNIPERRIFLE_DECAP)
@@ -847,40 +859,6 @@ void CAimbotHitscan::Aim(CUserCmd* pCmd, C_TFPlayer* pLocal, const Vec3& vAngles
 
 			pCmd->viewangles += m_vSmoothAimStep;
 			Math::ClampAngles(pCmd->viewangles);
-
-			break;
-		}
-
-		// Aim Assist
-		case 3:
-		{
-			Vec3 vDelta = vAngleTo - pCmd->viewangles;
-			Math::ClampAngles(vDelta);
-
-			if (vDelta.Length() > 0.0f && CFG::Aimbot_Hitscan_AimAssist_Strength > 0.0f)
-			{
-				if (!CFG::Aimbot_Hitscan_AimAssist_Stabilization)
-				{
-					pCmd->viewangles += vDelta / CFG::Aimbot_Hitscan_AimAssist_Strength;
-					Math::ClampAngles(pCmd->viewangles);
-					break;
-				}
-
-				Vec3 vAssistStep = vDelta / CFG::Aimbot_Hitscan_AimAssist_Strength;
-
-				// Keep legacy feel: tiny deadzone and per-tick step clamp only.
-				if (vAssistStep.LengthSqr() < (0.02f * 0.02f))
-					break;
-
-				constexpr float flMaxAssistStep = 4.0f;
-				if (vAssistStep.x > flMaxAssistStep) vAssistStep.x = flMaxAssistStep;
-				if (vAssistStep.x < -flMaxAssistStep) vAssistStep.x = -flMaxAssistStep;
-				if (vAssistStep.y > flMaxAssistStep) vAssistStep.y = flMaxAssistStep;
-				if (vAssistStep.y < -flMaxAssistStep) vAssistStep.y = -flMaxAssistStep;
-
-				pCmd->viewangles += vAssistStep;
-				Math::ClampAngles(pCmd->viewangles);
-			}
 
 			break;
 		}
@@ -966,10 +944,12 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 		}
 	}
 
-	if (CFG::Aimbot_Hitscan_Advanced_Smooth_AutoShoot && (CFG::Aimbot_Hitscan_Aim_Type == 2 || CFG::Aimbot_Hitscan_Aim_Type == 3))
+	if (CFG::Aimbot_Hitscan_Advanced_Smooth_AutoShoot && CFG::Aimbot_Hitscan_Aim_Type == 2)
 	{
 		Vec3 vForward = {};
-		Math::AngleVectors(pCmd->viewangles, &vForward);
+		Vec3 vShotAngles = pCmd->viewangles + pLocal->m_vecPunchAngle();
+		Math::ClampAngles(vShotAngles);
+		Math::AngleVectors(vShotAngles, &vForward);
 		const Vec3 vTraceStart = pLocal->GetShootPos();
 		const Vec3 vTraceEnd = vTraceStart + (vForward * 8192.0f);
 
@@ -993,12 +973,10 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 					{
 						Vec3 vMins = {}, vMaxs = {}, vCenter = {};
 						matrix3x4_t matrix = {};
-						pPlayer->GetHitboxInfo(nHitHitbox, &vCenter, &vMins, &vMaxs, &matrix);
+						if (!pPlayer->GetHitboxInfo(nHitHitbox, &vCenter, &vMins, &vMaxs, &matrix))
+							return false;
 
-						vMins *= 0.5f;
-						vMaxs *= 0.5f;
-
-						if (!Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, matrix))
+						if (!Math::RayToHitbox(vTraceStart, vForward, vMins, vMaxs, matrix, 0.5f))
 							return false;
 					}
 				}
@@ -1034,10 +1012,7 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 						if (!SDKUtils::GetHitboxInfoFromMatrix(pPlayer, nHitHitbox, target.LagRecord->BoneData.data(), &vCenter, &vMins, &vMaxs, &matrix))
 							return false;
 
-						vMins *= 0.5f;
-						vMaxs *= 0.5f;
-
-						if (!Math::RayToOBB(vTraceStart, vForward, vCenter, vMins, vMaxs, matrix))
+						if (!Math::RayToHitbox(vTraceStart, vForward, vMins, vMaxs, matrix, 0.5f))
 							return false;
 					}
 				}
@@ -1054,6 +1029,239 @@ bool CAimbotHitscan::ShouldFire(const CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWe
 	}
 
 	return true;
+}
+
+void CAimbotHitscan::RunAimAssist(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
+{
+	const float dt = TICK_INTERVAL;
+	if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.03f
+		|| !std::isfinite(CFG::Aimbot_Hitscan_AimAssist_Strength)
+		|| CFG::Aimbot_Hitscan_AimAssist_Strength <= 0.0f)
+	{
+		ResetAimAssist();
+		return;
+	}
+
+	const int nWeaponHandle = pWeapon->GetRefEHandle().ToInt();
+	if (!m_AssistLock.BeginCommand(pCmd->command_number, nWeaponHandle))
+	{
+		m_AssistMotion.Reset();
+		m_nAssistHitbox = -1;
+		m_nAssistMotionTarget = -1;
+	}
+
+	const Vec3 vTraceStart = pLocal->GetShootPos();
+	Vec3 vShotAngles = pCmd->viewangles + pLocal->m_vecPunchAngle();
+	Math::ClampAngles(vShotAngles);
+	Vec3 vForward = {};
+	Math::AngleVectors(vShotAngles, &vForward);
+	trace_t crosshairTrace = {};
+	CTraceFilterHitscan filter = {};
+	filter.m_pIgnore = pLocal;
+	H::AimUtils->Trace(vTraceStart, vTraceStart + vForward * 8192.0f,
+		MASK_SHOT, &filter, &crosshairTrace);
+
+	// Acquisition is deliberately narrow even when the normal aimbot uses a
+	// large FOV. The lock can survive elsewhere on screen without pulling the
+	// user's view back across that screen.
+	const float flAcquireFOV = std::isfinite(CFG::Aimbot_Hitscan_FOV)
+		? std::clamp(CFG::Aimbot_Hitscan_FOV, 0.0f, 3.0f) : 3.0f;
+	const float flInfluenceFOV = std::max(flAcquireFOV * 2.0f, 3.0f);
+	const int nLockedHandle = m_AssistLock.GetHandle();
+	m_vecAssistTargets.clear();
+	m_vecAssistCandidates.clear();
+
+	auto IsOnScreen = [](const Vec3& position)
+	{
+		Vec3 screen = {};
+		return std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z)
+			&& H::Draw->W2S(position, screen)
+			&& screen.x >= 0.0f && screen.y >= 0.0f
+			&& screen.x < H::Draw->GetScreenW() && screen.y < H::Draw->GetScreenH();
+	};
+
+	if (CFG::Aimbot_Target_Players)
+	{
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PLAYERS_ENEMIES))
+		{
+			if (!pEntity || pEntity->IsDormant())
+				continue;
+			const auto pPlayer = pEntity->As<C_TFPlayer>();
+			if (pPlayer->deadflag() || pPlayer->InCond(TF_COND_HALLOWEEN_GHOST_MODE)
+				|| (CFG::Aimbot_Ignore_Friends && pPlayer->IsPlayerOnSteamFriendsList())
+				|| (CFG::Aimbot_Ignore_Invisible && pPlayer->IsInvisible())
+				|| (CFG::Aimbot_Ignore_Invulnerable && pPlayer->IsInvulnerable())
+				|| (CFG::Aimbot_Ignore_Taunting && pPlayer->InCond(TF_COND_TAUNTING)))
+				continue;
+
+			const int nHandle = pPlayer->GetRefEHandle().ToInt();
+			const bool bLocked = nHandle == nLockedHandle;
+			const bool bCrosshairEntity = !crosshairTrace.allsolid && !crosshairTrace.startsolid
+				&& crosshairTrace.m_pEnt == pPlayer;
+			// Avoid rebuilding bones for unrelated players across the map. Close
+			// targets need a wider center allowance because their heads subtend a
+			// larger angle than their collision-hull midpoint.
+			const float flDistance = vTraceStart.DistTo(pPlayer->GetCenter());
+			const float flCenterAllowance = flAcquireFOV + RAD2DEG(atan2f(96.0f, std::max(flDistance, 1.0f)));
+			if (!bLocked && !bCrosshairEntity
+				&& Math::CalcFov(vShotAngles, Math::CalcAngle(vTraceStart, pPlayer->GetCenter())) > flCenterAllowance)
+				continue;
+
+			mstudiohitboxset_t* pSet = nullptr;
+			matrix3x4_t bones[128] = {};
+			if (!SetupHitboxScan(pPlayer, pSet, bones) || pSet->numhitboxes <= 0
+				|| pSet->numhitboxes > 128)
+				continue;
+
+			HitscanTarget_t best = {};
+			bool bBestOnCrosshair = false;
+			auto ConsiderHitbox = [&](int nHitbox)
+			{
+				if (nHitbox < 0 || nHitbox >= pSet->numhitboxes)
+					return false;
+				const auto pBox = pSet->pHitbox(nHitbox);
+				if (!pBox || pBox->bone < 0 || pBox->bone >= 128)
+					return false;
+				const bool onCrosshair = bCrosshairEntity && crosshairTrace.hitbox == nHitbox;
+				Vec3 position = {};
+				Math::VectorTransform((pBox->bbmin + pBox->bbmax) * 0.5f, bones[pBox->bone], position);
+				const bool bCenterOnScreen = IsOnScreen(position);
+				if (!bCenterOnScreen && !onCrosshair)
+					return false;
+				Vec3 angle = bCenterOnScreen ? Math::CalcAngle(vTraceStart, position) : vShotAngles;
+				float fov = bCenterOnScreen ? Math::CalcFov(vShotAngles, angle) : 0.0f;
+				if (!std::isfinite(fov) || (!bLocked && !onCrosshair && fov > flAcquireFOV))
+					return false;
+				if (best.Entity && !onCrosshair && (bBestOnCrosshair || fov >= best.FOVTo))
+					return false;
+				const bool bSafeCenter = bCenterOnScreen
+					&& H::AimUtils->TraceEntityBullet(pPlayer, vTraceStart, position);
+				if (!bSafeCenter && !onCrosshair)
+					return false;
+				// A visible sliver can have an occluded/off-screen center. The
+				// authoritative contact keeps its entity eligible without nudging
+				// toward an unseen center through cover or outside the viewport.
+				if (!bSafeCenter)
+				{
+					position = crosshairTrace.endpos;
+					angle = vShotAngles;
+					fov = 0.0f;
+				}
+				best.Entity = pPlayer;
+				best.Position = position;
+				best.AngleTo = angle;
+				best.FOVTo = fov;
+				best.DistanceTo = vTraceStart.DistTo(position);
+				best.AimedHitbox = nHitbox;
+				best.AssistRayInside = onCrosshair && (!bSafeCenter
+					|| Math::RayToHitbox(vTraceStart, vForward, pBox->bbmin, pBox->bbmax, bones[pBox->bone], 0.72f));
+				bBestOnCrosshair = onCrosshair;
+				return true;
+			};
+
+			// Follow the hitbox the user actually moved onto within the retained
+			// entity. Otherwise keep the selected bone while it remains visible.
+			if (bCrosshairEntity)
+				ConsiderHitbox(crosshairTrace.hitbox);
+			if (!bBestOnCrosshair && !(bLocked && ConsiderHitbox(m_nAssistHitbox)))
+			{
+				for (int n = 0; n < pSet->numhitboxes && !bBestOnCrosshair; ++n)
+					ConsiderHitbox(n);
+			}
+			if (best.Entity)
+			{
+				m_vecAssistTargets.push_back(best);
+				m_vecAssistCandidates.push_back({ nHandle, best.FOVTo, bBestOnCrosshair });
+			}
+		}
+	}
+
+	auto ConsiderObject = [&](C_BaseEntity* pEntity)
+	{
+		if (!pEntity || pEntity->IsDormant())
+			return;
+		const int handle = pEntity->GetRefEHandle().ToInt();
+		const bool onCrosshair = !crosshairTrace.allsolid && !crosshairTrace.startsolid
+			&& crosshairTrace.m_pEnt == pEntity;
+		Vec3 position = pEntity->GetCenter();
+		const bool centerOnScreen = IsOnScreen(position);
+		if (!centerOnScreen && !onCrosshair)
+			return;
+		Vec3 angle = centerOnScreen ? Math::CalcAngle(vTraceStart, position) : vShotAngles;
+		float fov = centerOnScreen ? Math::CalcFov(vShotAngles, angle) : 0.0f;
+		if (!std::isfinite(fov) || (handle != nLockedHandle && !onCrosshair && fov > flAcquireFOV))
+			return;
+		if (!centerOnScreen || !H::AimUtils->TraceEntityBullet(pEntity, vTraceStart, position))
+		{
+			if (!onCrosshair)
+				return;
+			position = crosshairTrace.endpos;
+			angle = vShotAngles;
+			fov = 0.0f;
+		}
+		HitscanTarget_t target = {};
+		target.Entity = pEntity;
+		target.Position = position;
+		target.AngleTo = angle;
+		target.FOVTo = fov;
+		target.AssistRayInside = onCrosshair;
+		m_vecAssistTargets.push_back(target);
+		m_vecAssistCandidates.push_back({ handle, fov, onCrosshair });
+	};
+	if (CFG::Aimbot_Target_Buildings)
+	{
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::BUILDINGS_ENEMIES))
+		{
+			if (!pEntity || pEntity->As<C_BaseObject>()->m_bPlacing()
+				|| pEntity->As<C_BaseObject>()->m_iHealth() <= 0)
+				continue;
+			ConsiderObject(pEntity);
+		}
+	}
+	if (CFG::Aimbot_Hitscan_Target_Stickies)
+	{
+		for (const auto pEntity : H::Entities->GetGroup(EEntGroup::PROJECTILES_ENEMIES))
+		{
+			if (!pEntity || pEntity->GetClassId() != ETFClassIds::CTFGrenadePipebombProjectile)
+				continue;
+			const auto pPipe = pEntity->As<C_TFGrenadePipebombProjectile>();
+			if (!pPipe->m_bTouched() || !pPipe->HasStickyEffects()
+				|| pPipe->m_iType() == TF_GL_MODE_REMOTE_DETONATE_PRACTICE)
+				continue;
+			ConsiderObject(pEntity);
+		}
+	}
+
+	const int selected = m_AssistLock.Select(m_vecAssistCandidates.data(),
+		m_vecAssistCandidates.size(), flAcquireFOV, dt);
+	if (selected < 0)
+	{
+		m_AssistMotion.Reset();
+		m_nAssistMotionTarget = -1;
+		m_nAssistHitbox = -1;
+		return;
+	}
+	const auto& target = m_vecAssistTargets[selected];
+	if (m_nAssistMotionTarget != m_AssistLock.GetHandle() || m_nAssistHitbox != target.AimedHitbox)
+		m_AssistMotion.Reset();
+	m_nAssistMotionTarget = m_AssistLock.GetHandle();
+	m_nAssistHitbox = target.AimedHitbox;
+	if (target.AssistRayInside || target.FOVTo > flInfluenceFOV)
+	{
+		m_AssistMotion.Reset();
+		return;
+	}
+
+	Vec3 error = target.AngleTo - vShotAngles;
+	Math::ClampAngles(error);
+	const auto step = m_AssistMotion.Step({ error.x, error.y }, dt,
+		CFG::Aimbot_Hitscan_AimAssist_Strength, CFG::Aimbot_Hitscan_AimAssist_Stabilization);
+	if (step.Pitch == 0.0f && step.Yaw == 0.0f)
+		return;
+	pCmd->viewangles += Vec3{ step.Pitch, step.Yaw, 0.0f };
+	Math::ClampAngles(pCmd->viewangles);
+	// Visible assistance must update the camera as well as the outgoing command.
+	I::EngineClient->SetViewAngles(pCmd->viewangles);
 }
 
 // Handles and updated the IN_ATTACK state
@@ -1093,13 +1301,20 @@ bool CAimbotHitscan::IsFiring(const CUserCmd* pCmd, C_TFWeaponBase* pWeapon)
 
 void CAimbotHitscan::Run(CUserCmd* pCmd, C_TFPlayer* pLocal, C_TFWeaponBase* pWeapon)
 {
+	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
+	const bool bRegularAimActive = CFG::Aimbot_Hitscan_Active && aimKeyDown;
+	if (CFG::Aimbot_Hitscan_AimAssist_Active && !bRegularAimActive
+		&& !(Shifting::bShifting && !Shifting::bShiftingWarp))
+		RunAimAssist(pCmd, pLocal, pWeapon);
+	else
+		ResetAimAssist();
+
 	if (!CFG::Aimbot_Hitscan_Active)
 	{
 		ResetSmoothState();
 		return;
 	}
 
-	const bool aimKeyDown = H::Input->IsDown(CFG::Aimbot_Key);
 	const bool bSmoothAimActive = aimKeyDown && CFG::Aimbot_Hitscan_Aim_Type == 2;
 	if (bSmoothAimActive)
 	{

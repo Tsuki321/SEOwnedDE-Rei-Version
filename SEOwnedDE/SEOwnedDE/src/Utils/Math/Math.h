@@ -337,43 +337,87 @@ namespace Math
 		}
 	}
 
-	inline bool RayToOBB(const  Vec3 &origin, const  Vec3 &direction, const Vec3 &position, const Vec3 &min, const Vec3 &max, const matrix3x4_t orientation) noexcept
+	// position is the world position of local (0,0,0); bounds stay in local
+	// coordinates. Source bone matrices transform local to world, so their
+	// columns, rather than rows, are the box axes. Use the inverse transform
+	// to preserve model scale as well as rotation.
+	inline bool RayToOBB(const Vec3& origin, const Vec3& direction, const Vec3& position,
+		const Vec3& min, const Vec3& max, const matrix3x4_t orientation,
+		float maxDistance = FLT_MAX, bool strictInterior = false) noexcept
 	{
-		Vec3 p = position - origin;
+		if (!std::isfinite(maxDistance) || maxDistance <= 0.0f)
+			return false;
 
-		Vec3 X = { orientation[0][0], orientation[0][1], orientation[0][2] };
-		Vec3 Y = { orientation[1][0], orientation[1][1], orientation[1][2] };
-		Vec3 Z = { orientation[2][0], orientation[2][1], orientation[2][2] };
-
-		Vec3 f = { X.Dot(direction), Y.Dot(direction), Z.Dot(direction) };
-		Vec3 e = { X.Dot(p), Y.Dot(p), Z.Dot(p) };
-
-		float t[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-
-		for (int i = 0; i < 3; ++i)
+		for (int axis = 0; axis < 3; ++axis)
 		{
-			if (floatCompare(f[i], 0.0f))
-			{
-				if (-e[i] + min[i] > 0.0f || -e[i] + max[i] < 0.0f)
+			if (!std::isfinite(origin[axis]) || !std::isfinite(direction[axis])
+				|| !std::isfinite(position[axis]) || !std::isfinite(min[axis])
+				|| !std::isfinite(max[axis]) || min[axis] >= max[axis])
+				return false;
+			for (int column = 0; column < 3; ++column)
+				if (!std::isfinite(orientation[axis][column]))
 					return false;
-
-				f[i] = 0.00001f;
-			}
-
-			t[i * 2 + 0] = (e[i] + max[i]) / f[i];
-			t[i * 2 + 1] = (e[i] + min[i]) / f[i];
 		}
 
-		float tmin = fmaxf(fmaxf(fminf(t[0], t[1]), fminf(t[2], t[3])), fminf(t[4], t[5]));
-		float tmax = fminf(fminf(fmaxf(t[0], t[1]), fmaxf(t[2], t[3])), fmaxf(t[4], t[5]));
-
-		if (tmax < 0.0f)
+		const float directionLength = direction.Length();
+		if (!std::isfinite(directionLength) || directionLength <= 0.0f)
 			return false;
 
-		if (tmin > tmax)
+		const Vec3 x = { orientation[0][0], orientation[1][0], orientation[2][0] };
+		const Vec3 y = { orientation[0][1], orientation[1][1], orientation[2][1] };
+		const Vec3 z = { orientation[0][2], orientation[1][2], orientation[2][2] };
+		const float determinant = x.Dot(y.Cross(z));
+		if (!std::isfinite(determinant) || std::fabs(determinant) <= 1.0e-8f)
 			return false;
 
-		return true;
+		const Vec3 inverseRows[3] = { y.Cross(z) / determinant,
+			z.Cross(x) / determinant, x.Cross(y) / determinant };
+		const Vec3 offset = origin - position;
+		const Vec3 unitDirection = direction / directionLength;
+		float enter = 0.0f;
+		float exit = maxDistance;
+
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			const float localOrigin = inverseRows[axis].Dot(offset);
+			const float localDirection = inverseRows[axis].Dot(unitDirection);
+			if (!std::isfinite(localOrigin) || !std::isfinite(localDirection))
+				return false;
+
+			if (localDirection == 0.0f)
+			{
+				if (strictInterior ? (localOrigin <= min[axis] || localOrigin >= max[axis])
+					: (localOrigin < min[axis] || localOrigin > max[axis]))
+					return false;
+				continue;
+			}
+
+			const float first = (min[axis] - localOrigin) / localDirection;
+			const float second = (max[axis] - localOrigin) / localDirection;
+			enter = std::max(enter, std::min(first, second));
+			exit = std::min(exit, std::max(first, second));
+			if (strictInterior ? enter >= exit : enter > exit)
+				return false;
+		}
+
+		return strictInterior ? exit > enter : exit >= enter;
+	}
+
+	// Shrink around the hitbox's own midpoint, not the bone origin. Values
+	// above one must never manufacture a hit outside the native volume.
+	inline bool RayToHitbox(const Vec3& origin, const Vec3& direction,
+		const Vec3& localMins, const Vec3& localMaxs, const matrix3x4_t boneMatrix,
+		float scale = 1.0f, float maxDistance = 8192.0f) noexcept
+	{
+		if (!std::isfinite(scale) || scale <= 0.0f)
+			return false;
+
+		const Vec3 localCenter = (localMins + localMaxs) * 0.5f;
+		const Vec3 halfSize = (localMaxs - localMins) * (0.5f * std::min(scale, 1.0f));
+		Vec3 worldCenter = {};
+		VectorTransform(localCenter, boneMatrix, worldCenter);
+		return RayToOBB(origin, direction, worldCenter, halfSize * -1.0f, halfSize,
+			boneMatrix, maxDistance, true);
 	}
 
 	inline void VectorRotate(Vec3 &in1, const matrix3x4_t &in2, Vec3 &out) noexcept

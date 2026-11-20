@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../../SDK/SDK.h"
+#include "../MenuLayout.h"
 
 struct ClipRegion_t { int x = 0, y = 0, w = 0, h = 0; };
 
@@ -39,6 +40,7 @@ private:
 	std::vector<Rect_t> m_vecOutlinedRects = {};
 	std::vector<Rect_t> m_vecRects = {};
 	std::vector<Texture_t> m_vecTextures = {};
+	ClipRegion_t m_ClipBounds = {};
 
 public:
 	void String(const CFont &font, int x, int y, Color_t col, short align, const char *str, const ClipRegion_t &clip);
@@ -47,6 +49,7 @@ public:
 	void Texture(int id, int x, int y, int w, int h);
 
 	void Clear();
+	void SetClip(const ClipRegion_t& clip) { m_ClipBounds = clip; }
 	void DrawAll();
 };
 

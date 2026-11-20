@@ -197,6 +197,9 @@ namespace SDKUtils
 
 	static Vec3 GetHitboxPosFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, const matrix3x4_t *pMatrix)
 	{
+		if (!pAnimating || !pMatrix || !I::ModelInfoClient)
+			return {};
+
 		auto pModel = pAnimating->GetModel();
 
 		if (!pModel)
@@ -207,9 +210,13 @@ namespace SDKUtils
 		if (!pHDR)
 			return {};
 
-		auto pSet = pHDR->pHitboxSet(pAnimating->m_nHitboxSet());
+		const int nHitboxSet = pAnimating->m_nHitboxSet();
+		if (nHitboxSet < 0 || nHitboxSet >= pHDR->numhitboxsets)
+			return {};
 
-		if (!pSet)
+		auto pSet = pHDR->pHitboxSet(nHitboxSet);
+
+		if (!pSet || nHitbox < 0 || nHitbox >= pSet->numhitboxes)
 			return {};
 
 		auto pBox = pSet->pHitbox(nHitbox);
@@ -220,7 +227,7 @@ namespace SDKUtils
 		// pBox->bone comes from the model file; callers pass fixed-size matrix
 		// blocks (MAX_BONE_COUNT / MAXSTUDIOBONES entries), so a model whose
 		// hitbox references a bone past the end would read past the buffer.
-		if (pBox->bone < 0 || pBox->bone >= MAXSTUDIOBONES)
+		if (pBox->bone < 0 || pBox->bone >= pHDR->numbones || pBox->bone >= MAXSTUDIOBONES)
 			return {};
 
 		Vec3 vOut = {};
@@ -235,6 +242,9 @@ namespace SDKUtils
 	// than the one the trace hit.
 	static bool GetHitboxInfoFromMatrix(C_BaseAnimating *pAnimating, int nHitbox, const matrix3x4_t *pMatrix, Vec3 *pCenter, Vec3 *pMins, Vec3 *pMaxs, matrix3x4_t *pMatrixOut = nullptr)
 	{
+		if (!pAnimating || !pMatrix || !I::ModelInfoClient)
+			return false;
+
 		auto pModel = pAnimating->GetModel();
 
 		if (!pModel)
@@ -245,9 +255,13 @@ namespace SDKUtils
 		if (!pHDR)
 			return false;
 
-		auto pSet = pHDR->pHitboxSet(pAnimating->m_nHitboxSet());
+		const int nHitboxSet = pAnimating->m_nHitboxSet();
+		if (nHitboxSet < 0 || nHitboxSet >= pHDR->numhitboxsets)
+			return false;
 
-		if (!pSet)
+		auto pSet = pHDR->pHitboxSet(nHitboxSet);
+
+		if (!pSet || nHitbox < 0 || nHitbox >= pSet->numhitboxes)
 			return false;
 
 		auto pBox = pSet->pHitbox(nHitbox);
@@ -255,7 +269,7 @@ namespace SDKUtils
 		if (!pBox)
 			return false;
 
-		if (pBox->bone < 0 || pBox->bone >= MAXSTUDIOBONES)
+		if (pBox->bone < 0 || pBox->bone >= pHDR->numbones || pBox->bone >= MAXSTUDIOBONES)
 			return false;
 
 		if (pMins)
