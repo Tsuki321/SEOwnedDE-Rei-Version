@@ -406,7 +406,7 @@ namespace Math
 	// Shrink around the hitbox's own midpoint, not the bone origin. Values
 	// above one must never manufacture a hit outside the native volume.
 	inline bool RayToHitbox(const Vec3& origin, const Vec3& direction,
-		const Vec3& localMins, const Vec3& localMaxs, const matrix3x4_t boneMatrix,
+		const Vec3& localMins, const Vec3& localMaxs, const matrix3x4_t& boneMatrix,
 		float scale = 1.0f, float maxDistance = 8192.0f) noexcept
 	{
 		if (!std::isfinite(scale) || scale <= 0.0f)
