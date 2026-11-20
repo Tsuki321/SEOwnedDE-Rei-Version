@@ -34,8 +34,19 @@ TEST(AimbotAimAssistContracts, IndependentAssistRunsBeforeHitscanKeyGate) {
     EXPECT_NE(source.find("Aimbot_Hitscan_AimAssist_Strength"), std::string::npos);
     EXPECT_NE(source.find("Aimbot_Hitscan_AimAssist_Stabilization"), std::string::npos);
     const auto assistStart = source.find("void CAimbotHitscan::RunAimAssist(");
-    const auto assistEnd = source.find("bool CAimbotHitscan::IsFiring(", assistStart);
     ASSERT_NE(assistStart, std::string::npos);
+    const auto assistOpen = source.find('{', assistStart);
+    ASSERT_NE(assistOpen, std::string::npos);
+    std::size_t assistEnd = std::string::npos;
+    int depth = 0;
+    for (auto offset = assistOpen; offset < source.size(); ++offset) {
+        if (source[offset] == '{')
+            ++depth;
+        else if (source[offset] == '}' && --depth == 0) {
+            assistEnd = offset + 1;
+            break;
+        }
+    }
     ASSERT_NE(assistEnd, std::string::npos);
     ASSERT_GT(assistEnd, assistStart);
     const auto assistBody = source.substr(assistStart, assistEnd - assistStart);
