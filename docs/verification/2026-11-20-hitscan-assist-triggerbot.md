@@ -71,8 +71,21 @@ python tools/verification/capture_hitscan_geometry.py --client-copy "$env:TEMP/s
 ## Validation scope
 
 Local native capture, project XML/path checks, and whitespace checks passed.
-DLL compilation and compiled behavioral tests run exclusively in GitHub
-Actions. Their final results are recorded after the runs finish.
+The [ReleaseAVX2/x64 DLL build](https://github.com/Tsuki321/SEOwnedDE-Rei-Version/actions/runs/44694303531)
+passed with **0 warnings and 0 errors**, for source commit
+`526edd568f4aa75ed64d07edb509e259fc0b1213`. No local compilation was performed.
+
+The [compiled Google Test suite](https://github.com/Tsuki321/SEOwnedDE-Rei-Version/actions/runs/44695090910)
+passed **all 680 tests from 163 suites**, including the 324 native geometry
+fixture comparisons, for source commit
+`714bdb545f8633a1868ea376b949dd3d54ee33ab`. The only production source change
+after the successful DLL build is an updated comment; remaining changes correct
+the source-check test's function range. The test build reports 6 warnings and
+0 errors.
+
+Downloaded DLL: `bin/hitscan-assist-triggerbot/SEOwnedDE.dll` (1,499,648 bytes),
+verified as an x64 PE DLL. SHA-256:
+`986AE9A03DA90911A5877C38B772F1B6FCF78238952E44CE7255624D8DA78BCC`.
 
 These checks verify geometry and deterministic controller behavior. Live
 camera feel, menu operation in-game, random weapon spread, network delay,
